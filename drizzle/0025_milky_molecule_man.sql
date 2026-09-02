@@ -1,0 +1,2 @@
+ALTER TABLE "mitfloww"."file_versions" ADD COLUMN "revision_description" text;--> statement-breakpoint
+ALTER TABLE "mitfloww"."file_versions" ADD COLUMN "revision_description_source_locale" varchar(16);

@@ -1,0 +1,1 @@
+export const FILE_REVISION_NOTE_MAX_LENGTH = 5000;

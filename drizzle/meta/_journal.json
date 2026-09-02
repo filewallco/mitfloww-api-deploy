@@ -1,0 +1,244 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1778426644719,
+      "tag": "0000_light_golden_guardian",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1778614792255,
+      "tag": "0001_status_ints",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778661000000,
+      "tag": "0002_file_upload_status_range",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778937412483,
+      "tag": "0003_add_file_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779038627593,
+      "tag": "0004_majestic_gamora",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779185935638,
+      "tag": "0005_mean_franklin_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779193385745,
+      "tag": "0006_add_project_file_notification_updates",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779200556376,
+      "tag": "0007_lush_sandman",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1779355300044,
+      "tag": "0008_project_identity_unique_and_currency_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779469934857,
+      "tag": "0009_modern_johnny_storm",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779792186282,
+      "tag": "0010_project_level_pricing_and_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780266600000,
+      "tag": "0011_file_review_approval_and_final_draft",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1780269000000,
+      "tag": "0012_file_revision_notes",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1780350000000,
+      "tag": "0013_project_uuid_and_revision_comment_normalization",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1780350000001,
+      "tag": "0014_curious_doctor_octopus",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1780350000002,
+      "tag": "0015_project_share_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1780296139652,
+      "tag": "0016_share_password_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1780350000003,
+      "tag": "0017_file_revision_safety_updates",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780556568883,
+      "tag": "0018_dynamic_text_translation_source_locales",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780680559491,
+      "tag": "0019_silent_kinsey_walden",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780684867227,
+      "tag": "0020_drop_project_preview_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780891200000,
+      "tag": "0021_add_credit_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1780921141099,
+      "tag": "0022_complex_carmella_unuscione",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1781198554932,
+      "tag": "0023_common_the_initiative",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1781289519718,
+      "tag": "0024_cultured_talon",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1781296322932,
+      "tag": "0025_milky_molecule_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783098943476,
+      "tag": "0026_rapid_gravity",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1783574036880,
+      "tag": "0027_large_maximus",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1783608912289,
+      "tag": "0028_early_iron_lad",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784049360529,
+      "tag": "0029_smooth_jack_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1784368006739,
+      "tag": "0030_tired_rattler",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1785680363770,
+      "tag": "0031_add_expiration_to_credits_and_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1785680371833,
+      "tag": "0032_burly_nico_minoru",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1785778917916,
+      "tag": "0033_misty_lady_mastermind",
+      "breakpoints": true
+    }
+  ]
+}

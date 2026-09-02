@@ -1,0 +1,1 @@
+ALTER TABLE "mitfloww"."file_versions" ADD COLUMN "use_soft_watermark" boolean DEFAULT false NOT NULL;

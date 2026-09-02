@@ -1,0 +1,1 @@
+ALTER TABLE "mitfloww"."projects" ADD COLUMN "advance_payment_completed_at" timestamp with time zone;
