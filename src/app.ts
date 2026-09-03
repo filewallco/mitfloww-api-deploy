@@ -1,3 +1,4 @@
+import { resolvePublicAppBaseUrl } from "@/lib/services/project-service";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -75,6 +76,13 @@ api.use("/file-uploads", fileUploadsRouter);
 api.use("/projects", projectsRouter);
 api.use("/files", filesRouter);
 api.use("/share-links", shareLinksRouter);
+
+// Redirect client share links opened directly on API host to the frontend web app
+app.get("/s/:token", (req, res) => {
+  const origin = req.get("origin") || req.get("referer");
+  const webBaseUrl = resolvePublicAppBaseUrl(origin);
+  return res.redirect(302, `${webBaseUrl}/s/${encodeURIComponent(req.params.token)}`);
+});
 
 app.use("/api", api);
 

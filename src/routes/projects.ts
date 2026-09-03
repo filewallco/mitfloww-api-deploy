@@ -26,6 +26,36 @@ import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
 
 export const projectsRouter = Router();
 
+function getClientAppBaseUrl(req: any): string | undefined {
+  const origin = req.get("origin");
+  if (origin && !origin.includes(":4001") && !origin.includes("mitfloww-api")) {
+    return origin.trim().replace(/\/+$/, "");
+  }
+
+  const referer = req.get("referer");
+  if (referer) {
+    try {
+      const url = new URL(referer);
+      if (url.port !== "4001" && !url.hostname.includes("mitfloww-api")) {
+        return url.origin;
+      }
+    } catch {}
+  }
+
+  const forwardedHost = req.get("x-forwarded-host");
+  if (
+    forwardedHost &&
+    !forwardedHost.includes(":4001") &&
+    !forwardedHost.includes("mitfloww-api")
+  ) {
+    const proto =
+      req.get("x-forwarded-proto") || (req.secure ? "https" : "http");
+    return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
+  }
+
+  return undefined;
+}
+
 const projectRepository = new DrizzleProjectRepository();
 
 const projectMetricsQuerySchema = z
@@ -196,7 +226,7 @@ projectsRouter.get("/:id/share", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor();
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
-  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const baseUrl = getClientAppBaseUrl(req);
   const data = await projectService.getProjectShareComposer(params.id, {
     baseUrl,
     expiryDays: actor.clientShareLinkExpiryDays,
@@ -210,7 +240,7 @@ projectsRouter.post("/:id/share", asyncHandler(async (req, res) => {
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
   const input = parseWithSchema(projectShareLinkMutationSchema, req.body);
-  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const baseUrl = getClientAppBaseUrl(req);
   const data = await projectService.mutateProjectShare(params.id, input, {
     baseUrl,
     expiryDays: actor.clientShareLinkExpiryDays,

@@ -126,31 +126,37 @@
     return `${normalizedBase}${suffixLabel}`;
   }
 
-  function resolvePublicAppBaseUrl(requestBaseUrl?: string) {
+  export function resolvePublicAppBaseUrl(requestBaseUrl?: string) {
     const normalizedRequestBaseUrl = requestBaseUrl?.trim().replace(/\/+$/, "");
 
-    if (normalizedRequestBaseUrl) {
+    const isApiBackend =
+      normalizedRequestBaseUrl &&
+      (normalizedRequestBaseUrl.includes(":4001") ||
+        normalizedRequestBaseUrl.includes("mitfloww-api"));
+
+    if (normalizedRequestBaseUrl && !isApiBackend) {
       return normalizedRequestBaseUrl;
     }
 
     const configuredBaseUrl = (
-      process.env.NEXT_PUBLIC_APP_URL ||
       process.env.APP_URL ||
+      process.env.WEB_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
       process.env.PROCESSING_CALLBACK_BASE_URL
-    )?.replace(/\/+$/, "");
+    )?.trim().replace(/\/+$/, "");
 
-    if (configuredBaseUrl) {
+    if (
+      configuredBaseUrl &&
+      !configuredBaseUrl.includes(":4001") &&
+      !configuredBaseUrl.includes("mitfloww-api")
+    ) {
       return configuredBaseUrl;
-    }
-
-    if (process.env.VERCEL_URL) {
-      return `https://${process.env.VERCEL_URL.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
     }
 
     return "http://localhost:3000";
   }
 
-  function buildProjectShareUrl(shareToken: string, requestBaseUrl?: string) {
+  export function buildProjectShareUrl(shareToken: string, requestBaseUrl?: string) {
     return `${resolvePublicAppBaseUrl(requestBaseUrl)}/s/${encodeURIComponent(shareToken)}`;
   }
 
@@ -252,6 +258,7 @@
 
   function toProjectShareDraft(
     project: Pick<ProjectRecord, "id" | "shareExpiresAt" | "shareToken" | "shareUrl">,
+    baseUrl?: string,
   ): ProjectShareDraftDTO {
     if (!project.shareExpiresAt || !project.shareToken || !project.shareUrl) {
       throw new Error("Project share draft is not available.");
@@ -261,7 +268,7 @@
       projectId: project.id,
       shareExpiresAt: project.shareExpiresAt.toISOString(),
       shareToken: project.shareToken,
-      shareUrl: project.shareUrl,
+      shareUrl: buildProjectShareUrl(project.shareToken, baseUrl),
     };
   }
 
@@ -300,7 +307,7 @@
 
   function toProjectShareAccess(
     project: ProjectRecord,
-    options?: { includeSharePassword?: boolean },
+    options?: { includeSharePassword?: boolean; baseUrl?: string },
   ): ProjectShareAccessDTO | null {
     if (!hasPersistedProjectShareAccess(project)) {
       return null;
@@ -325,13 +332,14 @@
         : undefined,
       shareStatus,
       shareToken: project.shareToken!,
-      shareUrl: project.shareUrl!,
+      shareUrl: buildProjectShareUrl(project.shareToken!, options?.baseUrl),
     };
   }
 
   function toProjectDTO(
     project: ProjectRecord,
     options?: {
+      baseUrl?: string;
       clientNameText?: TranslatedTextDTO;
       includeSharePassword?: boolean;
       titleText?: TranslatedTextDTO;
@@ -714,10 +722,11 @@
 
       return {
         project: await this.buildProjectDTO(record, options?.viewerLocale ?? "en", {
+          baseUrl: options?.baseUrl,
           includeSharePassword: true,
         }),
         shareDraft: hasPersistedProjectShareAccess(record)
-          ? toProjectShareDraft(record)
+          ? toProjectShareDraft(record, options?.baseUrl)
           : createProjectShareDraft(record.id, options?.baseUrl, options?.expiryDays),
       };
     }
@@ -767,9 +776,10 @@
 
         return {
           project: await this.buildProjectDTO(record, options?.viewerLocale ?? "en", {
+            baseUrl: options?.baseUrl,
             includeSharePassword: true,
           }),
-          shareDraft: toProjectShareDraft(record),
+          shareDraft: toProjectShareDraft(record, options?.baseUrl),
         };
       }
 
@@ -1169,12 +1179,13 @@
     private async buildProjectDTOs(
       records: ProjectRecord[],
       viewerLocale: string,
-      options?: { includeSharePassword?: boolean },
+      options?: { includeSharePassword?: boolean; baseUrl?: string },
     ) {
       const resolvedTextById = await this.resolveProjectTextBatch(records, viewerLocale);
 
       return records.map((record) =>
         toProjectDTO(record, {
+          baseUrl: options?.baseUrl,
           clientNameText:
             resolvedTextById.get(record.id)?.clientNameText,
           includeSharePassword: options?.includeSharePassword,
@@ -1186,7 +1197,7 @@
     private async buildProjectDTO(
       record: ProjectRecord,
       viewerLocale: string,
-      options?: { includeSharePassword?: boolean },
+      options?: { includeSharePassword?: boolean; baseUrl?: string },
     ) {
       const [dto] = await this.buildProjectDTOs([record], viewerLocale, options);
 
@@ -1502,12 +1513,9 @@
       const nextShareStatus = resolveProjectShareStatus(project);
       const updates: Partial<ProjectRecord> & { updatedAt?: Date } = {};
 
-      if (options?.baseUrl) {
-        const nextShareUrl = buildProjectShareUrl(project.shareToken!, options.baseUrl);
-
-        if (project.shareUrl !== nextShareUrl) {
-          updates.shareUrl = nextShareUrl;
-        }
+      const nextShareUrl = buildProjectShareUrl(project.shareToken!, options?.baseUrl);
+      if (project.shareUrl !== nextShareUrl) {
+        updates.shareUrl = nextShareUrl;
       }
 
       if (
