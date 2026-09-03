@@ -349,12 +349,7 @@ export class DrizzleProjectRepository implements ProjectRepository {
   }
 
   async hardDelete(id: string): Promise<ProjectRecord | null> {
-    const [record] = await db
-      .delete(projects)
-      .where(eq(projects.id, id))
-      .returning();
-
-    return record ?? null;
+    return this.softDelete(id, new Date());
   }
 
   async findClientReviewByProjectId(

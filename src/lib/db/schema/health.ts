@@ -4,6 +4,7 @@ export const createHealthTables = (fw: PgSchema) => ({
     healthChecks: fw.table("health_checks", {
         id: uuid("id").defaultRandom().primaryKey(),
         message: text("message"),
+        deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
         createdAt: timestamp("created_at").defaultNow(),
     })
 });

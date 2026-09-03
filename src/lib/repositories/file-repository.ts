@@ -22,6 +22,8 @@ import {
   FileProcessingStatus,
   FileVersionReportStatus,
   revisionComments,
+  revisionCommentMarkers,
+  revisionCommentItems,
   type FileRecord,
   type FileVersionReportRecord,
   type FileVersionRecord,
@@ -354,6 +356,8 @@ export interface FileRepository {
   hardDeleteWithVersions(id: string): Promise<FileRecord | null>;
 
   softDelete(id: string, deletedAt: Date): Promise<FileRecord | null>;
+
+  softDeleteWithVersions(id: string, deletedAt?: Date): Promise<FileRecord | null>;
 
   update(id: string, input: UpdateFileRecordInput): Promise<FileRecord | null>;
 }
@@ -1259,9 +1263,45 @@ export class DrizzleFileRepository implements FileRepository {
     versionUpdate: UpdateFileVersionInput;
   }): Promise<{ file: FileRecord; version: FileVersionRecord } | null> {
     return db.transaction(async (tx) => {
+      const now = new Date();
       await tx
-        .delete(revisionComments)
-        .where(eq(revisionComments.fileVersionId, input.versionId));
+        .update(revisionComments)
+        .set({
+          deletedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(revisionComments.fileVersionId, input.versionId),
+            isNull(revisionComments.deletedAt),
+          ),
+        );
+
+      await tx
+        .update(revisionCommentMarkers)
+        .set({
+          deletedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(revisionCommentMarkers.fileVersionId, input.versionId),
+            isNull(revisionCommentMarkers.deletedAt),
+          ),
+        );
+
+      await tx
+        .update(revisionCommentItems)
+        .set({
+          deletedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(revisionCommentItems.fileVersionId, input.versionId),
+            isNull(revisionCommentItems.deletedAt),
+          ),
+        );
 
       const [version] = await tx
         .update(fileVersions)
@@ -1299,12 +1339,19 @@ export class DrizzleFileRepository implements FileRepository {
     versionId: string;
   }): Promise<{ file: FileRecord; versionId: string } | null> {
     return db.transaction(async (tx) => {
+      const rollbackNow = new Date();
       const [deletedVersion] = await tx
-        .delete(fileVersions)
+        .update(fileVersions)
+        .set({
+          deletedAt: rollbackNow,
+          deleteReason: "version_rollback",
+          updatedAt: rollbackNow,
+        })
         .where(
           and(
             eq(fileVersions.id, input.versionId),
             eq(fileVersions.fileId, input.fileId),
+            isNull(fileVersions.deletedAt),
           ),
         )
         .returning({ id: fileVersions.id });
@@ -1330,21 +1377,65 @@ export class DrizzleFileRepository implements FileRepository {
     });
   }
 
-  async hardDeleteWithVersions(id: string): Promise<FileRecord | null> {
+  async softDeleteWithVersions(
+    id: string,
+    deletedAt = new Date(),
+  ): Promise<FileRecord | null> {
     return db.transaction(async (tx) => {
-      await tx.delete(fileVersions).where(eq(fileVersions.fileId, id));
+      // Soft delete all active file versions
+      await tx
+        .update(fileVersions)
+        .set({
+          deletedAt,
+          deletedBy: "file_delete",
+          updatedAt: deletedAt,
+        })
+        .where(and(eq(fileVersions.fileId, id), isNull(fileVersions.deletedAt)));
 
+      // Soft delete all revision comments for this file
+      await tx
+        .update(revisionComments)
+        .set({
+          deletedAt,
+          updatedAt: deletedAt,
+        })
+        .where(and(eq(revisionComments.fileId, id), isNull(revisionComments.deletedAt)));
+
+      // Soft delete all revision comment markers for this file
+      await tx
+        .update(revisionCommentMarkers)
+        .set({
+          deletedAt,
+          updatedAt: deletedAt,
+        })
+        .where(and(eq(revisionCommentMarkers.fileId, id), isNull(revisionCommentMarkers.deletedAt)));
+
+      // Soft delete all revision comment items for this file
+      await tx
+        .update(revisionCommentItems)
+        .set({
+          deletedAt,
+          updatedAt: deletedAt,
+        })
+        .where(and(eq(revisionCommentItems.fileId, id), isNull(revisionCommentItems.deletedAt)));
+
+      // Soft delete the file record itself
       const [deletedFile] = await tx
-        .delete(files)
-        .where(eq(files.id, id))
+        .update(files)
+        .set({
+          deletedAt,
+          uploadStatus: FileUploadStatus.Deleted,
+          updatedAt: deletedAt,
+        })
+        .where(and(eq(files.id, id), isNull(files.deletedAt)))
         .returning();
 
-      if (!deletedFile) {
-        return null;
-      }
-
-      return deletedFile;
+      return deletedFile ?? null;
     });
+  }
+
+  async hardDeleteWithVersions(id: string): Promise<FileRecord | null> {
+    return this.softDeleteWithVersions(id);
   }
 
   async update(

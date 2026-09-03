@@ -34,8 +34,11 @@ healthRouter.get("/db", asyncHandler(async (_req, res) => {
     .from(healthChecks)
     .where(eq(healthChecks.id, record.id));
 
-  // DELETE
-  await db.delete(healthChecks).where(eq(healthChecks.id, record.id));
+  // SOFT DELETE
+  await db
+    .update(healthChecks)
+    .set({ deletedAt: new Date() })
+    .where(eq(healthChecks.id, record.id));
 
   return sendSuccess(res, {
     status: "ok",

@@ -238,7 +238,10 @@ export class DrizzleFileRevisionNoteRepository
       )
       .leftJoin(
         revisionCommentReplies,
-        eq(revisionCommentReplies.commentId, revisionComments.id),
+        and(
+          eq(revisionCommentReplies.commentId, revisionComments.id),
+          isNull(revisionCommentReplies.deletedAt),
+        ),
       )
       .where(
         options?.includeDeleted
@@ -267,7 +270,10 @@ export class DrizzleFileRevisionNoteRepository
       )
       .leftJoin(
         revisionCommentReplies,
-        eq(revisionCommentReplies.commentId, revisionComments.id),
+        and(
+          eq(revisionCommentReplies.commentId, revisionComments.id),
+          isNull(revisionCommentReplies.deletedAt),
+        ),
       )
       .where(
         and(
@@ -654,6 +660,26 @@ export class DrizzleFileRevisionNoteRepository
   async createReply(
     input: CreateFileRevisionCommentReplyRecordInput,
   ): Promise<FileRevisionNoteWithReplyRecord | null> {
+    const [existing] = await db
+      .select()
+      .from(revisionCommentReplies)
+      .where(eq(revisionCommentReplies.commentId, input.commentId))
+      .limit(1);
+
+    if (existing) {
+      await db
+        .update(revisionCommentReplies)
+        .set({
+          body: input.body,
+          deletedAt: null,
+          sourceLocale: input.sourceLocale,
+          updatedAt: input.updatedAt,
+        })
+        .where(eq(revisionCommentReplies.id, existing.id));
+
+      return this.findById(input.commentId);
+    }
+
     const [record] = await db
       .insert(revisionCommentReplies)
       .values({
@@ -679,7 +705,12 @@ export class DrizzleFileRevisionNoteRepository
     const [record] = await db
       .update(revisionCommentReplies)
       .set(input)
-      .where(eq(revisionCommentReplies.commentId, commentId))
+      .where(
+        and(
+          eq(revisionCommentReplies.commentId, commentId),
+          isNull(revisionCommentReplies.deletedAt),
+        ),
+      )
       .returning();
 
     if (!record) {
@@ -690,9 +721,19 @@ export class DrizzleFileRevisionNoteRepository
   }
 
   async deleteReply(commentId: string): Promise<FileRevisionNoteWithReplyRecord | null> {
+    const deletedAt = new Date();
     await db
-      .delete(revisionCommentReplies)
-      .where(eq(revisionCommentReplies.commentId, commentId));
+      .update(revisionCommentReplies)
+      .set({
+        deletedAt,
+        updatedAt: deletedAt,
+      })
+      .where(
+        and(
+          eq(revisionCommentReplies.commentId, commentId),
+          isNull(revisionCommentReplies.deletedAt),
+        ),
+      );
 
     return this.findById(commentId);
   }

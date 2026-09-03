@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   testimonials,
@@ -27,7 +27,10 @@ export class DrizzleTestimonialRepository implements TestimonialRepository {
   }
 
   async findById(id: string): Promise<TestimonialRecord | null> {
-    const result = await db.select().from(testimonials).where(eq(testimonials.id, id));
+    const result = await db
+      .select()
+      .from(testimonials)
+      .where(and(eq(testimonials.id, id), isNull(testimonials.deletedAt)));
     return result[0] ?? null;
   }
 
@@ -36,7 +39,7 @@ export class DrizzleTestimonialRepository implements TestimonialRepository {
     const result = await db
       .update(testimonials)
       .set({ ...input, updatedAt: new Date() })
-      .where(eq(testimonials.id, id))
+      .where(and(eq(testimonials.id, id), isNull(testimonials.deletedAt)))
       .returning();
     console.log("[TRACE] Rows returned:", result.length);
     return result[0] ?? null;

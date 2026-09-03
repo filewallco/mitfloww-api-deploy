@@ -1038,7 +1038,7 @@ export class FileService {
     }
 
     const deletedAt = new Date();
-    const record = await this.repository.hardDeleteWithVersions(id);
+    const record = await this.repository.softDeleteWithVersions(id, deletedAt);
 
     if (!record) {
       throw new NotFoundAppError("File not found.");

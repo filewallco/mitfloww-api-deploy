@@ -576,6 +576,7 @@ export const createFileTables = (
       sourceLocale: varchar("source_locale", { length: 16 })
         .notNull()
         .default("und"),
+      deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
         .defaultNow(),
@@ -588,6 +589,7 @@ export const createFileTables = (
         table.commentId,
       ),
       index("revision_comment_replies_comment_id_idx").on(table.commentId),
+      index("revision_comment_replies_deleted_at_idx").on(table.deletedAt),
     ],
   );
 

@@ -351,6 +351,20 @@ export class FileRevisionNoteService {
     const context = await this.getCommentContext(input);
     this.assertCommentIsPending(context.note);
 
+    const [existingReport] = await db
+      .select({ id: revisionCommentReports.id })
+      .from(revisionCommentReports)
+      .where(eq(revisionCommentReports.commentId, input.noteId))
+      .limit(1);
+
+    if (existingReport) {
+      throw new AppError(
+        "A reported comment cannot be deleted.",
+        400,
+        "comment_reported_delete_locked",
+      );
+    }
+
     const deletedNote = await this.revisionNoteRepository.updateComment(
       input.noteId,
       {
@@ -460,6 +474,20 @@ export class FileRevisionNoteService {
   }): Promise<FileRevisionNoteMutationResultDTO> {
     const context = await this.getCommentContext(input);
     this.assertCommentIsPending(context.note);
+
+    const [existingReport] = await db
+      .select({ id: revisionCommentReports.id })
+      .from(revisionCommentReports)
+      .where(eq(revisionCommentReports.commentId, input.noteId))
+      .limit(1);
+
+    if (existingReport) {
+      throw new AppError(
+        "A reported comment cannot be deleted.",
+        400,
+        "comment_reported_delete_locked",
+      );
+    }
 
     if (context.note.comment.createdBy !== input.actorKey) {
       throw new AppError(
@@ -703,6 +731,21 @@ export class FileRevisionNoteService {
     }
 
     this.assertCommentIsPending(context.note);
+
+    const replyId = context.note.reply.id;
+    const [existingReport] = await db
+      .select({ id: revisionCommentReports.id })
+      .from(revisionCommentReports)
+      .where(eq(revisionCommentReports.replyId, replyId))
+      .limit(1);
+
+    if (existingReport) {
+      throw new AppError(
+        "A reported reply cannot be deleted.",
+        400,
+        "reply_reported_delete_locked",
+      );
+    }
 
     const updatedNote = await this.revisionNoteRepository.deleteReply(input.noteId);
 
