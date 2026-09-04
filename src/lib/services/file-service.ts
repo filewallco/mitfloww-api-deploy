@@ -1,4 +1,5 @@
 import { Readable } from "stream";
+import sharp from "sharp";
 import {
   isWorkerSupportedUploadExtension,
   standardUploadMaxSizeBytes,
@@ -916,6 +917,9 @@ function toFileReviewVersionDTO(input: {
     uploadedBy: version.uploadedBy,
   };
 }
+
+const thumbnailLruCache = new Map<string, Buffer>();
+const MAX_THUMBNAIL_CACHE_ENTRIES = 300;
 
 export class FileService {
   constructor(
@@ -3587,6 +3591,130 @@ export class FileService {
     };
   }
 
+  async getFileThumbnail(
+    id: string,
+    options?: { width?: number; height?: number },
+  ): Promise<{
+    buffer: Buffer;
+    contentType: string;
+    etag: string;
+  }> {
+    const fileWithVersions = await this.repository.findWithVersionsById(id);
+
+    if (!fileWithVersions) {
+      throw new NotFoundAppError("File not found.");
+    }
+
+    const existingRecord = fileWithVersions.file;
+
+    if (existingRecord.uploadStatus !== FileUploadStatus.Uploaded) {
+      throw new AppError(
+        "File content is not available.",
+        409,
+        "file_not_ready",
+        {
+          uploadStatus: existingRecord.uploadStatus,
+        },
+      );
+    }
+
+    const currentVersion =
+      fileWithVersions.versions.find(
+        (v) => v.id === existingRecord.currentVersionId && v.deletedAt == null,
+      ) ?? fileWithVersions.versions[0];
+
+    if (!currentVersion) {
+      throw new NotFoundAppError("File version not found.");
+    }
+
+    const location = resolveDisplayStorageLocation(currentVersion);
+    const mimeType = (
+      location.previewMimeType ||
+      existingRecord.mimeType ||
+      ""
+    ).toLowerCase();
+
+    // Only process raster images as thumbnails
+    const isImage = mimeType.startsWith("image/") && mimeType !== "image/svg+xml";
+    if (!isImage) {
+      throw new AppError(
+        "Thumbnail is not supported for this file type.",
+        404,
+        "thumbnail_not_supported",
+      );
+    }
+
+    const targetWidth = Math.min(Math.max(Number(options?.width) || 360, 48), 800);
+    const targetHeight = Math.min(Math.max(Number(options?.height) || 270, 48), 600);
+
+    const versionTimestamp = currentVersion.updatedAt
+      ? currentVersion.updatedAt.getTime()
+      : 0;
+    const cacheKey = `${currentVersion.id}:${targetWidth}x${targetHeight}:${versionTimestamp}`;
+    const etag = `W/"thumb-${currentVersion.id}-${versionTimestamp}-${targetWidth}x${targetHeight}"`;
+
+    const cached = thumbnailLruCache.get(cacheKey);
+    if (cached) {
+      return {
+        buffer: cached,
+        contentType: "image/webp",
+        etag,
+      };
+    }
+
+    const result = await this.storage.getFile({
+      bucket: location.previewBucket,
+      key: location.previewKey,
+    });
+
+    const stream =
+      result.body instanceof Readable
+        ? result.body
+        : typeof (result.body as any)?.getReader === "function"
+          ? Readable.fromWeb(result.body as any)
+          : null;
+
+    if (!stream) {
+      throw new AppError(
+        "File content stream is unavailable.",
+        500,
+        "file_stream_unavailable",
+      );
+    }
+
+    const chunks: Buffer[] = [];
+    const transformer = sharp()
+      .rotate()
+      .resize({
+        width: targetWidth,
+        height: targetHeight,
+        fit: "cover",
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 80 });
+
+    const buffer = await new Promise<Buffer>((resolve, reject) => {
+      stream
+        .pipe(transformer)
+        .on("data", (chunk: Buffer) => chunks.push(chunk))
+        .on("end", () => resolve(Buffer.concat(chunks)))
+        .on("error", (err: Error) => reject(err));
+      stream.on("error", (err: Error) => reject(err));
+    });
+
+    thumbnailLruCache.set(cacheKey, buffer);
+    if (thumbnailLruCache.size > MAX_THUMBNAIL_CACHE_ENTRIES) {
+      const firstKey = thumbnailLruCache.keys().next().value;
+      if (firstKey) thumbnailLruCache.delete(firstKey);
+    }
+
+    return {
+      buffer,
+      contentType: "image/webp",
+      etag,
+    };
+  }
+
   async getClientSharePreviewContent(input: {
     fileId: string;
     projectId: string;
@@ -4739,7 +4867,10 @@ export class FileService {
       nameText: file.nameText,
       previewUrl,
       sizeBytes: file.sizeBytes,
-      thumbnailUrl: previewKind === "image" ? previewUrl : null,
+      thumbnailUrl:
+        previewKind === "image"
+          ? `/api/share-links/${encodeURIComponent(shareToken)}/files/${encodeURIComponent(file.id)}/thumbnail`
+          : null,
       updatedAt: file.updatedAt,
       uploadStatus: file.uploadStatus,
     };

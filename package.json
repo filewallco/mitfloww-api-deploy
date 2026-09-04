@@ -21,6 +21,7 @@
     "mime-types": "^3.0.2",
     "pg": "^8.20.0",
     "server-only": "^0.0.1",
+    "sharp": "^0.35.4",
     "zod": "^3.25.76"
   },
   "devDependencies": {

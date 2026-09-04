@@ -189,6 +189,26 @@ shareLinksRouter.get("/:token/files/:fileId/preview", asyncHandler(async (req, r
   return res.redirect(307, result.redirectUrl);
 }));
 
+shareLinksRouter.get("/:token/files/:fileId/thumbnail", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(clientShareFileParamsSchema, req.params);
+  await requireAuthorizedShareProject(req, params.token);
+  const width = req.query.w ? Number(req.query.w) : undefined;
+  const height = req.query.h ? Number(req.query.h) : undefined;
+
+  const result = await fileService.getFileThumbnail(params.fileId, { width, height });
+
+  if (req.headers["if-none-match"] === result.etag) {
+    return res.status(304).end();
+  }
+
+  res.setHeader("Content-Type", result.contentType);
+  res.setHeader("Content-Length", String(result.buffer.length));
+  res.setHeader("ETag", result.etag);
+  res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+
+  return res.send(result.buffer);
+}));
+
 shareLinksRouter.get("/:token/files/:fileId/download", asyncHandler(async (req, res) => {
   const params = parseWithSchema(clientShareFileParamsSchema, req.params);
   const project = await requireAuthorizedShareProject(req, params.token);

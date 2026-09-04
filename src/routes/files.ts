@@ -113,11 +113,32 @@ filesRouter.get("/:id/content", asyncHandler(async (req, res) => {
 
   if (result.body instanceof Readable) {
     return result.body.pipe(res);
+  } else if (result.body && typeof (result.body as any).getReader === "function") {
+    return Readable.fromWeb(result.body as any).pipe(res);
   } else if (Buffer.isBuffer(result.body) || result.body instanceof Uint8Array) {
     return res.send(Buffer.from(result.body));
   } else {
     return res.send(result.body);
   }
+}));
+
+filesRouter.get("/:id/thumbnail", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(fileIdParamsSchema, req.params);
+  const width = req.query.w ? Number(req.query.w) : undefined;
+  const height = req.query.h ? Number(req.query.h) : undefined;
+
+  const result = await fileService.getFileThumbnail(params.id, { width, height });
+
+  if (req.headers["if-none-match"] === result.etag) {
+    return res.status(304).end();
+  }
+
+  res.setHeader("Content-Type", result.contentType);
+  res.setHeader("Content-Length", String(result.buffer.length));
+  res.setHeader("ETag", result.etag);
+  res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+
+  return res.send(result.buffer);
 }));
 
 filesRouter.put("/:id/content", asyncHandler(async (req, res) => {
