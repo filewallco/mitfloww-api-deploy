@@ -100,7 +100,8 @@ filesRouter.post("/:id/cancel", asyncHandler(async (req, res) => {
 
 filesRouter.get("/:id/content", asyncHandler(async (req, res) => {
   const params = parseWithSchema(fileIdParamsSchema, req.params);
-  const result = await fileService.getFileContent(params.id);
+  const projectId = (req.query.projectId || req.headers["x-project-id"]) as string | undefined;
+  const result = await fileService.getFileContent(params.id, { projectId });
 
   res.setHeader("Content-Type", result.contentType);
   if (result.contentLength != null) {
@@ -109,7 +110,8 @@ filesRouter.get("/:id/content", asyncHandler(async (req, res) => {
   if (result.etag) {
     res.setHeader("ETag", result.etag);
   }
-  res.setHeader("Cache-Control", "private, max-age=300");
+  res.setHeader("Cache-Control", "private, no-cache");
+  res.setHeader("Vary", "Cookie, Authorization, Origin");
 
   if (result.body instanceof Readable) {
     return result.body.pipe(res);
@@ -124,10 +126,15 @@ filesRouter.get("/:id/content", asyncHandler(async (req, res) => {
 
 filesRouter.get("/:id/thumbnail", asyncHandler(async (req, res) => {
   const params = parseWithSchema(fileIdParamsSchema, req.params);
+  const projectId = (req.query.projectId || req.headers["x-project-id"]) as string | undefined;
   const width = req.query.w ? Number(req.query.w) : undefined;
   const height = req.query.h ? Number(req.query.h) : undefined;
 
-  const result = await fileService.getFileThumbnail(params.id, { width, height });
+  const result = await fileService.getFileThumbnail(params.id, {
+    projectId,
+    width,
+    height,
+  });
 
   if (req.headers["if-none-match"] === result.etag) {
     return res.status(304).end();
@@ -136,7 +143,8 @@ filesRouter.get("/:id/thumbnail", asyncHandler(async (req, res) => {
   res.setHeader("Content-Type", result.contentType);
   res.setHeader("Content-Length", String(result.buffer.length));
   res.setHeader("ETag", result.etag);
-  res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  res.setHeader("Cache-Control", "private, no-cache");
+  res.setHeader("Vary", "Cookie, Authorization, Origin");
 
   return res.send(result.buffer);
 }));

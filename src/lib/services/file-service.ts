@@ -3514,7 +3514,10 @@ export class FileService {
     };
   }
 
-  async getFileContent(id: string): Promise<{
+  async getFileContent(
+    id: string,
+    options?: { projectId?: string },
+  ): Promise<{
     body: ReadableStream<Uint8Array>;
     contentLength: number | null;
     contentType: string;
@@ -3525,6 +3528,13 @@ export class FileService {
 
     if (!fileWithVersions) {
       throw new NotFoundAppError("File not found.");
+    }
+
+    if (options?.projectId) {
+      const project = await this.getRequiredProject(options.projectId);
+      if (fileWithVersions.file.projectId !== project.id) {
+        throw new NotFoundAppError("File not found.");
+      }
     }
 
     const existingRecord = fileWithVersions.file;
@@ -3593,15 +3603,28 @@ export class FileService {
 
   async getFileThumbnail(
     id: string,
-    options?: { width?: number; height?: number },
+    options?: { projectId?: string; width?: number; height?: number },
   ): Promise<{
     buffer: Buffer;
     contentType: string;
     etag: string;
   }> {
+    if (!options?.projectId) {
+      throw new AppError(
+        "Project authorization required. Please provide projectId.",
+        403,
+        "project_authorization_required",
+      );
+    }
+
+    const project = await this.getRequiredProject(options.projectId);
     const fileWithVersions = await this.repository.findWithVersionsById(id);
 
-    if (!fileWithVersions) {
+    if (!fileWithVersions || fileWithVersions.file.projectId !== project.id) {
+      throw new NotFoundAppError("File not found.");
+    }
+
+    if (fileWithVersions.file.deletedAt != null) {
       throw new NotFoundAppError("File not found.");
     }
 
@@ -3713,6 +3736,37 @@ export class FileService {
       contentType: "image/webp",
       etag,
     };
+  }
+
+  async getClientShareFileThumbnail(input: {
+    fileId: string;
+    projectId: string;
+    width?: number;
+    height?: number;
+  }): Promise<{
+    buffer: Buffer;
+    contentType: string;
+    etag: string;
+  }> {
+    const project = await this.getRequiredProject(input.projectId);
+    const fileWithVersions = await this.repository.findWithVersionsById(
+      input.fileId,
+      { includeDeletedVersions: true },
+    );
+
+    if (!fileWithVersions || fileWithVersions.file.projectId !== project.id) {
+      throw new NotFoundAppError("File not found.");
+    }
+
+    if (fileWithVersions.file.deletedAt != null) {
+      throw new NotFoundAppError("File not found.");
+    }
+
+    return this.getFileThumbnail(input.fileId, {
+      projectId: project.id,
+      width: input.width,
+      height: input.height,
+    });
   }
 
   async getClientSharePreviewContent(input: {

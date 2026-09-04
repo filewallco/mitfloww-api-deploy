@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Readable } from "stream";
 import { z } from "zod";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getRequestLocale } from "@/middleware/locale";
@@ -280,6 +281,57 @@ projectsRouter.get("/:id/files/:fileId/review", asyncHandler(async (req, res) =>
     viewerLocale,
   });
   return sendSuccess(res, result);
+}));
+
+projectsRouter.get("/:id/files/:fileId/thumbnail", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectFileReviewParamsSchema, req.params);
+  const width = req.query.w ? Number(req.query.w) : undefined;
+  const height = req.query.h ? Number(req.query.h) : undefined;
+
+  const result = await fileService.getFileThumbnail(params.fileId, {
+    projectId: params.id,
+    width,
+    height,
+  });
+
+  if (req.headers["if-none-match"] === result.etag) {
+    return res.status(304).end();
+  }
+
+  res.setHeader("Content-Type", result.contentType);
+  res.setHeader("Content-Length", String(result.buffer.length));
+  res.setHeader("ETag", result.etag);
+  res.setHeader("Cache-Control", "private, no-cache");
+  res.setHeader("Vary", "Cookie, Authorization, Origin");
+
+  return res.send(result.buffer);
+}));
+
+projectsRouter.get("/:id/files/:fileId/content", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectFileReviewParamsSchema, req.params);
+  const result = await fileService.getFileContent(params.fileId, {
+    projectId: params.id,
+  });
+
+  res.setHeader("Content-Type", result.contentType);
+  if (result.contentLength != null) {
+    res.setHeader("Content-Length", String(result.contentLength));
+  }
+  if (result.etag) {
+    res.setHeader("ETag", result.etag);
+  }
+  res.setHeader("Cache-Control", "private, no-cache");
+  res.setHeader("Vary", "Cookie, Authorization, Origin");
+
+  if (result.body instanceof Readable) {
+    return result.body.pipe(res);
+  } else if (result.body && typeof (result.body as any).getReader === "function") {
+    return Readable.fromWeb(result.body as any).pipe(res);
+  } else if (Buffer.isBuffer(result.body) || result.body instanceof Uint8Array) {
+    return res.send(Buffer.from(result.body));
+  } else {
+    return res.send(result.body);
+  }
 }));
 
 projectsRouter.post("/:id/files/:fileId/final-draft-report", asyncHandler(async (req, res) => {
