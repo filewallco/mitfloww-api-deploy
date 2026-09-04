@@ -7,6 +7,7 @@ import {
   gt,
   inArray,
   ilike,
+  lte,
   not,
   isNull,
   or,
@@ -328,6 +329,8 @@ export interface FileRepository {
     limit?: number;
     now: Date;
   }): Promise<FileVersionRecord[]>;
+
+  findStaleProcessingVersions(staleBefore: Date): Promise<FileVersionRecord[]>;
 
   updateVersionProcessingResult(
     id: string,
@@ -686,6 +689,25 @@ export class DrizzleFileRepository implements FileRepository {
       .limit(1);
 
     return record ?? null;
+  }
+
+  async findStaleProcessingVersions(
+    staleBefore: Date,
+  ): Promise<FileVersionRecord[]> {
+    return await db
+      .select()
+      .from(fileVersions)
+      .where(
+        and(
+          or(
+            eq(fileVersions.processingStatus, FileProcessingStatus.Queued),
+            eq(fileVersions.processingStatus, FileProcessingStatus.Processing),
+            eq(fileVersions.processingStatus, FileProcessingStatus.Retrying),
+          ),
+          lte(fileVersions.updatedAt, staleBefore),
+          isNull(fileVersions.deletedAt),
+        ),
+      );
   }
 
   async updateVersionProcessingResult(

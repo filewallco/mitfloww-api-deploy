@@ -77,11 +77,15 @@ fileProcessingRouter.get("/jobs", asyncHandler(async (req, res) => {
 
   const settledJobs = await Promise.allSettled(
     jobIds.map(async (jobId) => {
-      const local = await fileService.getProcessingJobByJobId(jobId).catch(() => null);
+      let local = await fileService.getProcessingJobByJobId(jobId).catch(() => null);
       const worker = await getWorkerJobStatus(jobId).catch(() => null);
 
       if (!local && !worker) {
         return null;
+      }
+
+      if (local) {
+        local = await fileService.reconcileJobIfStale(local, worker).catch(() => local);
       }
 
       return {
@@ -104,11 +108,15 @@ fileProcessingRouter.get("/jobs", asyncHandler(async (req, res) => {
 
 fileProcessingRouter.get("/jobs/:id", asyncHandler(async (req, res) => {
   const id = typeof req.params.id === "string" ? req.params.id : "";
-  const local = await fileService.getProcessingJobByJobId(id).catch(() => null);
+  let local = await fileService.getProcessingJobByJobId(id).catch(() => null);
   const worker = await getWorkerJobStatus(id).catch(() => null);
 
   if (!local && !worker) {
     throw new AppError("Processing job not found.", 404, "not_found");
+  }
+
+  if (local) {
+    local = await fileService.reconcileJobIfStale(local, worker).catch(() => local);
   }
 
   return sendSuccess(res, {

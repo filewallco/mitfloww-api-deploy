@@ -101,7 +101,7 @@ import {
   buildProcessedStorageKey,
   buildProcessingLogStorageKey,
 } from "@/lib/uploads/final-storage-keys";
-import { enqueueProcessingJob } from "@/lib/processing/worker-client";
+import { enqueueProcessingJob, getWorkerJobStatus } from "@/lib/processing/worker-client";
 import { enMessages } from "@/i18n/messages/en";
 import { fileRevisionNoteService } from "@/lib/services/file-revision-note-service";
 import type {
@@ -5292,6 +5292,33 @@ export class FileService {
       throw new NotFoundAppError("File not found.");
     }
 
+    if (version.processingAttempts >= 3) {
+      const failedVersion = await this.repository.updateVersionProcessingResult(
+        versionId,
+        {
+          processingStatus: FileProcessingStatus.Failed,
+          processingJobId: version.processingJobId || randomUUID(),
+          processingErrorCode: "retries_exhausted",
+          processingErrorMessage:
+            "File processing failed: maximum retry attempts exceeded.",
+          processingCompletedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      );
+      await creditService
+        .refundCreditsForVersion(versionId, "worker_processing_failed")
+        .catch(() => {});
+      return {
+        errorCode: "retries_exhausted",
+        errorMessage:
+          "File processing failed: maximum retry attempts exceeded.",
+        fileId: file.id,
+        fileVersionId: version.id,
+        jobId: failedVersion?.processingJobId || version.processingJobId || "",
+        processingStatus: FileProcessingStatus.Failed,
+      };
+    }
+
     const storedObject = await this.storage.headFile({
       bucket: version.storageBucket,
       key: version.storageKey,
@@ -5414,6 +5441,197 @@ export class FileService {
       jobId,
       processingStatus: queuedVersion.processingStatus,
     };
+  }
+
+  async reconcileJobIfStale<
+    T extends {
+      fileId: string;
+      fileVersionId: string;
+      jobId: string;
+      status: FileProcessingStatus;
+      errorCode?: string | null;
+      errorMessage?: string | null;
+      revisionNumber?: number;
+      processedStorageKey?: string | null;
+      updatedAt?: string;
+    },
+  >(local: T, workerStatus?: any): Promise<T> {
+    if (
+      local.status === FileProcessingStatus.Completed ||
+      local.status === FileProcessingStatus.Failed ||
+      local.status === FileProcessingStatus.Corrupt ||
+      local.status === FileProcessingStatus.Skipped
+    ) {
+      return local;
+    }
+
+    const version = await this.repository.findVersionById(local.fileVersionId);
+    if (!version) return local;
+
+    // Check if worker already reported a terminal outcome
+    if (workerStatus) {
+      if (workerStatus.status === "completed" && workerStatus.output) {
+        await this.applyProcessingCallback({
+          jobId: local.jobId,
+          fileId: local.fileId,
+          fileVersionId: local.fileVersionId,
+          status: FileProcessingStatus.Completed,
+          processed: workerStatus.output,
+        }).catch(() => {});
+        return (await this.getProcessingJobByJobId(local.jobId).catch(() => local)) as T;
+      }
+
+      if (workerStatus.status === "failed") {
+        await this.applyProcessingCallback({
+          jobId: local.jobId,
+          fileId: local.fileId,
+          fileVersionId: local.fileVersionId,
+          status: FileProcessingStatus.Failed,
+          errorCode: workerStatus.error?.code || "worker_failed",
+          errorMessage: workerStatus.error?.message || "Worker processing failed.",
+        }).catch(() => {});
+        return (await this.getProcessingJobByJobId(local.jobId).catch(() => local)) as T;
+      }
+    }
+
+    // Evaluate how long the job has been active
+    const lastActiveTime = Math.max(
+      version.processingStartedAt?.getTime() ?? 0,
+      version.queuedAt?.getTime() ?? 0,
+      version.updatedAt?.getTime() ?? 0,
+    );
+    const now = Date.now();
+    const STALE_THRESHOLD_MS = Number(
+      process.env.STALE_PROCESSING_JOB_THRESHOLD_MS || 180_000,
+    ); // 3 minutes
+    const isStale = lastActiveTime === 0 || now - lastActiveTime > STALE_THRESHOLD_MS;
+
+    const workerNotFound =
+      workerStatus?.status === "not_found" ||
+      (workerStatus && !workerStatus.status);
+    const workerHeartbeatStale =
+      workerStatus?.heartbeatAt &&
+      now - Number(workerStatus.heartbeatAt) > STALE_THRESHOLD_MS;
+    const workerDown = !workerStatus;
+
+    if (version.processingAttempts >= 3 && (isStale || workerNotFound || workerHeartbeatStale || workerDown)) {
+      await this.repository.updateVersionProcessingResult(version.id, {
+        processingStatus: FileProcessingStatus.Failed,
+        processingJobId: local.jobId,
+        processingErrorCode: "stale_recovery_exhausted",
+        processingErrorMessage:
+          "File processing timed out: worker stopped responding and retries exhausted.",
+        processingCompletedAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await creditService
+        .refundCreditsForVersion(version.id, "worker_processing_failed")
+        .catch(() => {});
+      return (await this.getProcessingJobByJobId(local.jobId).catch(() => ({
+        ...local,
+        status: FileProcessingStatus.Failed,
+        errorCode: "stale_recovery_exhausted",
+        errorMessage:
+          "File processing timed out: worker stopped responding and retries exhausted.",
+      }))) as T;
+    }
+
+    // Only recover if stale by time or worker definitely lost/stopped the job
+    if (!isStale && !workerNotFound && !workerHeartbeatStale) {
+      return local;
+    }
+
+    // If worker is temporarily down (e.g. 10s restart), give it the full stale grace period
+    if (workerDown && !isStale) {
+      return local;
+    }
+
+    console.warn("[stale-recovery] Reconciling stale processing version", {
+      versionId: version.id,
+      jobId: local.jobId,
+      status: version.processingStatus,
+      attempts: version.processingAttempts,
+      workerStatus: workerStatus?.status || "unavailable",
+      ageMs: now - lastActiveTime,
+    });
+
+    if (version.processingAttempts >= 3) {
+      await this.repository.updateVersionProcessingResult(version.id, {
+        processingStatus: FileProcessingStatus.Failed,
+        processingJobId: local.jobId,
+        processingErrorCode: "stale_recovery_exhausted",
+        processingErrorMessage:
+          "File processing timed out: worker stopped responding and retries exhausted.",
+        processingCompletedAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await creditService
+        .refundCreditsForVersion(version.id, "worker_processing_failed")
+        .catch(() => {});
+      return (await this.getProcessingJobByJobId(local.jobId).catch(() => ({
+        ...local,
+        status: FileProcessingStatus.Failed,
+        errorCode: "stale_recovery_exhausted",
+        errorMessage:
+          "File processing timed out: worker stopped responding and retries exhausted.",
+      }))) as T;
+    }
+
+    try {
+      const retried = await this.retryProcessingVersion(version.id);
+      return (await this.getProcessingJobByJobId(retried.jobId).catch(() => ({
+        ...local,
+        jobId: retried.jobId,
+        status: retried.processingStatus,
+        errorCode: retried.errorCode,
+        errorMessage: retried.errorMessage,
+      }))) as T;
+    } catch (err) {
+      console.error("[stale-recovery] Retry failed", {
+        versionId: version.id,
+        error: err,
+      });
+      return local;
+    }
+  }
+
+  async reconcileStaleProcessingVersions() {
+    const STALE_THRESHOLD_MS = Number(
+      process.env.STALE_PROCESSING_JOB_THRESHOLD_MS || 180_000,
+    );
+    const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+
+    const staleVersions = await this.repository.findStaleProcessingVersions(staleCutoff);
+
+    let reconciledCount = 0;
+    for (const version of staleVersions) {
+      try {
+        let workerStatus: any = null;
+        if (version.processingJobId) {
+          workerStatus = await getWorkerJobStatus(version.processingJobId).catch(() => null);
+        }
+        await this.reconcileJobIfStale(
+          {
+            fileId: version.fileId,
+            fileVersionId: version.id,
+            jobId: version.processingJobId || "",
+            status: version.processingStatus,
+            errorCode: version.processingErrorCode,
+            errorMessage: version.processingErrorMessage,
+            updatedAt: version.updatedAt.toISOString(),
+          },
+          workerStatus,
+        );
+        reconciledCount++;
+      } catch (err) {
+        console.error("[stale-recovery] Error reconciling version", {
+          versionId: version.id,
+          error: err,
+        });
+      }
+    }
+
+    return { totalFound: staleVersions.length, reconciledCount };
   }
 
   async getFileReview(input: {

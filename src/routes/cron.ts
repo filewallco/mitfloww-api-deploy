@@ -16,6 +16,14 @@ import { asyncHandler } from "@/lib/api/route";
 
 export const cronRouter = Router();
 
+cronRouter.get("/reconcile-stale-jobs", asyncHandler(async (_req, res) => {
+  const result = await fileService.reconcileStaleProcessingVersions();
+  return res.json({
+    success: true,
+    ...result,
+  });
+}));
+
 cronRouter.get("/cleanup-final-drafts", asyncHandler(async (_req, res) => {
   const lockHours = PROJECT_FILE_DELETION_LOCK_HOURS;
   const expiryThreshold = new Date(Date.now() - lockHours * 60 * 60 * 1000);
