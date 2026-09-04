@@ -30,6 +30,7 @@ export const FILE_PROCESSING_STATUSES = [
   "failed",
   "corrupt",
   "skipped",
+  "cancelled",
 ] as const;
 
 export type FileProcessingStatus = (typeof FILE_PROCESSING_STATUSES)[number];
@@ -43,6 +44,7 @@ export const FileProcessingStatus = {
   Failed: "failed",
   Corrupt: "corrupt",
   Skipped: "skipped",
+  Cancelled: "cancelled",
 } as const satisfies Record<string, FileProcessingStatus>;
 
 export const FILE_PROCESSING_CALLBACK_STATUSES = [
@@ -388,7 +390,7 @@ export const createFileTables = (
       ),
       check(
         "file_versions_processing_status_check",
-        sql`${table.processingStatus} IN ('queued','processing','uploading','completed','retrying','failed','corrupt','skipped')`,
+        sql`${table.processingStatus} IN ('queued','processing','uploading','completed','retrying','failed','corrupt','skipped','cancelled')`,
       ),
     ],
   );

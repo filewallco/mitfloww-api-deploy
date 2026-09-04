@@ -101,7 +101,11 @@ import {
   buildProcessedStorageKey,
   buildProcessingLogStorageKey,
 } from "@/lib/uploads/final-storage-keys";
-import { enqueueProcessingJob, getWorkerJobStatus } from "@/lib/processing/worker-client";
+import {
+  cancelWorkerJob,
+  enqueueProcessingJob,
+  getWorkerJobStatus,
+} from "@/lib/processing/worker-client";
 import { enMessages } from "@/i18n/messages/en";
 import { fileRevisionNoteService } from "@/lib/services/file-revision-note-service";
 import type {
@@ -501,11 +505,16 @@ function hasProtectedRevisionHistory(input: {
 function getFileDeleteBlockReason(input: {
   activeVersionCount: number;
   finalDraftVersion: FileVersionRecord | null;
+  hasActiveProcessing?: boolean;
   hasProtectedRevisionHistory: boolean;
   hasUnresolvedFinalDraftReport: boolean;
   paymentStatus: string;
   unresolvedVersionReportCount: number;
 }): FileDeleteBlockReason | null {
+  if (input.hasActiveProcessing) {
+    return "processing_active";
+  }
+
   if (
     input.unresolvedVersionReportCount > 0 ||
     input.hasUnresolvedFinalDraftReport
@@ -552,6 +561,10 @@ function getVersionDeleteBlockReason(input: {
   paymentStatus: string;
   version: FileVersionRecord;
 }): FileVersionDeleteBlockReason | null {
+  if (input.version.processingStatus === FileProcessingStatus.Processing) {
+    return "processing_active";
+  }
+
   if (input.activeVersionCount <= 1) {
     return "last_remaining_version";
   }
@@ -988,6 +1001,17 @@ export class FileService {
       (version) => version.deletedAt == null,
     );
 
+    const hasActiveProcessing = activeVersions.some(
+      (version) => version.processingStatus === FileProcessingStatus.Processing,
+    );
+    if (hasActiveProcessing) {
+      throw new AppError(
+        "A file cannot be deleted while its processing status is processing. Please cancel processing first.",
+        409,
+        "file_processing_active",
+      );
+    }
+
     void (async () => {
       try {
         for (const version of existingRecord.versions) {
@@ -1074,6 +1098,14 @@ export class FileService {
 
     if (!targetVersion) {
       throw new NotFoundAppError("File version not found.");
+    }
+
+    if (targetVersion.processingStatus === FileProcessingStatus.Processing) {
+      throw new AppError(
+        "A file version cannot be deleted while its processing status is processing. Please cancel processing first.",
+        409,
+        "file_processing_active",
+      );
     }
 
     const safetySummaries = await this.repository.findVersionSafetySummaries(
@@ -1580,6 +1612,7 @@ export class FileService {
         : null;
       const deleteBlockReason = getFileDeleteBlockReason({
         activeVersionCount,
+        hasActiveProcessing: item.processingStatus === FileProcessingStatus.Processing,
         finalDraftVersion:
           finalDraftVersion && finalDraftVersion.deletedAt == null
             ? finalDraftVersion
@@ -5443,6 +5476,87 @@ export class FileService {
     };
   }
 
+  async cancelProcessingVersion(versionIdOrJobId: string) {
+    let version = await this.repository.findVersionById(versionIdOrJobId);
+    if (!version) {
+      version = await this.repository.findVersionByProcessingJobId(versionIdOrJobId);
+    }
+
+    if (!version) {
+      throw new NotFoundAppError("File version not found.");
+    }
+
+    const file = await this.repository.findById(version.fileId);
+    if (!file) {
+      throw new NotFoundAppError("File not found.");
+    }
+
+    if (version.processingStatus === FileProcessingStatus.Cancelled) {
+      return {
+        fileId: file.id,
+        fileVersionId: version.id,
+        jobId: version.processingJobId || "",
+        status: FileProcessingStatus.Cancelled,
+        message: "Processing is already cancelled.",
+      };
+    }
+
+    if (version.processingStatus === FileProcessingStatus.Completed) {
+      throw new AppError(
+        "Cannot cancel processing because it has already completed.",
+        409,
+        "processing_already_completed",
+      );
+    }
+
+    const jobId = version.processingJobId;
+
+    if (jobId) {
+      await cancelWorkerJob(jobId).catch((err) => {
+        console.warn("[file-service] Worker cancel request warning", { jobId, err });
+      });
+    }
+
+    if (version.processedStorageKey) {
+      await this.storage
+        .deleteFile({
+          bucket: version.storageBucket,
+          key: version.processedStorageKey,
+        })
+        .catch((err) => {
+          console.warn(
+            "[file-service] Failed to delete partial processed R2 object during cancel",
+            {
+              key: version.processedStorageKey,
+              err,
+            },
+          );
+        });
+    }
+
+    await this.repository.updateVersionProcessingResult(version.id, {
+      processingStatus: FileProcessingStatus.Cancelled,
+      processingJobId: jobId || null,
+      processingErrorCode: "processing_cancelled",
+      processingErrorMessage: "File processing was cancelled by user.",
+      processingCompletedAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await creditService
+      .refundCreditsForVersion(version.id, "processing_cancelled")
+      .catch(() => {});
+
+    return {
+      success: true,
+      fileId: file.id,
+      fileVersionId: version.id,
+      jobId: jobId || "",
+      status: FileProcessingStatus.Cancelled,
+      message: "Processing cancelled successfully.",
+    };
+  }
+
   async reconcileJobIfStale<
     T extends {
       fileId: string;
@@ -5460,7 +5574,8 @@ export class FileService {
       local.status === FileProcessingStatus.Completed ||
       local.status === FileProcessingStatus.Failed ||
       local.status === FileProcessingStatus.Corrupt ||
-      local.status === FileProcessingStatus.Skipped
+      local.status === FileProcessingStatus.Skipped ||
+      local.status === FileProcessingStatus.Cancelled
     ) {
       return local;
     }

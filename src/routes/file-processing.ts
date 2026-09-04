@@ -131,3 +131,9 @@ fileProcessingRouter.post("/retry/:versionId", asyncHandler(async (req, res) => 
   const data = await fileService.retryProcessingVersion(versionId);
   return sendSuccess(res, data);
 }));
+
+fileProcessingRouter.post("/cancel/:targetId", asyncHandler(async (req, res) => {
+  const targetId = typeof req.params.targetId === "string" ? req.params.targetId : "";
+  const data = await fileService.cancelProcessingVersion(targetId);
+  return sendSuccess(res, data);
+}));

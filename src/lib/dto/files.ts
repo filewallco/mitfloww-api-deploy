@@ -11,6 +11,7 @@ export const FILE_DELETE_BLOCK_REASONS = [
   "protected_revisions_exist",
   "version_under_review",
   "final_draft_locked",
+  "processing_active",
 ] as const;
 
 export type FileDeleteBlockReason =
@@ -20,6 +21,7 @@ export const FILE_VERSION_DELETE_BLOCK_REASONS = [
   "last_remaining_version",
   "version_under_review",
   "final_draft_locked",
+  "processing_active",
 ] as const;
 
 export type FileVersionDeleteBlockReason =

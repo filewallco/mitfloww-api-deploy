@@ -150,3 +150,38 @@ export async function retryWorkerJob(jobId: string) {
 
   return payload;
 }
+
+export async function cancelWorkerJob(jobId: string) {
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `${workerBaseUrl()}/job/cancel/${encodeURIComponent(jobId)}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${workerToken()}`,
+        },
+        signal: createWorkerRequestSignal(),
+      },
+    );
+  } catch (error) {
+    return {
+      success: false,
+      unreachable: true,
+      error: error instanceof Error ? error.message : "Worker unavailable",
+    };
+  }
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    return {
+      success: false,
+      status: response.status,
+      error: (payload as any)?.error || "Worker cancellation failed.",
+    };
+  }
+
+  return payload as { success: boolean };
+}
