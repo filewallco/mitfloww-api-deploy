@@ -562,7 +562,12 @@ function getVersionDeleteBlockReason(input: {
   paymentStatus: string;
   version: FileVersionRecord;
 }): FileVersionDeleteBlockReason | null {
-  if (input.version.processingStatus === FileProcessingStatus.Processing) {
+  if (
+    input.version.processingStatus === FileProcessingStatus.Processing ||
+    input.version.processingStatus === FileProcessingStatus.Queued ||
+    input.version.processingStatus === FileProcessingStatus.Uploading ||
+    input.version.processingStatus === FileProcessingStatus.Retrying
+  ) {
     return "processing_active";
   }
 
@@ -989,7 +994,99 @@ export class FileService {
     return this.buildFileDTO(record, options.viewerLocale);
   }
 
-  async deleteFile(id: string): Promise<DeletedFileDTO> {
+  async deleteFileStorageObjects(existingRecord: {
+    file: { storageBucket: string; storageKey: string };
+    versions: Pick<
+      FileVersionRecord,
+      | "previewStorageBucket"
+      | "previewStorageKey"
+      | "processedStorageBucket"
+      | "processedStorageKey"
+      | "storageBucket"
+      | "storageKey"
+    >[];
+  }): Promise<void> {
+    for (const version of existingRecord.versions) {
+      await this.deleteRevisionStorageObjects(version);
+    }
+
+    const versionStorageKeys = new Set(
+      existingRecord.versions.map((version) => version.storageKey),
+    );
+
+    if (
+      !versionStorageKeys.has(existingRecord.file.storageKey) &&
+      existingRecord.file.storageKey
+    ) {
+      await this.storage.deleteFile({
+        bucket: existingRecord.file.storageBucket,
+        key: existingRecord.file.storageKey,
+      });
+    }
+  }
+
+  async assertNoActiveProcessingInProject(projectId: string): Promise<void> {
+    const uploadingFiles =
+      await this.repository.findActiveUploadingFilesByProjectId(projectId);
+    if (uploadingFiles.length > 0) {
+      throw new AppError(
+        "Cannot delete project while deliverable files are currently uploading. Please wait for upload to complete or cancel it first.",
+        409,
+        "project_files_processing_active",
+      );
+    }
+
+    let activeVersions =
+      await this.repository.findActiveProcessingVersionsByProjectId(projectId);
+
+    if (activeVersions.length === 0) {
+      return;
+    }
+
+    // Try to reconcile with worker in case any jobs have completed or failed
+    for (const version of activeVersions) {
+      if (version.processingJobId) {
+        try {
+          const workerStatus = await getWorkerJobStatus(
+            version.processingJobId,
+          ).catch(() => null);
+          if (workerStatus) {
+            await this.reconcileJobIfStale(
+              {
+                fileId: version.fileId,
+                fileVersionId: version.id,
+                jobId: version.processingJobId,
+                status: version.processingStatus,
+              },
+              workerStatus,
+            ).catch(() => {});
+          }
+        } catch {
+          // Ignore worker fetch error; we re-check DB state below
+        }
+      }
+    }
+
+    // Re-check active processing versions after reconciliation
+    activeVersions =
+      await this.repository.findActiveProcessingVersionsByProjectId(projectId);
+
+    if (activeVersions.length > 0) {
+      throw new AppError(
+        "Cannot delete project while deliverable files are currently processing in the worker. Please wait for processing to complete or cancel it first.",
+        409,
+        "project_files_processing_active",
+      );
+    }
+  }
+
+  async deleteFile(
+    id: string,
+    options?: {
+      allowApproved?: boolean;
+      awaitStorageDelete?: boolean;
+    },
+  ): Promise<DeletedFileDTO> {
     const existingRecord = await this.repository.findWithVersionsById(id, {
       includeDeletedVersions: true,
     });
@@ -1000,48 +1097,56 @@ export class FileService {
 
     const project = await this.getRequiredProject(existingRecord.file.projectId);
     this.assertProjectIsActive(project.status);
-    this.assertFileIsNotApproved(existingRecord.file.approvalStatus);
+    if (!options?.allowApproved) {
+      this.assertFileIsNotApproved(existingRecord.file.approvalStatus);
+    }
     const activeVersions = existingRecord.versions.filter(
       (version) => version.deletedAt == null,
     );
 
     const hasActiveProcessing = activeVersions.some(
-      (version) => version.processingStatus === FileProcessingStatus.Processing,
+      (version) =>
+        version.processingStatus === FileProcessingStatus.Processing ||
+        version.processingStatus === FileProcessingStatus.Queued ||
+        version.processingStatus === FileProcessingStatus.Retrying ||
+        version.processingStatus === FileProcessingStatus.Uploading,
     );
     if (hasActiveProcessing) {
       throw new AppError(
-        "A file cannot be deleted while its processing status is processing. Please cancel processing first.",
+        "A file cannot be deleted while its processing status is active. Please cancel processing first.",
         409,
         "file_processing_active",
       );
     }
 
-    void (async () => {
+    if (options?.awaitStorageDelete) {
       try {
-        for (const version of existingRecord.versions) {
-          await this.deleteRevisionStorageObjects(version);
-        }
-
-        const versionStorageKeys = new Set(
-          existingRecord.versions.map((version) => version.storageKey),
-        );
-
-        if (
-          !versionStorageKeys.has(existingRecord.file.storageKey) &&
-          existingRecord.file.storageKey
-        ) {
-          await this.storage.deleteFile({
-            bucket: existingRecord.file.storageBucket,
-            key: existingRecord.file.storageKey,
-          });
-        }
+        await this.deleteFileStorageObjects(existingRecord);
       } catch (error) {
-        console.error("[file-service] R2 deletion failed during deleteFile. DB deletion will proceed to prevent orphaned records.", {
-          fileId: id,
-          error,
-        });
+        console.error(
+          "[file-service] R2 deletion failed during deleteFile.",
+          {
+            fileId: id,
+            error,
+          },
+        );
+        throw error;
       }
-    })();
+    } else {
+      void (async () => {
+        try {
+          await this.deleteFileStorageObjects(existingRecord);
+        } catch (error) {
+          console.error(
+            "[file-service] R2 deletion failed during deleteFile. DB deletion will proceed to prevent orphaned records.",
+            {
+              fileId: id,
+              error,
+            },
+          );
+        }
+      })();
+    }
 
     const releasableBytes =
       activeVersions.length > 0
@@ -1616,7 +1721,11 @@ export class FileService {
         : null;
       const deleteBlockReason = getFileDeleteBlockReason({
         activeVersionCount,
-        hasActiveProcessing: item.processingStatus === FileProcessingStatus.Processing,
+        hasActiveProcessing:
+          item.processingStatus === FileProcessingStatus.Processing ||
+          item.processingStatus === FileProcessingStatus.Queued ||
+          item.processingStatus === FileProcessingStatus.Uploading ||
+          item.processingStatus === FileProcessingStatus.Retrying,
         finalDraftVersion:
           finalDraftVersion && finalDraftVersion.deletedAt == null
             ? finalDraftVersion
@@ -5665,6 +5774,28 @@ export class FileService {
     let version = await this.repository.findVersionById(versionIdOrJobId);
     if (!version) {
       version = await this.repository.findVersionByProcessingJobId(versionIdOrJobId);
+    }
+
+    if (!version) {
+      const fileCandidate = await this.repository.findWithVersionsById(versionIdOrJobId);
+      if (fileCandidate) {
+        if (fileCandidate.file.currentVersionId) {
+          version = fileCandidate.versions.find((v) => v.id === fileCandidate.file.currentVersionId) ?? null;
+        }
+        if (!version) {
+          version =
+            fileCandidate.versions.find(
+              (v) =>
+                v.processingStatus === FileProcessingStatus.Processing ||
+                v.processingStatus === FileProcessingStatus.Queued ||
+                v.processingStatus === FileProcessingStatus.Uploading ||
+                v.processingStatus === FileProcessingStatus.Retrying ||
+                v.processingStatus === FileProcessingStatus.Failed,
+            ) ??
+            fileCandidate.versions[0] ??
+            null;
+        }
+      }
     }
 
     if (!version) {

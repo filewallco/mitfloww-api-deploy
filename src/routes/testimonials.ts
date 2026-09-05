@@ -31,7 +31,31 @@ const autosaveSchema = z.object({
   templateId: z.string().nullable().optional(),
 });
 
+const updateTestimonialSchema = z.object({
+  title: z.string().optional(),
+  slug: z.string().optional(),
+  status: z.enum(["draft", "saved", "published", "archived"]).optional(),
+  presetId: z.string().optional(),
+  canvasJson: z.any().optional(),
+  bindingSourceJson: z.any().optional(),
+  previewDataUrl: z.string().nullable().optional(),
+  projectId: z.string().nullable().optional(),
+  projectReviewId: z.string().nullable().optional(),
+  templateId: z.string().nullable().optional(),
+});
+
 const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+
+testimonialsRouter.get("/", asyncHandler(async (_req, res) => {
+  const items = await testimonialService.listTestimonials();
+  return res.json({ items, status: "success" });
+}));
+
+testimonialsRouter.get("/:id", asyncHandler(async (req, res) => {
+  const id = typeof req.params.id === "string" ? req.params.id : "";
+  const testimonial = await testimonialService.getTestimonialById(id);
+  return res.json({ testimonial, status: "success" });
+}));
 
 testimonialsRouter.post("/", asyncHandler(async (req, res) => {
   const parsed = createTestimonialSchema.parse(req.body);
@@ -68,7 +92,7 @@ testimonialsRouter.post("/", asyncHandler(async (req, res) => {
     bindingSourceJson: parsed.bindingSourceJson || null,
   });
 
-  return res.json({ id: created.id, status: "success" });
+  return res.json({ id: created.id, status: "success", testimonial: created });
 }));
 
 testimonialsRouter.post("/download", asyncHandler(async (req, res) => {
@@ -101,9 +125,9 @@ testimonialsRouter.put("/:id/autosave", asyncHandler(async (req, res) => {
 
   if (parsed.bindingSourceJson !== undefined) updateInput.bindingSourceJson = parsed.bindingSourceJson;
   if (parsed.canvasJson !== undefined) updateInput.canvasJson = parsed.canvasJson;
-  if (parsed.projectId !== undefined) updateInput.projectId = parsed.projectId;
-  if (parsed.projectReviewId !== undefined) updateInput.projectReviewId = parsed.projectReviewId;
-  if (parsed.templateId !== undefined) updateInput.templateId = parsed.templateId;
+  if (parsed.projectId !== undefined) updateInput.projectId = parsed.projectId && isUUID(parsed.projectId) ? parsed.projectId : null;
+  if (parsed.projectReviewId !== undefined) updateInput.projectReviewId = parsed.projectReviewId && isUUID(parsed.projectReviewId) ? parsed.projectReviewId : null;
+  if (parsed.templateId !== undefined) updateInput.templateId = parsed.templateId && isUUID(parsed.templateId) ? parsed.templateId : null;
 
   const updated = await testimonialService.updateTestimonial(id, updateInput);
 
@@ -111,5 +135,37 @@ testimonialsRouter.put("/:id/autosave", asyncHandler(async (req, res) => {
     id: updated.id,
     lastSavedAt: updated.lastSavedAt.toISOString(),
     status: "success",
+    testimonial: updated,
   });
+}));
+
+testimonialsRouter.patch("/:id", asyncHandler(async (req, res) => {
+  const id = typeof req.params.id === "string" ? req.params.id : "";
+  const parsed = updateTestimonialSchema.parse(req.body);
+
+  const updateInput: UpdateTestimonialInput = {};
+  if (parsed.title !== undefined) updateInput.title = parsed.title;
+  if (parsed.slug !== undefined) updateInput.slug = parsed.slug;
+  if (parsed.status !== undefined) updateInput.status = parsed.status;
+  if (parsed.presetId !== undefined) updateInput.presetId = parsed.presetId as any;
+  if (parsed.canvasJson !== undefined) updateInput.canvasJson = parsed.canvasJson;
+  if (parsed.bindingSourceJson !== undefined) updateInput.bindingSourceJson = parsed.bindingSourceJson;
+  if (parsed.previewDataUrl !== undefined) updateInput.previewDataUrl = parsed.previewDataUrl;
+  if (parsed.projectId !== undefined) updateInput.projectId = parsed.projectId && isUUID(parsed.projectId) ? parsed.projectId : null;
+  if (parsed.projectReviewId !== undefined) updateInput.projectReviewId = parsed.projectReviewId && isUUID(parsed.projectReviewId) ? parsed.projectReviewId : null;
+  if (parsed.templateId !== undefined) updateInput.templateId = parsed.templateId && isUUID(parsed.templateId) ? parsed.templateId : null;
+
+  const updated = await testimonialService.updateTestimonial(id, updateInput);
+
+  return res.json({
+    id: updated.id,
+    status: "success",
+    testimonial: updated,
+  });
+}));
+
+testimonialsRouter.delete("/:id", asyncHandler(async (req, res) => {
+  const id = typeof req.params.id === "string" ? req.params.id : "";
+  await testimonialService.deleteTestimonial(id);
+  return res.json({ id, status: "success" });
 }));

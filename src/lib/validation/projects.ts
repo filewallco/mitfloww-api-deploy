@@ -387,7 +387,7 @@ export const projectListQueryParamsSchema = z
     ),
     paymentStatus: z.preprocess(
       emptyStringToUndefined,
-      z.enum(PROJECT_PAYMENT_STATUSES, {
+      z.enum(["active", ...PROJECT_PAYMENT_STATUSES], {
         errorMap: () => ({ message: "projectPaymentStatusInvalid" }),
       }).optional(),
     ),

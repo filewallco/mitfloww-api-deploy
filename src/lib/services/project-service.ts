@@ -337,7 +337,11 @@
   }
 
   function toProjectDTO(
-    project: ProjectRecord,
+    project: ProjectRecord & {
+      fileCount?: number | null;
+      totalSizeBytes?: number | null;
+      isPendingPayment?: boolean | null;
+    },
     options?: {
       baseUrl?: string;
       clientNameText?: TranslatedTextDTO;
@@ -378,6 +382,9 @@
       updatedAt: project.updatedAt.toISOString(),
       watermarkEnabled: project.watermarkEnabled,
       paymentCompletedAt: project.clientPaymentCompletedAt?.toISOString() ?? null,
+      fileCount: Number(project.fileCount ?? 0),
+      totalSizeBytes: Number(project.totalSizeBytes ?? 0),
+      isPendingPayment: Boolean(project.isPendingPayment),
     };
   }
 
@@ -684,7 +691,9 @@
         throw new NotFoundAppError("Project not found.");
       }
 
-      return this.buildProjectDTO(record, options.viewerLocale);
+      const fullRecord = await this.repository.findById(record.id);
+
+      return this.buildProjectDTO(fullRecord ?? record, options.viewerLocale);
     }
 
     async getProjectEditLocks(id: string): Promise<ProjectEditLocksDTO> {
@@ -694,15 +703,24 @@
         throw new NotFoundAppError("Project not found.");
       }
 
-      const workflowSummary =
-        await this.fileRepository.getProjectWorkflowSummary(existing.id);
+      const [workflowSummary, uploadingFiles, processingVersions] =
+        await Promise.all([
+          this.fileRepository.getProjectWorkflowSummary(existing.id),
+          this.fileRepository.findActiveUploadingFilesByProjectId(existing.id),
+          this.fileRepository.findActiveProcessingVersionsByProjectId(
+            existing.id,
+          ),
+        ]);
 
       return {
-        advancePaymentLocked: existing.advancePaymentStatus === ProjectPaymentStatus.Paid,
+        advancePaymentLocked:
+          existing.advancePaymentStatus === ProjectPaymentStatus.Paid,
         amountLocked: workflowSummary.hasAnyApprovedRevision,
         hasApprovedRevision: workflowSummary.hasAnyApprovedRevision,
         hasDeliverables: workflowSummary.activeFileCount > 0,
         revisionSettingsLocked: workflowSummary.activeFileCount > 0,
+        hasActiveProcessing:
+          uploadingFiles.length > 0 || processingVersions.length > 0,
       };
     }
 
@@ -882,6 +900,12 @@
 
       this.assertProjectIsActive(existing.status);
 
+      // Pre-check: assert no file is currently uploading or processing in worker
+      await fileService.assertNoActiveProcessingInProject(existing.id);
+
+      const processedFileIds = new Set<string>();
+
+      // Delete active files and their R2 storage objects
       while (true) {
         const batch = await this.fileRepository.findMany({
           includeTotal: false,
@@ -898,7 +922,46 @@
         }
 
         for (const file of batch.records) {
-          await fileService.deleteFile(file.id);
+          processedFileIds.add(file.id);
+          await fileService.deleteFile(file.id, {
+            allowApproved: true,
+            awaitStorageDelete: true,
+          });
+        }
+      }
+
+      // Also clean up any leftover R2 storage objects for previously soft-deleted files of this project
+      const allProjectFiles = await this.fileRepository.findMany({
+        includeDeleted: true,
+        includeTotal: false,
+        limit: 500,
+        page: 1,
+        offset: 0,
+        order: "asc",
+        projectId: existing.id,
+        sort: "createdAt",
+      });
+
+      for (const file of allProjectFiles.records) {
+        if (!processedFileIds.has(file.id)) {
+          try {
+            const fileWithVersions =
+              await this.fileRepository.findWithVersionsById(file.id, {
+                includeDeleted: true,
+                includeDeletedVersions: true,
+              });
+            if (fileWithVersions) {
+              await fileService.deleteFileStorageObjects(fileWithVersions);
+            }
+          } catch (error) {
+            console.warn(
+              "[project-service] Cleanup of previously deleted file storage failed (continuing)",
+              {
+                fileId: file.id,
+                error,
+              },
+            );
+          }
         }
       }
 
@@ -1177,7 +1240,7 @@
     }
 
     private async buildProjectDTOs(
-      records: ProjectRecord[],
+      records: Array<ProjectRecord & { fileCount?: number | null; totalSizeBytes?: number | null; isPendingPayment?: boolean | null }>,
       viewerLocale: string,
       options?: { includeSharePassword?: boolean; baseUrl?: string },
     ) {
@@ -1195,7 +1258,7 @@
     }
 
     private async buildProjectDTO(
-      record: ProjectRecord,
+      record: ProjectRecord & { fileCount?: number | null; totalSizeBytes?: number | null; isPendingPayment?: boolean | null },
       viewerLocale: string,
       options?: { includeSharePassword?: boolean; baseUrl?: string },
     ) {

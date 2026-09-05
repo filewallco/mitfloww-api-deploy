@@ -14,9 +14,11 @@ export const PROJECT_SORT_FIELDS = [
 
 export type ProjectSortField = (typeof PROJECT_SORT_FIELDS)[number];
 
+export type ProjectPaymentFilter = ProjectPaymentStatus | "active";
+
 export type ProjectListFilters = {
   hasDeliverables?: boolean;
-  paymentStatus?: ProjectPaymentStatus;
+  paymentStatus?: ProjectPaymentFilter;
   search?: string;
 };
 

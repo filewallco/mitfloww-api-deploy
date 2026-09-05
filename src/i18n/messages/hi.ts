@@ -855,6 +855,7 @@ export const hiMessages = {
       "Client project content will appear here once the shared view UI is added.",
     fileCountLabel: "{count} फाइलें",
     shareOrDivider: "या",
+    projectStatusActive: "सक्रिय",
     paymentPaidShort: "भुगतान हुआ",
     paymentPendingShort: "लंबित",
     paymentPaidLong: "पूरा",

@@ -332,6 +332,14 @@ export interface FileRepository {
 
   findStaleProcessingVersions(staleBefore: Date): Promise<FileVersionRecord[]>;
 
+  findActiveProcessingVersionsByProjectId(
+    projectId: string,
+  ): Promise<FileVersionRecord[]>;
+
+  findActiveUploadingFilesByProjectId(
+    projectId: string,
+  ): Promise<FileRecord[]>;
+
   updateVersionProcessingResult(
     id: string,
     input: UpdateFileVersionProcessingInput,
@@ -706,6 +714,84 @@ export class DrizzleFileRepository implements FileRepository {
           ),
           lte(fileVersions.updatedAt, staleBefore),
           isNull(fileVersions.deletedAt),
+        ),
+      );
+  }
+
+  async findActiveProcessingVersionsByProjectId(
+    projectId: string,
+  ): Promise<FileVersionRecord[]> {
+    return await db
+      .select({
+        id: fileVersions.id,
+        fileId: fileVersions.fileId,
+        revisionNumber: fileVersions.revisionNumber,
+        revisionDescription: fileVersions.revisionDescription,
+        revisionDescriptionSourceLocale:
+          fileVersions.revisionDescriptionSourceLocale,
+        originalName: fileVersions.originalName,
+        mimeType: fileVersions.mimeType,
+        extension: fileVersions.extension,
+        sizeBytes: fileVersions.sizeBytes,
+        storageBucket: fileVersions.storageBucket,
+        storageKey: fileVersions.storageKey,
+        processedStorageBucket: fileVersions.processedStorageBucket,
+        processedStorageKey: fileVersions.processedStorageKey,
+        processedMimeType: fileVersions.processedMimeType,
+        processedExtension: fileVersions.processedExtension,
+        processedSizeBytes: fileVersions.processedSizeBytes,
+        watermarkEnabled: fileVersions.watermarkEnabled,
+        useSoftWatermark: fileVersions.useSoftWatermark,
+        isFinalDraft: fileVersions.isFinalDraft,
+        finalDraftDownloadedAt: fileVersions.finalDraftDownloadedAt,
+        finalDraftDownloadCount: fileVersions.finalDraftDownloadCount,
+        previewRetentionUntil: fileVersions.previewRetentionUntil,
+        previewPurgedAt: fileVersions.previewPurgedAt,
+        previewStorageBucket: fileVersions.previewStorageBucket,
+        previewStorageKey: fileVersions.previewStorageKey,
+        deletedAt: fileVersions.deletedAt,
+        deletedBy: fileVersions.deletedBy,
+        deleteReason: fileVersions.deleteReason,
+        processingStatus: fileVersions.processingStatus,
+        processingJobId: fileVersions.processingJobId,
+        processingErrorCode: fileVersions.processingErrorCode,
+        processingErrorMessage: fileVersions.processingErrorMessage,
+        processingAttempts: fileVersions.processingAttempts,
+        queuedAt: fileVersions.queuedAt,
+        processingStartedAt: fileVersions.processingStartedAt,
+        processingCompletedAt: fileVersions.processingCompletedAt,
+        uploadedBy: fileVersions.uploadedBy,
+        createdAt: fileVersions.createdAt,
+        updatedAt: fileVersions.updatedAt,
+      })
+      .from(fileVersions)
+      .innerJoin(files, eq(fileVersions.fileId, files.id))
+      .where(
+        and(
+          eq(files.projectId, projectId),
+          isNull(files.deletedAt),
+          isNull(fileVersions.deletedAt),
+          or(
+            eq(fileVersions.processingStatus, FileProcessingStatus.Queued),
+            eq(fileVersions.processingStatus, FileProcessingStatus.Processing),
+            eq(fileVersions.processingStatus, FileProcessingStatus.Retrying),
+            eq(fileVersions.processingStatus, FileProcessingStatus.Uploading),
+          ),
+        ),
+      );
+  }
+
+  async findActiveUploadingFilesByProjectId(
+    projectId: string,
+  ): Promise<FileRecord[]> {
+    return await db
+      .select()
+      .from(files)
+      .where(
+        and(
+          eq(files.projectId, projectId),
+          isNull(files.deletedAt),
+          eq(files.uploadStatus, FileUploadStatus.Pending),
         ),
       );
   }

@@ -1,4 +1,5 @@
 import {
+  aliasedTable,
   and,
   asc,
   count,
@@ -46,6 +47,12 @@ export type FindProjectByCanonicalIdentityInput = {
   clientName: string;
   excludeId?: string;
   title: string;
+};
+
+export type ProjectRecordWithMetrics = ProjectRecord & {
+  fileCount?: number | null;
+  totalSizeBytes?: number | null;
+  isPendingPayment?: boolean | null;
 };
 
 export type FindManyProjectsParams = ProjectListRepositoryQuery & {
@@ -101,20 +108,40 @@ export interface ProjectRepository {
 }
 
 const projectColumns = getTableColumns(projects);
+const finalDraftVersions = aliasedTable(fileVersions, "final_draft_versions");
+
 const projectFileMetrics = db
   .select({
-    fileCount: sql<number>`cast(count(distinct ${files.id}) as int)`,
+    fileCount: sql<number>`cast(count(distinct ${files.id}) as int)`.as("fileCount"),
     projectId: files.projectId,
-    totalSizeBytes: sql<number>`cast(coalesce(sum(coalesce(${fileVersions.sizeBytes}, ${files.sizeBytes})), 0) as bigint)`,
+    totalSizeBytes: sql<number>`cast(coalesce(sum(coalesce(${fileVersions.sizeBytes}, ${files.sizeBytes})), 0) as bigint)`.as("totalSizeBytes"),
+    isPendingPayment: sql<boolean>`
+      cast(count(distinct ${files.id}) as int) > 0
+      AND cast(count(distinct case when ${files.approvedVersionId} is not null then ${files.id} end) as int) = cast(count(distinct ${files.id}) as int)
+      AND cast(count(distinct case when ${files.finalDraftVersionId} is not null then ${files.id} end) as int) = cast(count(distinct ${files.id}) as int)
+      AND cast(count(distinct case when ${files.finalDraftReportStatus} in ('reported', 'under_review') then ${files.id} end) as int) = 0
+      AND cast(count(distinct case when ${files.finalDraftVersionId} is not null and ${finalDraftVersions.processingStatus} is distinct from 'completed' then ${files.id} end) as int) = 0
+    `.as("isPendingPayment"),
   })
   .from(files)
   .leftJoin(
     fileVersions,
     and(eq(fileVersions.fileId, files.id), isNull(fileVersions.deletedAt)),
   )
+  .leftJoin(
+    finalDraftVersions,
+    eq(finalDraftVersions.id, files.finalDraftVersionId),
+  )
   .where(isNull(files.deletedAt))
   .groupBy(files.projectId)
   .as("project_file_metrics");
+
+const projectRecordWithMetricsColumns = {
+  ...projectColumns,
+  fileCount: projectFileMetrics.fileCount,
+  totalSizeBytes: projectFileMetrics.totalSizeBytes,
+  isPendingPayment: projectFileMetrics.isPendingPayment,
+};
 
 function getSortColumn(sortField: ProjectSortField) {
   switch (sortField) {
@@ -200,7 +227,7 @@ export class DrizzleProjectRepository implements ProjectRepository {
   async findById(
     id: string,
     options?: { includeDeleted?: boolean },
-  ): Promise<ProjectRecord | null> {
+  ): Promise<ProjectRecordWithMetrics | null> {
     if (!isUuidLike(id)) {
       return null;
     }
@@ -210,8 +237,9 @@ export class DrizzleProjectRepository implements ProjectRepository {
       : and(eq(projects.id, id), isNull(projects.deletedAt));
 
     const [record] = await db
-      .select()
+      .select(projectRecordWithMetricsColumns)
       .from(projects)
+      .leftJoin(projectFileMetrics, eq(projectFileMetrics.projectId, projects.id))
       .where(whereClause)
       .limit(1);
 
@@ -221,14 +249,15 @@ export class DrizzleProjectRepository implements ProjectRepository {
   async findByPublicId(
     publicId: string,
     options?: { includeDeleted?: boolean },
-  ): Promise<ProjectRecord | null> {
+  ): Promise<ProjectRecordWithMetrics | null> {
     const whereClause = options?.includeDeleted
       ? eq(projects.publicId, publicId)
       : and(eq(projects.publicId, publicId), isNull(projects.deletedAt));
 
     const [record] = await db
-      .select()
+      .select(projectRecordWithMetricsColumns)
       .from(projects)
+      .leftJoin(projectFileMetrics, eq(projectFileMetrics.projectId, projects.id))
       .where(whereClause)
       .limit(1);
 
@@ -238,14 +267,15 @@ export class DrizzleProjectRepository implements ProjectRepository {
   async findByShareToken(
     shareToken: string,
     options?: { includeDeleted?: boolean },
-  ): Promise<ProjectRecord | null> {
+  ): Promise<ProjectRecordWithMetrics | null> {
     const whereClause = options?.includeDeleted
       ? eq(projects.shareToken, shareToken)
       : and(eq(projects.shareToken, shareToken), isNull(projects.deletedAt));
 
     const [record] = await db
-      .select()
+      .select(projectRecordWithMetricsColumns)
       .from(projects)
+      .leftJoin(projectFileMetrics, eq(projectFileMetrics.projectId, projects.id))
       .where(whereClause)
       .limit(1);
 
@@ -255,7 +285,7 @@ export class DrizzleProjectRepository implements ProjectRepository {
   async findByIdentifier(
     identifier: string,
     options?: { includeDeleted?: boolean },
-  ): Promise<ProjectRecord | null> {
+  ): Promise<ProjectRecordWithMetrics | null> {
     if (isUuidLike(identifier)) {
       return this.findById(identifier, options);
     }
@@ -273,7 +303,19 @@ export class DrizzleProjectRepository implements ProjectRepository {
     }
 
     if (params.paymentStatus !== undefined) {
-      conditions.push(eq(projects.paymentStatus, params.paymentStatus));
+      if ((params.paymentStatus as string) === "active") {
+        conditions.push(
+          eq(projects.paymentStatus, ProjectPaymentStatus.Pending),
+          sql`coalesce(${projectFileMetrics.isPendingPayment}, false) = false`,
+        );
+      } else if (params.paymentStatus === ProjectPaymentStatus.Pending) {
+        conditions.push(
+          eq(projects.paymentStatus, ProjectPaymentStatus.Pending),
+          sql`coalesce(${projectFileMetrics.isPendingPayment}, false) = true`,
+        );
+      } else if (params.paymentStatus === ProjectPaymentStatus.Paid) {
+        conditions.push(eq(projects.paymentStatus, ProjectPaymentStatus.Paid));
+      }
     }
 
     if (params.hasDeliverables) {
@@ -297,7 +339,7 @@ export class DrizzleProjectRepository implements ProjectRepository {
     const orderBy = getOrderExpression(params.sort, params.order);
 
     const recordsQuery = db
-      .select(projectColumns)
+      .select(projectRecordWithMetricsColumns)
       .from(projects)
       .leftJoin(projectFileMetrics, eq(projectFileMetrics.projectId, projects.id))
       .orderBy(...orderBy)

@@ -13,6 +13,7 @@ import { STORAGE_ERROR_CODES } from "@/lib/storage/errors";
 type SafeErrorDescriptor = {
   code: string;
   details?: ApiErrorDetails;
+  message?: string;
   messageKey: string;
   params?: ApiErrorParams;
   requestId: string;
@@ -85,6 +86,15 @@ const SAFE_ERROR_MAPPINGS: Record<string, SafeErrorMapping> = {
   project_duplicate: {
     messageKey: "projectsPage.projectDuplicateForClient",
   },
+  project_files_processing_active: {
+    messageKey: "projectsPage.projectDeleteBlockedProcessingDescription",
+  },
+  file_processing_active: {
+    messageKey: "projectsPage.projectDeleteBlockedProcessingDescription",
+  },
+  project_inactive: {
+    messageKey: "projectsPage.projectDeleteBlockedInactiveDescription",
+  },
   protected_revisions_exist: {
     messageKey:
       "projectsPage.deliverableDeleteBlockedProtectedRevisionsDescription",
@@ -150,6 +160,7 @@ export function describeSafeError(error: unknown): SafeErrorDescriptor {
 
     return {
       code: error.code,
+      message: error.message,
       ...(safeDetails ? { details: safeDetails } : {}),
       messageKey: mapping.messageKey,
       ...(safeParams ? { params: safeParams } : {}),
@@ -195,6 +206,7 @@ export function toSafeErrorResponse(error: unknown): {
     payload: {
       error: {
         code: descriptor.code,
+        message: descriptor.message,
         ...(descriptor.details ? { details: descriptor.details } : {}),
         messageKey: descriptor.messageKey,
         ...(descriptor.params ? { params: descriptor.params } : {}),
@@ -230,6 +242,7 @@ export function toSafeErrorPayload(
   const body: ApiErrorResponse = {
     error: {
       code,
+      message: descriptor.message,
       ...(descriptor.details ? { details: descriptor.details } : {}),
       messageKey,
       ...(descriptor.params ? { params: descriptor.params } : {}),

@@ -862,6 +862,7 @@ export const enMessages: AppMessages = {
     fileCountLabel: "{count} Files",
     shareOrDivider: "OR",
     deliverableViewAction: "View {name}",
+    projectStatusActive: "Active",
     paymentPaidShort: "Paid",
     paymentPendingShort: "Pending",
     paymentPaidLong: "Paid",

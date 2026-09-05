@@ -141,6 +141,7 @@ export type ProjectEditLocksDTO = {
   hasApprovedRevision: boolean;
   hasDeliverables: boolean;
   revisionSettingsLocked: boolean;
+  hasActiveProcessing?: boolean;
 };
 
 export type ProjectDTO = {
@@ -166,6 +167,9 @@ export type ProjectDTO = {
   updatedAt: string;
   watermarkEnabled: boolean;
   paymentCompletedAt?: string | null;
+  fileCount?: number;
+  totalSizeBytes?: number;
+  isPendingPayment?: boolean;
 };
 
 export type ProjectClientReviewDTO = {

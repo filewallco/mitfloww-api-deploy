@@ -9,6 +9,10 @@ export class TestimonialService {
     return this.repository.create(input);
   }
 
+  async listTestimonials(userId?: string) {
+    return this.repository.listAll(userId ? { userId } : undefined);
+  }
+
   async getTestimonialById(id: string) {
     const record = await this.repository.findById(id);
     if (!record) {
@@ -23,6 +27,13 @@ export class TestimonialService {
       throw new NotFoundAppError("Testimonial not found.");
     }
     return record;
+  }
+
+  async deleteTestimonial(id: string) {
+    const deleted = await this.repository.softDelete(id);
+    if (!deleted) {
+      throw new NotFoundAppError("Testimonial not found.");
+    }
   }
 }
 
