@@ -52,7 +52,7 @@ export const { notifications } = createNotificationTables(fw, {
   projects,
 });
 export const { healthChecks } = createHealthTables(fw);
-export const { users } = createUserTables(fw);
+export const { users, companies } = createUserTables(fw);
 
 export type {
   CreditAccountRecord,
@@ -106,6 +106,8 @@ export type {
   TestimonialTemplateRecord as TestimonialDbTemplateRecord,
 } from "./testimonials";
 export type {
+  CompanyRecord,
+  NewCompanyRecord,
   NewUserRecord,
   UserRecord,
 } from "./users";

@@ -1,3 +1,4 @@
+import { resolveActiveActor } from "@/lib/auth/active-actor";
   import { INPUT_LIMITS } from "@/config/input-limits";
   import {
     PROJECT_SHARE_LINK_EXPIRY_DAYS,
@@ -536,7 +537,9 @@
 
       const publicId = await this.createUniqueProjectPublicId(title);
 
+      const actor = await resolveActiveActor();
       const record = await this.repository.create({
+        userId: actor.id,
         advancePaymentEnabled: input.advancePaymentEnabled,
         advancePaymentStatus: ProjectPaymentStatus.Pending,
         advancePaymentCompletedAt: null,

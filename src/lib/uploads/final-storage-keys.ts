@@ -61,25 +61,55 @@ function resolveRevisionPrefixFromOriginalKey(input: {
 /**
  * Builds the permanent file root prefix for managed uploads.
  *
- * New keys are prefixed with the owner's email address so each user's files
- * are isolated under their own namespace in R2. The immutable project and
- * file UUIDs follow so renaming never changes the storage identity.
+ * Keys are prefixed with user_id so each user's files are isolated under
+ * their own namespace in R2: `<userId>/projects/<projectId>/files/<fileId>`.
  */
 export function buildFileRootStoragePrefix(input: {
   fileId: string;
   projectId: string;
   userEmail?: string | null;
+  userId?: string | null;
 }) {
   const projectSegment = toStorageSegment(input.projectId) || "project";
   const fileSegment = toStorageSegment(input.fileId) || "file";
   const basePath = `${MANAGED_UPLOAD_STORAGE_KEY_PREFIX}/${projectSegment}/files/${fileSegment}`;
 
-  if (input.userEmail) {
-    const emailSegment = toStorageSegment(input.userEmail) || "user";
-    return `${emailSegment}/${basePath}`;
+  const userSegment = toStorageSegment(input.userId || input.userEmail || "");
+  if (userSegment) {
+    return `${userSegment}/${basePath}`;
   }
 
   return basePath;
+}
+
+/**
+ * Builds the storage key for user avatar upload in R2:
+ * `<userId>/userprofile/avatar_<timestamp>.<ext>`
+ */
+export function buildUserProfileAvatarStorageKey(input: {
+  userId: string;
+  extension: string;
+  timestamp?: number;
+}) {
+  const userSegment = toStorageSegment(input.userId) || "user";
+  const ext = input.extension.startsWith(".") ? input.extension : `.${input.extension}`;
+  const ts = input.timestamp ?? Date.now();
+  return `${userSegment}/userprofile/avatar_${ts}${ext}`;
+}
+
+/**
+ * Builds the storage key for company logo upload in R2:
+ * `<userId>/userprofile/company_logo_<timestamp>.<ext>`
+ */
+export function buildCompanyLogoStorageKey(input: {
+  userId: string;
+  extension: string;
+  timestamp?: number;
+}) {
+  const userSegment = toStorageSegment(input.userId) || "user";
+  const ext = input.extension.startsWith(".") ? input.extension : `.${input.extension}`;
+  const ts = input.timestamp ?? Date.now();
+  return `${userSegment}/userprofile/company_logo_${ts}${ext}`;
 }
 
 /**
@@ -94,6 +124,7 @@ export function buildRevisionStoragePrefix(input: {
   projectId: string;
   revisionNumber: number;
   userEmail?: string | null;
+  userId?: string | null;
 }) {
   return `${buildFileRootStoragePrefix(input)}/revisions/${revisionFolder(
     input.revisionNumber,
@@ -113,12 +144,14 @@ export function buildManagedUploadStorageKey(input: {
   projectId: string;
   revisionNumber?: number;
   userEmail?: string | null;
+  userId?: string | null;
 }) {
   const revisionPrefix = buildRevisionStoragePrefix({
     fileId: input.fileId,
     projectId: input.projectId,
     revisionNumber: input.revisionNumber ?? 1,
     userEmail: input.userEmail,
+    userId: input.userId,
   });
   const fileName = buildSafeFileName(input.originalName, input.extension);
 
@@ -194,7 +227,7 @@ export function isManagedUploadStorageKey(key: string) {
     return true;
   }
 
-  // New email-prefixed format: <email>/projects/<projectId>/files/<fileId>/...
-  // Match any single path segment followed by /projects/
-  return /^[^/]+\/projects\//.test(key);
+  // New user-prefixed format: <userId>/projects/<projectId>/files/<fileId>/... or <userId>/userprofile/...
+  // Match any single path segment followed by /projects/ or /userprofile/
+  return /^[^/]+\/(projects|userprofile)\//.test(key);
 }

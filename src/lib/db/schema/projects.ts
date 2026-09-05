@@ -59,6 +59,7 @@ export const createProjectTables = (fw: PgSchema) => {
     {
       id: uuid("id").defaultRandom().primaryKey(),
       publicId: varchar("public_id", { length: 255 }).notNull(),
+      userId: varchar("user_id", { length: 255 }).notNull().default("default-owner"),
       title: varchar("title", { length: 80 }).notNull(),
       titleSourceLocale: varchar("title_source_locale", { length: 16 })
         .notNull()
@@ -139,6 +140,7 @@ export const createProjectTables = (fw: PgSchema) => {
         .defaultNow(),
     },
     (table) => [
+      index("projects_user_id_idx").on(table.userId),
       index("projects_status_updated_at_idx").on(table.status, table.updatedAt),
       index("projects_deleted_at_idx").on(table.deletedAt),
       index("projects_updated_at_idx").on(table.updatedAt),

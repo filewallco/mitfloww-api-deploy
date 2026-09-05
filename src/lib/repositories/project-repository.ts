@@ -31,8 +31,10 @@ import type { SortOrder } from "@/lib/query/sorting";
 
 export type CreateProjectRecordInput = Omit<
   ProjectRecord,
-  "createdAt" | "deletedAt" | "updatedAt" | "id"
-> &
+  "createdAt" | "deletedAt" | "updatedAt" | "id" | "userId"
+> & {
+  userId?: string;
+} &
   Partial<Pick<ProjectRecord, "id">>;
 
 export type UpdateProjectRecordInput = Partial<

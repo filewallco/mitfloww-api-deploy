@@ -5,6 +5,7 @@ import { creditService } from "@/lib/services/credit-service";
 import { AppError } from "@/lib/errors/app-error";
 import type { UpdateTestimonialInput } from "@/lib/repositories/testimonial-repository";
 import { asyncHandler } from "@/lib/api/route";
+import { resolveActiveActor } from "@/lib/auth/active-actor";
 
 export const testimonialsRouter = Router();
 
@@ -47,7 +48,8 @@ const updateTestimonialSchema = z.object({
 const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
 testimonialsRouter.get("/", asyncHandler(async (_req, res) => {
-  const items = await testimonialService.listTestimonials();
+  const actor = await resolveActiveActor();
+  const items = await testimonialService.listTestimonials(actor.id);
   return res.json({ items, status: "success" });
 }));
 

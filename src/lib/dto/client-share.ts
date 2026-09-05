@@ -1,4 +1,4 @@
-import type { FileApprovalStatus } from "@/lib/db/schema/files";
+import type { FileApprovalStatus } from "@/lib/db/schema";
 import type {
   FileReviewPreviewKind,
 } from "@/lib/dto/file-review";
@@ -95,6 +95,7 @@ export type ClientSharePostPaymentProjectDTO = {
   advancePaymentStatus: ProjectPaymentStatus;
   amountCents: number;
   creatorName: string | null;
+  creatorAvatarUrl?: string | null;
   completedProjectsCount: number;
   currency: string;
   deliveryDate: string | null;
