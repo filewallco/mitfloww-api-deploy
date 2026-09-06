@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getRequestLocale } from "@/middleware/locale";
 import { projectService } from "@/lib/services/project-service";
 import { fileService } from "@/lib/services/file-service";
+import { invoiceService } from "@/lib/services/invoice-service";
 import { fileRevisionNoteService } from "@/lib/services/file-revision-note-service";
 import { getProjectShareSessionCookieName } from "@/lib/security/project-share-session";
 import { requireAuthorizedShareProject } from "@/lib/api/client-share";
@@ -120,6 +121,22 @@ shareLinksRouter.get("/:token/downloads/archive", asyncHandler(async (req, res) 
   res.setHeader("Content-Disposition", `attachment; filename="${result.filename.replace(/"/g, "")}"`);
   res.setHeader("Content-Type", "application/zip");
   return res.send(Buffer.from(result.body as any));
+}));
+
+shareLinksRouter.get("/:token/invoice/pdf", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+  const project = await requireAuthorizedShareProject(req, params.token);
+
+  if (project.paymentStatus !== "paid") {
+    return res.status(402).json({ error: "Invoice is available only after payment is completed." });
+  }
+
+  const { pdfBuffer, filename } = await invoiceService.generateProjectInvoicePdf(project.id);
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Length", String(pdfBuffer.length));
+  return res.send(pdfBuffer);
 }));
 
 shareLinksRouter.post("/:token/advance-payment/complete", asyncHandler(async (req, res) => {
@@ -463,3 +480,4 @@ shareLinksRouter.post("/:token/files/:fileId/versions/:versionId/report", asyncH
   });
   return sendSuccess(res, result, { status: 201 });
 }));
+

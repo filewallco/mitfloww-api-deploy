@@ -129,6 +129,7 @@ import { storageService } from "@/lib/services/storage-service";
 import { normalizeNullableUuid } from "@/lib/utils";
 import { createStoredZip } from "@/lib/utils/zip";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
+import { userService } from "@/lib/services/user-service";
 
 function normalizeProjectId(projectId: string | null | undefined) {
   return normalizeNullableUuid(projectId);
@@ -4364,8 +4365,25 @@ export class FileService {
       0,
       usedRevisionCount - project.revisionLimit,
     );
-    const creatorName =
+    let creatorName =
       finalDeliverables.find((file) => file.uploadedBy)?.uploadedBy ?? null;
+    let creatorAvatarUrl: string | null = null;
+    if (project.userId) {
+      try {
+        const creatorUser = await userService.getUser(project.userId);
+        if (creatorUser) {
+          if (!creatorName) {
+            creatorName =
+              creatorUser.displayName ||
+              [creatorUser.firstName, creatorUser.lastName].filter(Boolean).join(" ") ||
+              null;
+          }
+          creatorAvatarUrl = creatorUser.avatarUrl ?? null;
+        }
+      } catch {
+        // ignore
+      }
+    }
     const totalSizeBytes = finalDeliverables.reduce(
       (total, file) => total + file.sizeBytes,
       0,
@@ -4398,6 +4416,7 @@ export class FileService {
         advancePaymentStatus: project.advancePaymentStatus,
         amountCents: project.amountCents,
         creatorName,
+        creatorAvatarUrl,
         completedProjectsCount,
         currency: project.currency,
         deliveryDate:
@@ -6143,6 +6162,23 @@ export class FileService {
       this.resolveProjectTitleText(project, input.viewerLocale),
     ]);
 
+    let creatorName: string | null = null;
+    let creatorAvatarUrl: string | null = null;
+    if (project.userId) {
+      try {
+        const creatorUser = await userService.getUser(project.userId);
+        if (creatorUser) {
+          creatorName =
+            creatorUser.displayName ||
+            [creatorUser.firstName, creatorUser.lastName].filter(Boolean).join(" ") ||
+            null;
+          creatorAvatarUrl = creatorUser.avatarUrl ?? null;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     return {
       file: {
         approvalStatus: file.approvalStatus,
@@ -6190,6 +6226,8 @@ export class FileService {
         titleText: projectTitleText,
         totalRevisionCount,
         watermarkEnabled: project.watermarkEnabled,
+        creatorName,
+        creatorAvatarUrl,
         // Unlock/payment readiness fields computed server-side so the UI
         // can decide whether project-level payment unlock is available.
         canPayAndUnlockProject:

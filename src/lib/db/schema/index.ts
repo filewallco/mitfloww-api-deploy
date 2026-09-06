@@ -2,6 +2,7 @@ import { pgSchema } from "drizzle-orm/pg-core";
 import { createCreditTables } from "./credits";
 import { createFileTables } from "./files";
 import { createHealthTables } from "./health";
+import { createInvoiceTables } from "./invoices";
 import { createNotificationTables } from "./notifications";
 import { createProjectTables } from "./projects";
 import { createTestimonialTables } from "./testimonials";
@@ -53,6 +54,7 @@ export const { notifications } = createNotificationTables(fw, {
 });
 export const { healthChecks } = createHealthTables(fw);
 export const { users, companies } = createUserTables(fw);
+export const { invoiceSettings } = createInvoiceTables(fw, { users });
 
 export type {
   CreditAccountRecord,
@@ -111,6 +113,10 @@ export type {
   NewUserRecord,
   UserRecord,
 } from "./users";
+export type {
+  InvoiceSettingsRecord,
+  NewInvoiceSettingsRecord,
+} from "./invoices";
 
 export {
   FILE_APPROVAL_STATUSES,

@@ -111,6 +111,9 @@ export type ClientSharePostPaymentProjectDTO = {
   titleText: TranslatedTextDTO;
   totalSizeBytes: number;
   usedRevisionCount: number;
+  clientEmail?: string | null;
+  averageRating?: number | null;
+  reviewCount?: number | null;
 };
 
 export type ClientSharePostPaymentSummaryDTO = {

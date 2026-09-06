@@ -146,6 +146,10 @@ export type FileReviewProjectDTO = {
   canPayAndUnlockProject?: boolean;
   unlockBlockedReason?: string | null;
   paymentUnlockState?: string | null;
+  creatorName?: string | null;
+  creatorAvatarUrl?: string | null;
+  averageRating?: number | null;
+  reviewCount?: number | null;
 };
 
 export type FileReviewProjectFileNavDTO = {

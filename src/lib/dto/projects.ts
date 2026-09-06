@@ -121,6 +121,7 @@ export type ProjectShareClientProjectDTO = {
   advancePaymentEnabled: boolean;
   advancePaymentStatus: ProjectPaymentStatus;
   paymentStatus: ProjectPaymentStatus;
+  clientEmail?: string | null;
 };
 
 export type ProjectShareClientStateDTO = {
@@ -133,6 +134,7 @@ export type ProjectShareClientStateDTO = {
   project: ProjectShareClientProjectDTO | null;
   remainingAttempts: number;
   shareStatus: ProjectShareStatus;
+  clientEmail?: string | null;
 };
 
 export type ProjectEditLocksDTO = {

@@ -29,6 +29,13 @@ export class NotFoundAppError extends AppError {
   }
 }
 
+export class ForbiddenAppError extends AppError {
+  constructor(message: string, details?: ApiErrorDetails) {
+    super(message, 403, "forbidden", details);
+    this.name = "ForbiddenAppError";
+  }
+}
+
 export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }

@@ -385,7 +385,11 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       paymentCompletedAt: project.clientPaymentCompletedAt?.toISOString() ?? null,
       fileCount: Number(project.fileCount ?? 0),
       totalSizeBytes: Number(project.totalSizeBytes ?? 0),
-      isPendingPayment: Boolean(project.isPendingPayment),
+      isPendingPayment:
+        project.paymentStatus !== ProjectPaymentStatus.Paid &&
+        (Boolean(project.isPendingPayment) ||
+          (Boolean(project.advancePaymentEnabled) &&
+            project.advancePaymentStatus === ProjectPaymentStatus.Pending)),
     };
   }
 
@@ -406,6 +410,8 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       throw new Error("Project share status is not available.");
     }
 
+    const clientEmail = project.clientEmail || project.shareClientEmail || null;
+
     return {
       accessGranted,
       emailRequired: isProjectShareEmailRequired(project),
@@ -413,6 +419,7 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       lockedUntil: project.shareLockedUntil?.toISOString() ?? null,
       maxAttempts: PROJECT_SHARE_PASSWORD_MAX_ATTEMPTS,
       passwordRequired: Boolean(project.sharePasswordHash),
+      clientEmail,
       project: accessGranted
         ? {
             id: project.id,
@@ -426,6 +433,7 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
             advancePaymentEnabled: project.advancePaymentEnabled,
             advancePaymentStatus: project.advancePaymentStatus,
             paymentStatus: project.paymentStatus,
+            clientEmail,
           }
         : null,
       remainingAttempts: getProjectShareRemainingAttempts(
@@ -523,6 +531,7 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       options: {
         sourceLocale: string;
         viewerLocale: string;
+        userId?: string;
       },
     ): Promise<ProjectDTO> {
       const title = normalizeProjectName(input.name);
@@ -537,9 +546,9 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
 
       const publicId = await this.createUniqueProjectPublicId(title);
 
-      const actor = await resolveActiveActor();
+      const actorId = options.userId || (await resolveActiveActor()).id;
       const record = await this.repository.create({
-        userId: actor.id,
+        userId: actorId,
         advancePaymentEnabled: input.advancePaymentEnabled,
         advancePaymentStatus: ProjectPaymentStatus.Pending,
         advancePaymentCompletedAt: null,
