@@ -63,6 +63,7 @@ import {
 import { type FileStorage, storage } from "@/lib/storage";
 import {
   buildManagedUploadStorageKey,
+  DEFAULT_OWNER_ID,
   getRevisionStoragePrefixFromKey,
   isManagedUploadStorageKey,
   MANAGED_UPLOAD_OWNER,
@@ -149,6 +150,7 @@ function buildStorageKey(
   projectId: string | null,
   fileId: string,
   userEmail?: string | null,
+  userId?: string | null,
 ) {
   return buildManagedUploadStorageKey({
     extension: input.extension,
@@ -156,6 +158,7 @@ function buildStorageKey(
     originalName: input.originalName,
     projectId: projectId ?? "unassigned",
     userEmail,
+    userId,
   });
 }
 
@@ -952,7 +955,13 @@ export class FileService {
       requiredBytes: input.sizeBytes,
     });
     const fileId = randomUUID();
-    const storageKey = buildStorageKey(input, project.id, fileId);
+    const storageKey = buildStorageKey(
+      input,
+      project.id,
+      fileId,
+      undefined,
+      project.userId,
+    );
     const name = trimFileTitle(input.name);
 
     const record = await this.repository.create({
@@ -2158,7 +2167,7 @@ export class FileService {
       sizeBytes: input.sizeBytes,
     });
 
-    const { fileId, projectId, revisionNumber } =
+    const { fileId, projectId, revisionNumber, userId } =
       await this.resolveManagedUploadSessionTarget(input);
 
     await storageService.assertCanAllocateStorage({
@@ -2173,6 +2182,7 @@ export class FileService {
       projectId,
       revisionNumber,
       userEmail: actor.email,
+      userId: userId || actor.id,
     });
     const bucket = this.storage.getDefaultBucket();
     const mode = shouldUseMultipartUpload(input.sizeBytes)
@@ -4722,6 +4732,7 @@ export class FileService {
     fileId: string;
     projectId: string;
     revisionNumber: number;
+    userId: string;
   }> {
     const projectIdentifier = normalizeProjectId(input.projectId);
 
@@ -4737,6 +4748,7 @@ export class FileService {
         fileId: randomUUID(),
         projectId: project.id,
         revisionNumber: 1,
+        userId: project.userId || DEFAULT_OWNER_ID,
       };
     }
 
@@ -4768,6 +4780,7 @@ export class FileService {
       fileId: fileWithVersions.file.id,
       projectId: project.id,
       revisionNumber: nextRevisionNumber,
+      userId: project.userId || DEFAULT_OWNER_ID,
     };
   }
 

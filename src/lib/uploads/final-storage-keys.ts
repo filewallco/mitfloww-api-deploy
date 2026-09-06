@@ -1,6 +1,8 @@
+export const USERS_STORAGE_KEY_PREFIX = "users";
 export const MANAGED_UPLOAD_STORAGE_KEY_PREFIX = "projects";
 export const LEGACY_MANAGED_UPLOAD_STORAGE_KEY_PREFIX = "users";
 export const LEGACY_ADMIN_STORAGE_KEY_PREFIX = "admin";
+export const DEFAULT_OWNER_ID = "default-owner";
 export const MANAGED_UPLOAD_OWNER = "admin";
 
 function stripFileExtension(fileName: string) {
@@ -61,8 +63,9 @@ function resolveRevisionPrefixFromOriginalKey(input: {
 /**
  * Builds the permanent file root prefix for managed uploads.
  *
- * Keys are prefixed with user_id so each user's files are isolated under
- * their own namespace in R2: `<userId>/projects/<projectId>/files/<fileId>`.
+ * Keys are prefixed with user_id inside the users root directory so each user's
+ * files are isolated under their own namespace in R2:
+ * `users/<userId>/projects/<projectId>/files/<fileId>`.
  */
 export function buildFileRootStoragePrefix(input: {
   fileId: string;
@@ -70,46 +73,42 @@ export function buildFileRootStoragePrefix(input: {
   userEmail?: string | null;
   userId?: string | null;
 }) {
+  const userSegment =
+    toStorageSegment(input.userId || input.userEmail || "") || DEFAULT_OWNER_ID;
   const projectSegment = toStorageSegment(input.projectId) || "project";
   const fileSegment = toStorageSegment(input.fileId) || "file";
-  const basePath = `${MANAGED_UPLOAD_STORAGE_KEY_PREFIX}/${projectSegment}/files/${fileSegment}`;
 
-  const userSegment = toStorageSegment(input.userId || input.userEmail || "");
-  if (userSegment) {
-    return `${userSegment}/${basePath}`;
-  }
-
-  return basePath;
+  return `${USERS_STORAGE_KEY_PREFIX}/${userSegment}/${MANAGED_UPLOAD_STORAGE_KEY_PREFIX}/${projectSegment}/files/${fileSegment}`;
 }
 
 /**
  * Builds the storage key for user avatar upload in R2:
- * `<userId>/userprofile/avatar_<timestamp>.<ext>`
+ * `users/<userId>/userprofile/avatar_<timestamp>.<ext>`
  */
 export function buildUserProfileAvatarStorageKey(input: {
   userId: string;
   extension: string;
   timestamp?: number;
 }) {
-  const userSegment = toStorageSegment(input.userId) || "user";
+  const userSegment = toStorageSegment(input.userId) || DEFAULT_OWNER_ID;
   const ext = input.extension.startsWith(".") ? input.extension : `.${input.extension}`;
   const ts = input.timestamp ?? Date.now();
-  return `${userSegment}/userprofile/avatar_${ts}${ext}`;
+  return `${USERS_STORAGE_KEY_PREFIX}/${userSegment}/userprofile/avatar_${ts}${ext}`;
 }
 
 /**
  * Builds the storage key for company logo upload in R2:
- * `<userId>/userprofile/company_logo_<timestamp>.<ext>`
+ * `users/<userId>/userprofile/company_logo_<timestamp>.<ext>`
  */
 export function buildCompanyLogoStorageKey(input: {
   userId: string;
   extension: string;
   timestamp?: number;
 }) {
-  const userSegment = toStorageSegment(input.userId) || "user";
+  const userSegment = toStorageSegment(input.userId) || DEFAULT_OWNER_ID;
   const ext = input.extension.startsWith(".") ? input.extension : `.${input.extension}`;
   const ts = input.timestamp ?? Date.now();
-  return `${userSegment}/userprofile/company_logo_${ts}${ext}`;
+  return `${USERS_STORAGE_KEY_PREFIX}/${userSegment}/userprofile/company_logo_${ts}${ext}`;
 }
 
 /**
@@ -217,8 +216,12 @@ export function getRevisionStoragePrefixFromKey(storageKey: string) {
  * `admin/...` keys for backward compatibility with pre-existing objects.
  */
 export function isManagedUploadStorageKey(key: string) {
-  // TODO(storage): Migrate legacy `users/...` and `admin/...` objects to the
-  // stable email-prefixed `projects/<projectId>/files/<fileId>/...` layout.
+  // Canonical user-scoped format: users/<userId>/projects/... or users/<userId>/userprofile/...
+  if (key.startsWith(`${USERS_STORAGE_KEY_PREFIX}/`)) {
+    return true;
+  }
+
+  // Legacy formats supported for backwards compatibility
   if (
     key.startsWith(`${MANAGED_UPLOAD_STORAGE_KEY_PREFIX}/`) ||
     key.startsWith(`${LEGACY_MANAGED_UPLOAD_STORAGE_KEY_PREFIX}/`) ||
@@ -227,7 +230,6 @@ export function isManagedUploadStorageKey(key: string) {
     return true;
   }
 
-  // New user-prefixed format: <userId>/projects/<projectId>/files/<fileId>/... or <userId>/userprofile/...
-  // Match any single path segment followed by /projects/ or /userprofile/
+  // Legacy user-prefixed format: <userId>/projects/<projectId>/files/<fileId>/... or <userId>/userprofile/...
   return /^[^/]+\/(projects|userprofile)\//.test(key);
 }
