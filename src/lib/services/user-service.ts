@@ -268,6 +268,13 @@ export class UserService {
   ): Promise<{ avatarUrl: string; storageKey: string }> {
     const validated = validateImageUpload(input);
 
+    const [existingUser] = await db
+      .select({ avatarStorageKey: users.avatarStorageKey })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const oldAvatarKey = existingUser?.avatarStorageKey;
+
     const storageKey = buildUserProfileAvatarStorageKey({
       userId,
       extension: validated.extension,
@@ -294,6 +301,25 @@ export class UserService {
       })
       .where(eq(users.id, userId));
 
+    // Delete old avatar and clean up any orphaned avatar files
+    if (oldAvatarKey && oldAvatarKey !== storageKey) {
+      try {
+        await r2Storage.deleteFile({ key: oldAvatarKey });
+      } catch {
+        // Non-fatal
+      }
+    }
+    try {
+      const existingFiles = await r2Storage.listFiles({ prefix: `users/${userId}/userprofile/avatar_` });
+      for (const obj of existingFiles.objects) {
+        if (obj.key !== storageKey) {
+          await r2Storage.deleteFile({ key: obj.key }).catch(() => {});
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
+
     return { avatarUrl, storageKey };
   }
 
@@ -302,6 +328,13 @@ export class UserService {
     input: { buffer: Buffer; filename: string; mimeType?: string | null },
   ): Promise<{ logoUrl: string; storageKey: string }> {
     const validated = validateImageUpload(input);
+
+    const [company] = await db
+      .select()
+      .from(companies)
+      .where(and(eq(companies.userId, userId), isNull(companies.deletedAt)))
+      .limit(1);
+    const oldLogoKey = company?.logoStorageKey;
 
     const storageKey = buildCompanyLogoStorageKey({
       userId,
@@ -320,12 +353,6 @@ export class UserService {
       ? `${publicBase.replace(/\/+$/, "")}/${storageKey}`
       : `/api/profile/media?key=${encodeURIComponent(storageKey)}`;
 
-    const [company] = await db
-      .select()
-      .from(companies)
-      .where(and(eq(companies.userId, userId), isNull(companies.deletedAt)))
-      .limit(1);
-
     if (company) {
       await db
         .update(companies)
@@ -342,6 +369,31 @@ export class UserService {
         logoStorageKey: storageKey,
         logoUrl,
       });
+    }
+
+    // Delete old logo and clean up any duplicate/orphaned company logo files
+    if (oldLogoKey && oldLogoKey !== storageKey) {
+      try {
+        await r2Storage.deleteFile({ key: oldLogoKey });
+      } catch {
+        // Non-fatal
+      }
+    }
+    try {
+      const existingCompanyFiles = await r2Storage.listFiles({ prefix: `users/${userId}/company/` });
+      for (const obj of existingCompanyFiles.objects) {
+        if (obj.key !== storageKey) {
+          await r2Storage.deleteFile({ key: obj.key }).catch(() => {});
+        }
+      }
+      const existingProfileLogos = await r2Storage.listFiles({ prefix: `users/${userId}/userprofile/company_logo_` });
+      for (const obj of existingProfileLogos.objects) {
+        if (obj.key !== storageKey) {
+          await r2Storage.deleteFile({ key: obj.key }).catch(() => {});
+        }
+      }
+    } catch {
+      // Non-fatal
     }
 
     return { logoUrl, storageKey };

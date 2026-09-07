@@ -21,6 +21,14 @@ export const DEFAULT_INVOICE_SETTINGS: Omit<InvoiceSettingsRecord, "id" | "userI
   notes: "Thank you for your business! All deliverables are approved and licensed for client use.",
   terms: "Payment confirmed in full via UPI. Receipt generated automatically by MitFloww.",
   paperSize: "a4",
+  fontFamily: null,
+  fontWeight: null,
+  fontStyle: null,
+  customTemplateName: null,
+  customElements: null,
+  customLayoutDirection: null,
+  customElementOffsets: null,
+  customElementStyles: null,
 };
 
 export class InvoiceService {
@@ -48,7 +56,8 @@ export class InvoiceService {
     userId: string,
     patch: Partial<NewInvoiceSettingsRecord>,
   ): Promise<InvoiceSettingsRecord> {
-    if (patch.templateId && patch.templateId !== "modern") {
+    const PREMIUM_TEMPLATES = ["corporate", "agency", "minimal", "compact"];
+    if (patch.templateId && PREMIUM_TEMPLATES.includes(patch.templateId)) {
       const profile = await userService.getProfile(userId);
       const planKey = profile.user.planKey?.toLowerCase();
       if (!planKey || planKey === "free") {
@@ -245,6 +254,9 @@ export class InvoiceService {
         notes: settings.notes,
         terms: settings.terms,
         paperSize: settings.paperSize || "a4",
+        customElements: settings.customElements,
+        customElementStyles: settings.customElementStyles,
+        customElementOffsets: settings.customElementOffsets,
       },
     };
 
@@ -333,6 +345,9 @@ export class InvoiceService {
         notes: effectiveSettings.notes,
         terms: effectiveSettings.terms,
         paperSize: effectiveSettings.paperSize || "a4",
+        customElements: effectiveSettings.customElements,
+        customElementStyles: effectiveSettings.customElementStyles,
+        customElementOffsets: effectiveSettings.customElementOffsets,
       },
     };
 

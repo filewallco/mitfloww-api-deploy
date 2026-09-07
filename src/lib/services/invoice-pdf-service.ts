@@ -48,6 +48,9 @@ export interface InvoicePdfData {
     notes?: string | null;
     terms?: string | null;
     paperSize?: string;
+    customElements?: string[] | null;
+    customElementStyles?: string | null;
+    customElementOffsets?: string | null;
   };
 }
 
@@ -59,6 +62,23 @@ const ACCENT_COLORS: Record<string, { r: number; g: number; b: number }> = {
   amber: { r: 217 / 255, g: 119 / 255, b: 6 / 255 }, // #d97706
   slate: { r: 71 / 255, g: 85 / 255, b: 105 / 255 }, // #475569
 };
+
+function parseHexColor(hex: string): { r: number; g: number; b: number } | null {
+  if (!hex || typeof hex !== "string") return null;
+  const clean = hex.replace("#", "").trim();
+  if (clean.length === 3) {
+    const r = parseInt(clean[0] + clean[0], 16) / 255;
+    const g = parseInt(clean[1] + clean[1], 16) / 255;
+    const b = parseInt(clean[2] + clean[2], 16) / 255;
+    if (!isNaN(r) && !isNaN(g) && !isNaN(b)) return { r, g, b };
+  } else if (clean.length === 6) {
+    const r = parseInt(clean.substring(0, 2), 16) / 255;
+    const g = parseInt(clean.substring(2, 4), 16) / 255;
+    const b = parseInt(clean.substring(4, 6), 16) / 255;
+    if (!isNaN(r) && !isNaN(g) && !isNaN(b)) return { r, g, b };
+  }
+  return null;
+}
 
 function getLineItems(data: InvoicePdfData): InvoiceLineItem[] {
   if (data.lineItems && data.lineItems.length > 0) {
@@ -75,6 +95,11 @@ function getLineItems(data: InvoicePdfData): InvoiceLineItem[] {
 }
 
 function resolveRgbColor(colorKey: string) {
+  if (!colorKey) return rgb(0 / 255, 91 / 255, 221 / 255);
+  const hex = parseHexColor(colorKey);
+  if (hex) {
+    return rgb(hex.r, hex.g, hex.b);
+  }
   const normalized = colorKey?.toLowerCase() || "primary";
   const found = ACCENT_COLORS[normalized];
   if (found) {
@@ -548,6 +573,35 @@ export class InvoicePdfService {
       color: accent,
     });
     currentY -= 40;
+
+    // Custom Text Area / Block
+    let parsedCustomStyles: any = {};
+    if (data.settings.customElementStyles) {
+      try {
+        parsedCustomStyles = typeof data.settings.customElementStyles === "string" 
+          ? JSON.parse(data.settings.customElementStyles) 
+          : data.settings.customElementStyles;
+      } catch {}
+    }
+    const customTextContent = parsedCustomStyles?.customText?.customContent;
+    if (customTextContent && (!data.settings.customElements || data.settings.customElements.includes("customText"))) {
+      const customTextColor = parsedCustomStyles.customText.fontColor ? resolveRgbColor(parsedCustomStyles.customText.fontColor) : secondaryText;
+      page.drawLine({
+        start: { x: 50, y: currentY },
+        end: { x: 545.28, y: currentY },
+        thickness: 0.5,
+        color: borderCol,
+      });
+      currentY -= 18;
+      page.drawText(String(customTextContent).slice(0, 180), {
+        x: 50,
+        y: currentY,
+        size: 8.5,
+        font: helvetica,
+        color: customTextColor,
+      });
+      currentY -= 20;
+    }
 
     // Notes & Terms
     if (data.settings.showNotes && (data.settings.notes || data.settings.terms)) {

@@ -2752,6 +2752,14 @@ export class FileService {
 
     const validFiles = input.files.filter(f => !failed.some(fail => fail.localFileId === f.localFileId));
 
+    // Batch storage allocation check upfront for all valid files to avoid repeated DB queries
+    if (validFiles.length > 0) {
+      const totalBytes = validFiles.reduce((sum, f) => sum + f.sizeBytes, 0);
+      await storageService.assertCanAllocateStorage({
+        requiredBytes: totalBytes,
+      });
+    }
+
     const DB_CONCURRENCY = 15;
     let currentIndex = 0;
 
@@ -2802,10 +2810,6 @@ export class FileService {
             });
             continue;
           }
-
-          await storageService.assertCanAllocateStorage({
-            requiredBytes: file.sizeBytes,
-          });
 
           const watermarkEnabled = file.watermarkEnabled ?? project.watermarkEnabled;
           const useSoftWatermark = input.useSoftWatermark ?? false;

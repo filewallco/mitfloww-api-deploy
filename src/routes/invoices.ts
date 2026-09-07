@@ -18,6 +18,14 @@ const updateInvoiceSettingsSchema = z.object({
   notes: z.string().trim().max(2000).nullable().optional(),
   terms: z.string().trim().max(2000).nullable().optional(),
   paperSize: z.enum(["a4", "a5", "letter"]).optional(),
+  fontFamily: z.string().trim().max(64).nullable().optional(),
+  fontWeight: z.string().trim().max(32).nullable().optional(),
+  fontStyle: z.string().trim().max(32).nullable().optional(),
+  customTemplateName: z.string().trim().max(100).nullable().optional(),
+  customElements: z.array(z.string()).nullable().optional(),
+  customLayoutDirection: z.enum(["column", "row"]).nullable().optional(),
+  customElementOffsets: z.string().nullable().optional(),
+  customElementStyles: z.string().nullable().optional(),
 });
 
 invoicesRouter.get("/settings", asyncHandler(async (req, res) => {
@@ -51,6 +59,13 @@ invoicesRouter.get("/sample-pdf", asyncHandler(async (req, res) => {
   if (req.query.notes != null) overrides.notes = String(req.query.notes);
   if (req.query.terms != null) overrides.terms = String(req.query.terms);
   if (req.query.paperSize != null) overrides.paperSize = String(req.query.paperSize);
+  if (req.query.customElements != null) {
+    overrides.customElements = Array.isArray(req.query.customElements)
+      ? req.query.customElements
+      : String(req.query.customElements).split(",").map((s: string) => s.trim()).filter(Boolean);
+  }
+  if (req.query.customElementStyles != null) overrides.customElementStyles = String(req.query.customElementStyles);
+  if (req.query.customElementOffsets != null) overrides.customElementOffsets = String(req.query.customElementOffsets);
 
   const { pdfBuffer, filename } = await invoiceService.generateSampleInvoicePdf(actor.id, overrides);
 
