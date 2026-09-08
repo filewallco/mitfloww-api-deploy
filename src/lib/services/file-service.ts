@@ -126,6 +126,7 @@ import { UNKNOWN_TRANSLATION_LOCALE } from "@/lib/translation/locales";
 import type { CreditFeatureCostParams } from "@/lib/credits";
 import { creditService } from "@/lib/services/credit-service";
 import { storageService } from "@/lib/services/storage-service";
+import { resolveStorageBillingScope } from "@/lib/storage/storage-billing-scope";
 import { normalizeNullableUuid } from "@/lib/utils";
 import { createStoredZip } from "@/lib/utils/zip";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
@@ -2723,8 +2724,13 @@ export class FileService {
     const committed: CommitUploadedFilesResultDTO["committed"] = [];
     const failed: CommitUploadedFilesResultDTO["failed"] = [];
 
-    // Resolve billing scope once so idempotency keys include stable scope info.
-    const { scope } = await creditService.getOrCreateCreditAccountForScope();
+    // Resolve billing and storage scope once upfront so idempotency keys and storage operations avoid repeated DB roundtrips.
+    const [creditScopeResult, storageScope] = await Promise.all([
+      creditService.getOrCreateCreditAccountForScope(),
+      resolveStorageBillingScope(),
+    ]);
+    const { scope } = creditScopeResult;
+    await storageService.getOrCreateStorageAccount(storageScope);
 
     await Promise.all(
       input.files.map(async (file) => {
@@ -2757,6 +2763,7 @@ export class FileService {
       const totalBytes = validFiles.reduce((sum, f) => sum + f.sizeBytes, 0);
       await storageService.assertCanAllocateStorage({
         requiredBytes: totalBytes,
+        scope: storageScope,
       });
     }
 
@@ -2932,6 +2939,7 @@ export class FileService {
               storageReason: "new_file_upload",
             },
             projectId: project.id,
+            scope: storageScope,
             versionId: record.version.id,
           });
 
@@ -3121,6 +3129,9 @@ export class FileService {
     let versionCreditCharges: PendingCreditCharge[] = [];
     const revisionDescription = input.revisionDescription?.trim() ?? "";
 
+    const storageScope = await resolveStorageBillingScope();
+    await storageService.getOrCreateStorageAccount(storageScope);
+
     try {
       const existingRecord = await this.repository.findFileWithVersionByStorageKey(
         targetFile.storageKey,
@@ -3170,6 +3181,7 @@ export class FileService {
 
       await storageService.assertCanAllocateStorage({
         requiredBytes: targetFile.sizeBytes,
+        scope: storageScope,
       });
       const watermarkEnabled =
         targetFile.watermarkEnabled ?? project.watermarkEnabled;
@@ -3334,6 +3346,7 @@ export class FileService {
           storageReason: input.isFinalDraft ? "final_draft_upload" : "revision_upload",
         },
         projectId: project.id,
+        scope: storageScope,
         versionId: appended.version.id,
       });
       persisted = true;

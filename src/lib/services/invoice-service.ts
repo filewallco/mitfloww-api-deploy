@@ -58,8 +58,8 @@ export class InvoiceService {
   ): Promise<InvoiceSettingsRecord> {
     const PREMIUM_TEMPLATES = ["corporate", "agency", "minimal", "compact"];
     if (patch.templateId && PREMIUM_TEMPLATES.includes(patch.templateId)) {
-      const profile = await userService.getProfile(userId);
-      const planKey = profile.user.planKey?.toLowerCase();
+      const user = await userService.getUser(userId);
+      const planKey = user.planKey?.toLowerCase();
       if (!planKey || planKey === "free") {
         throw new ForbiddenAppError(
           "The selected template is available exclusively on Pro plans. Upgrade to unlock all premium invoice templates."
@@ -67,33 +67,24 @@ export class InvoiceService {
       }
     }
 
-    const [existing] = await db
-      .select()
-      .from(invoiceSettings)
-      .where(eq(invoiceSettings.userId, userId))
-      .limit(1);
-
-    if (existing) {
-      const [updated] = await db
-        .update(invoiceSettings)
-        .set({
-          ...patch,
-          updatedAt: new Date(),
-        })
-        .where(eq(invoiceSettings.userId, userId))
-        .returning();
-      return updated;
-    }
-
-    const [created] = await db
+    const [saved] = await db
       .insert(invoiceSettings)
       .values({
         userId,
         ...DEFAULT_INVOICE_SETTINGS,
         ...patch,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: invoiceSettings.userId,
+        set: {
+          ...patch,
+          updatedAt: new Date(),
+        },
       })
       .returning();
-    return created;
+
+    return saved;
   }
 
   async generateProjectInvoicePdf(projectId: string): Promise<{
