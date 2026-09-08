@@ -157,11 +157,14 @@ export class StorageService {
     metadata?: StorageLedgerMetadata | null;
     projectId?: string | null;
     scope?: StorageBillingScope;
+    skipEnsureAccount?: boolean;
     versionId?: string | null;
   }) {
     const resolvedScope = input.scope ?? (await resolveStorageBillingScope());
 
-    await this.getOrCreateStorageAccount(resolvedScope);
+    if (!input.skipEnsureAccount) {
+      await this.getOrCreateStorageAccount(resolvedScope);
+    }
 
     return this.repository.commitStorageAtomic({
       actorUserId: resolvedScope.actorUserId,

@@ -1,6 +1,6 @@
 import { AppError } from "@/lib/errors/app-error";
 
-const WORKER_REQUEST_TIMEOUT_MS = 5_000;
+const WORKER_REQUEST_TIMEOUT_MS = 1_500;
 
 type EnqueueWorkerJobInput = {
   jobId: string;

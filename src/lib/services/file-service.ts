@@ -2575,8 +2575,10 @@ export class FileService {
       jobId,
       processingStatus: shouldProcessPreview
         ? FileProcessingStatus.Queued
-        : FileProcessingStatus.Skipped,
+        : FileProcessingStatus.Completed,
       queuedAt: shouldProcessPreview ? new Date() : null,
+      processingStartedAt: shouldProcessPreview ? null : new Date(),
+      processingCompletedAt: shouldProcessPreview ? null : new Date(),
     };
   }
 
@@ -2720,17 +2722,16 @@ export class FileService {
       throw new AppError("projectId is required.", 400, "validation_error");
     }
 
-    const project = await this.getRequiredProject(projectIdentifier);
     const committed: CommitUploadedFilesResultDTO["committed"] = [];
     const failed: CommitUploadedFilesResultDTO["failed"] = [];
 
-    // Resolve billing and storage scope once upfront so idempotency keys and storage operations avoid repeated DB roundtrips.
-    const [creditScopeResult, storageScope] = await Promise.all([
+    // Parallelize upfront scope and project lookups in a single roundtrip batch
+    const [project, creditScopeResult, storageScope] = await Promise.all([
+      this.getRequiredProject(projectIdentifier),
       creditService.getOrCreateCreditAccountForScope(),
       resolveStorageBillingScope(),
     ]);
     const { scope } = creditScopeResult;
-    await storageService.getOrCreateStorageAccount(storageScope);
 
     await Promise.all(
       input.files.map(async (file) => {
@@ -2903,6 +2904,8 @@ export class FileService {
               processingJobId: processingState.jobId,
               processingAttempts: 0,
               queuedAt: processingState.queuedAt,
+              processingStartedAt: processingState.processingStartedAt,
+              processingCompletedAt: processingState.processingCompletedAt,
             },
           });
           createdRecord = {
@@ -2940,6 +2943,7 @@ export class FileService {
             },
             projectId: project.id,
             scope: storageScope,
+            skipEnsureAccount: true,
             versionId: record.version.id,
           });
 
@@ -2960,16 +2964,7 @@ export class FileService {
               version: record.version,
             });
           } else {
-            const updated = await this.repository.updateVersion(record.version.id, {
-              processingStatus: FileProcessingStatus.Completed,
-              processingStartedAt: new Date(),
-              processingCompletedAt: new Date(),
-              processingJobId: null,
-              processingErrorCode: null,
-              processingErrorMessage: null,
-              updatedAt: new Date(),
-            });
-            finalVersion = updated ?? record.version;
+            finalVersion = record.version;
           }
 
           committed.push({
@@ -3042,10 +3037,11 @@ export class FileService {
       throw new AppError("projectId is required.", 400, "validation_error");
     }
 
-    const project = await this.getRequiredProject(projectIdentifier);
-    const fileWithVersions = await this.repository.findWithVersionsById(
-      input.fileId,
-    );
+    const [project, fileWithVersions, storageScope] = await Promise.all([
+      this.getRequiredProject(projectIdentifier),
+      this.repository.findWithVersionsById(input.fileId),
+      resolveStorageBillingScope(),
+    ]);
 
     if (!fileWithVersions || fileWithVersions.file.projectId !== project.id) {
       throw new NotFoundAppError("File not found.");
@@ -3129,8 +3125,6 @@ export class FileService {
     let versionCreditCharges: PendingCreditCharge[] = [];
     const revisionDescription = input.revisionDescription?.trim() ?? "";
 
-    const storageScope = await resolveStorageBillingScope();
-    await storageService.getOrCreateStorageAccount(storageScope);
 
     try {
       const existingRecord = await this.repository.findFileWithVersionByStorageKey(
@@ -3313,6 +3307,8 @@ export class FileService {
           processingJobId: processingState.jobId,
           processingStatus: processingState.processingStatus,
           queuedAt: processingState.queuedAt,
+          processingStartedAt: processingState.processingStartedAt,
+          processingCompletedAt: processingState.processingCompletedAt,
           sizeBytes: targetFile.sizeBytes,
           storageBucket: targetFile.bucket,
           storageKey: targetFile.storageKey,
@@ -3347,6 +3343,7 @@ export class FileService {
         },
         projectId: project.id,
         scope: storageScope,
+        skipEnsureAccount: true,
         versionId: appended.version.id,
       });
       persisted = true;
@@ -3389,17 +3386,7 @@ export class FileService {
           version: appended.version,
         });
       } else {
-        const updated = await this.repository.updateVersion(appended.version.id, {
-          processingStatus: FileProcessingStatus.Completed,
-          processingStartedAt: new Date(),
-          processingCompletedAt: new Date(),
-          processingJobId: null,
-          processingErrorCode: null,
-          processingErrorMessage: null,
-          updatedAt: new Date(),
-        });
-
-        processedVersion = updated ?? appended.version;
+        processedVersion = appended.version;
       }
       const finalVersion =
         input.isFinalDraft || processedVersion.id === appended.file.approvedVersionId

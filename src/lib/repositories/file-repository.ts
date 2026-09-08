@@ -473,10 +473,12 @@ export class DrizzleFileRepository implements FileRepository {
     version: CreateFileVersionRecordInput;
   }): Promise<{ file: FileRecord; version: FileVersionRecord }> {
     return db.transaction(async (tx) => {
+      const versionId = crypto.randomUUID();
       const [file] = await tx
         .insert(files)
         .values({
           ...input.file,
+          currentVersionId: versionId,
 
           // Compatibility mirror.
           originalName: input.version.originalName,
@@ -495,6 +497,7 @@ export class DrizzleFileRepository implements FileRepository {
       const [version] = await tx
         .insert(fileVersions)
         .values({
+          id: versionId,
           fileId: file.id,
           revisionNumber: input.version.revisionNumber,
           revisionDescription: input.version.revisionDescription ?? null,
@@ -522,17 +525,8 @@ export class DrizzleFileRepository implements FileRepository {
         throw new Error("Failed to create file version record.");
       }
 
-      const [updatedFile] = await tx
-        .update(files)
-        .set({
-          currentVersionId: version.id,
-          updatedAt: new Date(),
-        })
-        .where(eq(files.id, file.id))
-        .returning();
-
       return {
-        file: updatedFile ?? file,
+        file,
         version,
       };
     });
@@ -588,6 +582,8 @@ export class DrizzleFileRepository implements FileRepository {
           processingJobId: input.version.processingJobId ?? null,
           processingAttempts: input.version.processingAttempts ?? 0,
           queuedAt: input.version.queuedAt ?? null,
+          processingStartedAt: input.version.processingStartedAt ?? null,
+          processingCompletedAt: input.version.processingCompletedAt ?? null,
         })
         .returning();
 
