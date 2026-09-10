@@ -78,6 +78,8 @@ export type CreateFileVersionRecordInput = {
   revisionDescription?: string | null;
   revisionDescriptionSourceLocale?: string | null;
   revisionNumber: number;
+  processingStartedAt?: Date | null;
+  processingCompletedAt?: Date | null;
   watermarkEnabled?: boolean;
   useSoftWatermark?: boolean;
   processingStatus?: FileVersionRecord["processingStatus"];
