@@ -536,10 +536,14 @@ export function calculateFeatureCreditCost(params: CreditFeatureCostParams) {
     }
     case "testimonial_download": {
       const template = getTestimonialTemplate(params.templateId);
-      if (isPremiumTestimonialTemplate(template)) {
-        return getPremiumTemplateCreditCost("testimonialDownload", params.planKey);
-      }
-      return template?.downloadCreditCost ?? template?.creditCost ?? 0;
+      const baseCost = isPremiumTestimonialTemplate(template)
+        ? getPremiumTemplateCreditCost("testimonialDownload", params.planKey)
+        : template?.downloadCreditCost ?? template?.creditCost ?? 0;
+      const resolutionMultiplier = Math.max(
+        1,
+        Math.min(4, Math.round(params.resolutionMultiplier ?? 1)),
+      );
+      return baseCost * resolutionMultiplier;
     }
     default:
       throw new UnknownCreditFeatureError();

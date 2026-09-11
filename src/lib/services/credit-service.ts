@@ -42,6 +42,7 @@ import {
   type CreditRepository,
 } from "@/lib/repositories/credit-repository";
 import { resolveActiveActor } from "../auth/active-actor";
+import { findTestimonialTemplateById } from "@/lib/testimonials/testimonial-templates";
 
 
 function addDays(baseDate: Date, days: number) {
@@ -195,7 +196,9 @@ function getHistoryTemplateName(metadata: CreditLedgerMetadata | null) {
   }
 
   return typeof metadata?.templateId === "string"
-    ? INVOICE_TEMPLATE_NAMES[metadata.templateId] ?? null
+    ? INVOICE_TEMPLATE_NAMES[metadata.templateId]
+      ?? findTestimonialTemplateById(metadata.templateId)?.name
+      ?? null
     : null;
 }
 

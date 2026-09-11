@@ -114,6 +114,7 @@ export type CreditFeatureCostParams =
       featureKey: "testimonial_download";
       planKey?: CreditPlanKey;
       templateId: string;
+      resolutionMultiplier?: number;
     }
   | {
       currency: string;

@@ -8,6 +8,7 @@ import type { UpdateTestimonialInput } from "@/lib/repositories/testimonial-repo
 import { asyncHandler } from "@/lib/api/route";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { r2Storage } from "@/lib/storage/r2";
+import { findTestimonialTemplateById } from "@/lib/testimonials/testimonial-templates";
 import sharp from "sharp";
 
 export const testimonialsRouter = Router();
@@ -25,6 +26,7 @@ const createTestimonialSchema = z.object({
 const downloadTestimonialSchema = z.object({
   templateId: z.string(),
   testimonialId: z.string().optional().nullable(),
+  resolutionMultiplier: z.number().int().min(1).max(4).default(1),
 });
 
 const autosaveSchema = z.object({
@@ -170,6 +172,7 @@ testimonialsRouter.post("/", asyncHandler(async (req, res) => {
   const parsed = createTestimonialSchema.parse(req.body);
   const validTemplateId = parsed.templateId ? parsed.templateId : null;
   const dbTemplateId = validTemplateId && isUUID(validTemplateId) ? validTemplateId : null;
+  const template = findTestimonialTemplateById(validTemplateId);
 
   if (validTemplateId) {
     const { scope } = await creditService.getOrCreateCreditAccountForScope();
@@ -183,6 +186,8 @@ testimonialsRouter.post("/", asyncHandler(async (req, res) => {
       scope,
       metadata: {
         testimonialId: parsed.id,
+        templateId: validTemplateId,
+        templateName: template?.name ?? validTemplateId,
       },
     });
   }
@@ -207,6 +212,7 @@ testimonialsRouter.post("/", asyncHandler(async (req, res) => {
 testimonialsRouter.post("/download", asyncHandler(async (req, res) => {
   const parsed = downloadTestimonialSchema.parse(req.body);
   const { scope } = await creditService.getOrCreateCreditAccountForScope();
+  const template = findTestimonialTemplateById(parsed.templateId);
 
   await creditService.calculateAndDeductFeatureCredits({
     idempotencyKey: `testimonial-download-${parsed.templateId}-${Date.now()}`,
@@ -214,10 +220,13 @@ testimonialsRouter.post("/download", asyncHandler(async (req, res) => {
       currency: DEFAULT_PROJECT_CURRENCY,
       featureKey: "testimonial_download",
       templateId: parsed.templateId,
+      resolutionMultiplier: parsed.resolutionMultiplier,
     },
     scope,
     metadata: {
       testimonialId: parsed.testimonialId ?? null,
+      templateId: parsed.templateId,
+      templateName: template?.name ?? parsed.templateId,
     },
   });
 
