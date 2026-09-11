@@ -33,9 +33,10 @@ import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
 export const filesRouter = Router();
 
 filesRouter.get("/", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const query = parseWithSchema(fileQueryParamsSchema, req.query);
-  const result = await fileService.listFiles(query, { viewerLocale });
+  const result = await fileService.listFiles(query, { viewerLocale, userId: actor.id });
 
   return sendSuccess(res, result.items, {
     meta: {
@@ -56,52 +57,60 @@ filesRouter.get("/", asyncHandler(async (req, res) => {
 }));
 
 filesRouter.post("/", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const requestLocale = getRequestLocale(req);
   const input = parseWithSchema(createFileSchema, req.body);
   const data = await fileService.createFile(input, {
     sourceLocale: requestLocale,
     viewerLocale: requestLocale,
+    userId: actor.id,
   });
 
   return sendSuccess(res, data, { status: 201 });
 }));
 
 filesRouter.get("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(fileIdParamsSchema, req.params);
-  const data = await fileService.getFileById(params.id, viewerLocale);
+  const data = await fileService.getFileById(params.id, viewerLocale, actor.id);
   return sendSuccess(res, data);
 }));
 
 filesRouter.patch("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(fileIdParamsSchema, req.params);
   const input = parseWithSchema(updateFileSchema, req.body);
   const data = await fileService.updateFile(params.id, input, {
     sourceLocale: requestLocale,
     viewerLocale: requestLocale,
+    userId: actor.id,
   });
   return sendSuccess(res, data);
 }));
 
 filesRouter.delete("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const params = parseWithSchema(fileIdParamsSchema, req.params);
-  const data = await fileService.deleteFile(params.id);
+  const data = await fileService.deleteFile(params.id, { userId: actor.id });
   return sendSuccess(res, data);
 }));
 
 filesRouter.post("/:id/cancel", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const params = parseWithSchema(fileIdParamsSchema, req.params);
   const input = parseWithSchema(cancelFileUploadSchema, req.body);
   const viewerLocale = getRequestLocale(req);
-  const data = await fileService.cancelFileUpload(params.id, input, viewerLocale);
+  const data = await fileService.cancelFileUpload(params.id, input, viewerLocale, actor.id);
   return sendSuccess(res, data);
 }));
 
 filesRouter.get("/:id/content", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const params = parseWithSchema(fileIdParamsSchema, req.params);
   const projectId = (req.query.projectId || req.headers["x-project-id"]) as string | undefined;
-  const result = await fileService.getFileContent(params.id, { projectId });
+  const result = await fileService.getFileContent(params.id, { projectId, userId: actor.id });
 
   res.setHeader("Content-Type", result.contentType);
   if (result.contentLength != null) {
@@ -125,6 +134,7 @@ filesRouter.get("/:id/content", asyncHandler(async (req, res) => {
 }));
 
 filesRouter.get("/:id/thumbnail", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const params = parseWithSchema(fileIdParamsSchema, req.params);
   const projectId = (req.query.projectId || req.headers["x-project-id"]) as string | undefined;
   const width = req.query.w ? Number(req.query.w) : undefined;
@@ -134,6 +144,7 @@ filesRouter.get("/:id/thumbnail", asyncHandler(async (req, res) => {
     projectId,
     width,
     height,
+    userId: actor.id,
   });
 
   if (req.headers["if-none-match"] === result.etag) {
@@ -149,8 +160,15 @@ filesRouter.get("/:id/thumbnail", asyncHandler(async (req, res) => {
   return res.send(result.buffer);
 }));
 
+async function assertFileOwner(fileId: string, req: any) {
+  const actor = await resolveActiveActor(req);
+  await fileService.getFileById(fileId, "en", actor.id);
+  return actor;
+}
+
 filesRouter.put("/:id/content", asyncHandler(async (req, res) => {
   const params = parseWithSchema(fileIdParamsSchema, req.params);
+  const actor = await assertFileOwner(params.id, req);
   const contentTypeHeader = (req.headers["content-type"] || "").trim();
   const contentType = contentTypeHeader && contentTypeHeader.length > 0 ? contentTypeHeader : undefined;
   const contentLengthHeader = req.headers["content-length"];
@@ -168,19 +186,21 @@ filesRouter.put("/:id/content", asyncHandler(async (req, res) => {
     body,
     contentLength,
     contentType,
-  }, viewerLocale);
+  }, viewerLocale, actor.id);
 
   return sendSuccess(res, data);
 }));
 
 filesRouter.post("/:id/multipart", asyncHandler(async (req, res) => {
   const params = parseWithSchema(fileIdParamsSchema, req.params);
-  const data = await fileService.initiateMultipartUpload(params.id);
+  const actor = await assertFileOwner(params.id, req);
+  const data = await fileService.initiateMultipartUpload(params.id, actor.id);
   return sendSuccess(res, data, { status: 201 });
 }));
 
 filesRouter.put("/:id/multipart/parts/:partNumber", asyncHandler(async (req, res) => {
   const params = parseWithSchema(multipartUploadPartParamsSchema, req.params);
+  const actor = await assertFileOwner(params.id, req);
   const query = parseWithSchema(multipartUploadPartQuerySchema, req.query);
 
   let buffer: Buffer;
@@ -203,22 +223,24 @@ filesRouter.put("/:id/multipart/parts/:partNumber", asyncHandler(async (req, res
     contentLength: buffer.byteLength,
     partNumber: params.partNumber,
     uploadId: query.uploadId,
-  });
+  }, actor.id);
   return sendSuccess(res, data);
 }));
 
 filesRouter.post("/:id/multipart/complete", asyncHandler(async (req, res) => {
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(fileIdParamsSchema, req.params);
+  const actor = await assertFileOwner(params.id, req);
   const input = parseWithSchema(multipartUploadCompleteSchema, req.body);
-  const data = await fileService.completeMultipartUpload(params.id, input, viewerLocale);
+  const data = await fileService.completeMultipartUpload(params.id, input, viewerLocale, actor.id);
   return sendSuccess(res, data);
 }));
 
 filesRouter.post("/:id/multipart/abort", asyncHandler(async (req, res) => {
   const params = parseWithSchema(fileIdParamsSchema, req.params);
+  const actor = await assertFileOwner(params.id, req);
   const input = parseWithSchema(multipartUploadAbortSchema, req.body);
-  const data = await fileService.abortMultipartUpload(params.id, input);
+  const data = await fileService.abortMultipartUpload(params.id, input, actor.id);
   return sendSuccess(res, data);
 }));
 
@@ -226,7 +248,7 @@ filesRouter.get("/:id/revision-notes", asyncHandler(async (req, res) => {
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(fileRevisionNotesParamsSchema, req.params);
   const query = parseWithSchema(fileRevisionNotesQuerySchema, req.query);
-  const actor = await resolveActiveActor();
+  const actor = await assertFileOwner(params.id, req);
   const data = await fileRevisionNoteService.listFileRevisionNotes({
     fileId: params.id,
     fileVersionId: query.fileVersionId,
@@ -239,6 +261,7 @@ filesRouter.get("/:id/revision-notes", asyncHandler(async (req, res) => {
 filesRouter.post("/:id/revision-notes", asyncHandler(async (req, res) => {
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(fileRevisionNotesParamsSchema, req.params);
+  await assertFileOwner(params.id, req);
   const input = parseWithSchema(upsertFileRevisionNoteBodySchema, req.body);
   const data = await fileRevisionNoteService.createFileRevisionNote({
     fileId: params.id,
@@ -255,6 +278,7 @@ filesRouter.post("/:id/revision-notes", asyncHandler(async (req, res) => {
 filesRouter.patch("/:id/revision-notes/:noteId", asyncHandler(async (req, res) => {
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(fileRevisionNoteReplyParamsSchema, req.params);
+  await assertFileOwner(params.id, req);
   const input = parseWithSchema(upsertFileRevisionNoteBodySchema, req.body);
   const data = await fileRevisionNoteService.updateFileRevisionNote({
     fileId: params.id,
@@ -270,6 +294,7 @@ filesRouter.patch("/:id/revision-notes/:noteId", asyncHandler(async (req, res) =
 filesRouter.delete("/:id/revision-notes/:noteId", asyncHandler(async (req, res) => {
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(fileRevisionNoteReplyParamsSchema, req.params);
+  await assertFileOwner(params.id, req);
   const query = parseWithSchema(fileRevisionNoteMutationQuerySchema, req.query);
   const data = await fileRevisionNoteService.deleteFileRevisionNote({
     fileId: params.id,
@@ -283,6 +308,7 @@ filesRouter.delete("/:id/revision-notes/:noteId", asyncHandler(async (req, res) 
 filesRouter.patch("/:id/revision-notes/:noteId/items/:itemId", asyncHandler(async (req, res) => {
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(fileRevisionNoteItemParamsSchema, req.params);
+  await assertFileOwner(params.id, req);
   const input = parseWithSchema(updateFileRevisionNoteItemCompletionBodySchema, req.body);
   const data = await fileRevisionNoteService.updateFileRevisionNoteItemCompletion({
     completed: input.completed,
@@ -298,6 +324,7 @@ filesRouter.patch("/:id/revision-notes/:noteId/items/:itemId", asyncHandler(asyn
 filesRouter.delete("/:id/revision-notes/:noteId/markers/:markerId", asyncHandler(async (req, res) => {
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(fileRevisionNoteMarkerParamsSchema, req.params);
+  await assertFileOwner(params.id, req);
   const query = parseWithSchema(fileRevisionNoteMutationQuerySchema, req.query);
   const data = await fileRevisionNoteService.deleteFileRevisionNoteMarker({
     fileId: params.id,
@@ -312,6 +339,7 @@ filesRouter.delete("/:id/revision-notes/:noteId/markers/:markerId", asyncHandler
 filesRouter.post("/:id/revision-notes/:noteId/reply", asyncHandler(async (req, res) => {
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(fileRevisionNoteReplyParamsSchema, req.params);
+  await assertFileOwner(params.id, req);
   const input = parseWithSchema(replyToFileRevisionNoteBodySchema, req.body);
   const data = await fileRevisionNoteService.replyToFileRevisionNote({
     fileId: params.id,
@@ -327,6 +355,7 @@ filesRouter.post("/:id/revision-notes/:noteId/reply", asyncHandler(async (req, r
 filesRouter.patch("/:id/revision-notes/:noteId/reply", asyncHandler(async (req, res) => {
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(fileRevisionNoteReplyParamsSchema, req.params);
+  await assertFileOwner(params.id, req);
   const input = parseWithSchema(replyToFileRevisionNoteBodySchema, req.body);
   const data = await fileRevisionNoteService.updateFileRevisionNoteReply({
     fileId: params.id,
@@ -342,6 +371,7 @@ filesRouter.patch("/:id/revision-notes/:noteId/reply", asyncHandler(async (req, 
 filesRouter.delete("/:id/revision-notes/:noteId/reply", asyncHandler(async (req, res) => {
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(fileRevisionNoteReplyParamsSchema, req.params);
+  await assertFileOwner(params.id, req);
   const query = parseWithSchema(fileRevisionNoteMutationQuerySchema, req.query);
   const data = await fileRevisionNoteService.deleteFileRevisionNoteReply({
     fileId: params.id,
@@ -354,8 +384,8 @@ filesRouter.delete("/:id/revision-notes/:noteId/reply", asyncHandler(async (req,
 
 filesRouter.post("/:id/revision-notes/:noteId/report", asyncHandler(async (req, res) => {
   const params = parseWithSchema(fileRevisionNoteReplyParamsSchema, req.params);
+  const actor = await assertFileOwner(params.id, req);
   const input = parseWithSchema(fileRevisionNoteReportBodySchema, req.body);
-  const actor = await resolveActiveActor();
 
   await fileRevisionNoteService.reportRevisionNote({
     commentId: input.replyId ? undefined : params.noteId,

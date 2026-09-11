@@ -11,7 +11,6 @@ import { profileRouter } from "@/routes/profile";
 import { authRouter } from "@/routes/auth";
 import { actorStorage } from "@/lib/auth/active-actor";
 import { verifySessionToken } from "@/lib/auth/session";
-import { DEFAULT_CREDIT_OWNER_ID } from "@/lib/credits/config/ledger";
 import { plansRouter } from "@/routes/plans";
 import { creditsRouter } from "@/routes/credits";
 import { storageRouter } from "@/routes/storage";
@@ -45,7 +44,7 @@ app.use(cookieParser());
 
 // Session authentication context middleware
 app.use((req, _res, next) => {
-  let userId = DEFAULT_CREDIT_OWNER_ID;
+  let userId: string | undefined = undefined;
   const sessionCookie = req.cookies?.mitfloww_session;
   if (sessionCookie) {
     const verified = verifySessionToken(sessionCookie);
@@ -53,7 +52,11 @@ app.use((req, _res, next) => {
       userId = verified;
     }
   }
-  actorStorage.run({ userId }, () => next());
+  if (userId) {
+    actorStorage.run({ userId }, () => next());
+  } else {
+    next();
+  }
 });
 
 // Raw body parser for binary/multipart uploads

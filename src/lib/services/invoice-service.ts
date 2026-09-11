@@ -3,11 +3,33 @@ import { db } from "@/lib/db/client";
 import { invoiceSettings, projects, users } from "@/lib/db/schema";
 import { ne } from "drizzle-orm";
 import { DrizzleFileRepository } from "@/lib/repositories/file-repository";
-import type { InvoiceSettingsRecord, NewInvoiceSettingsRecord } from "@/lib/db/schema";
+import type { InvoiceSettingsRecord, NewInvoiceSettingsRecord, CustomInvoiceTemplate } from "@/lib/db/schema";
 import { userService } from "./user-service";
 import { invoicePdfService, type InvoicePdfData } from "./invoice-pdf-service";
 import { r2Storage } from "@/lib/storage/r2";
-import { ForbiddenAppError, NotFoundAppError } from "@/lib/errors/app-error";
+import { AppError, ForbiddenAppError, NotFoundAppError } from "@/lib/errors/app-error";
+
+export interface SaveCustomTemplateInput {
+  id?: string;
+  name: string;
+  elements?: string[];
+  layoutDirection?: "column" | "row" | null;
+  elementOffsets?: string | null;
+  elementStyles?: string | null;
+  accentColor?: string | null;
+  paperSize?: "a4" | "a5" | "letter" | null;
+  fontFamily?: string | null;
+  fontWeight?: string | null;
+  fontStyle?: string | null;
+  logoAlignment?: "left" | "center" | "right" | null;
+  nameAlignment?: "left" | "center" | "right" | null;
+  showLogo?: boolean | null;
+  showTaxNumber?: boolean | null;
+  taxNumber?: string | null;
+  showNotes?: boolean | null;
+  notes?: string | null;
+  terms?: string | null;
+}
 
 export const DEFAULT_INVOICE_SETTINGS: Omit<InvoiceSettingsRecord, "id" | "userId" | "createdAt" | "updatedAt"> = {
   templateId: "modern",
@@ -29,6 +51,7 @@ export const DEFAULT_INVOICE_SETTINGS: Omit<InvoiceSettingsRecord, "id" | "userI
   customLayoutDirection: null,
   customElementOffsets: null,
   customElementStyles: null,
+  customTemplates: [],
 };
 
 export class InvoiceService {
@@ -87,6 +110,110 @@ export class InvoiceService {
     return saved;
   }
 
+  async getCustomTemplates(userId: string): Promise<CustomInvoiceTemplate[]> {
+    const settings = await this.getInvoiceSettings(userId);
+    return Array.isArray(settings.customTemplates) ? settings.customTemplates : [];
+  }
+
+  async saveCustomTemplate(
+    userId: string,
+    input: SaveCustomTemplateInput,
+  ): Promise<{ template: CustomInvoiceTemplate; templates: CustomInvoiceTemplate[] }> {
+    const name = input.name?.trim();
+    if (!name) {
+      throw new AppError("Template name cannot be empty.", 400, "invalid_template_name");
+    }
+
+    const settings = await this.getInvoiceSettings(userId);
+    const existingTemplates: CustomInvoiceTemplate[] = Array.isArray(settings.customTemplates)
+      ? [...settings.customTemplates]
+      : [];
+
+    const templateId = input.id?.trim() || `custom_${Date.now()}`;
+
+    // Validate unique template name (case-insensitive) across existing templates for this user
+    const isDuplicate = existingTemplates.some(
+      (t) => t.id !== templateId && t.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (isDuplicate) {
+      throw new AppError(
+        `A custom template with the name "${name}" already exists. Please choose a unique name.`,
+        400,
+        "duplicate_template_name",
+      );
+    }
+
+    const now = new Date().toISOString();
+    const existingIndex = existingTemplates.findIndex((t) => t.id === templateId);
+
+    const updatedTemplate: CustomInvoiceTemplate = {
+      id: templateId,
+      name,
+      elements: input.elements || [
+        "logo",
+        "title",
+        "sender",
+        "client",
+        "meta",
+        "items",
+        "totals",
+        "notes",
+      ],
+      layoutDirection: input.layoutDirection ?? "column",
+      elementOffsets: input.elementOffsets ?? null,
+      elementStyles: input.elementStyles ?? null,
+      accentColor: input.accentColor ?? null,
+      paperSize: input.paperSize ?? "a4",
+      fontFamily: input.fontFamily ?? null,
+      fontWeight: input.fontWeight ?? null,
+      fontStyle: input.fontStyle ?? null,
+      logoAlignment: input.logoAlignment ?? "left",
+      nameAlignment: input.nameAlignment ?? "left",
+      showLogo: input.showLogo ?? true,
+      showTaxNumber: input.showTaxNumber ?? false,
+      taxNumber: input.taxNumber ?? null,
+      showNotes: input.showNotes ?? true,
+      notes: input.notes ?? null,
+      terms: input.terms ?? null,
+      createdAt: existingIndex >= 0 ? existingTemplates[existingIndex].createdAt : now,
+      updatedAt: now,
+    };
+
+    if (existingIndex >= 0) {
+      existingTemplates[existingIndex] = updatedTemplate;
+    } else {
+      existingTemplates.push(updatedTemplate);
+    }
+
+    await this.updateInvoiceSettings(userId, {
+      customTemplates: existingTemplates,
+    });
+
+    return { template: updatedTemplate, templates: existingTemplates };
+  }
+
+  async deleteCustomTemplate(
+    userId: string,
+    templateId: string,
+  ): Promise<CustomInvoiceTemplate[]> {
+    const settings = await this.getInvoiceSettings(userId);
+    const existingTemplates: CustomInvoiceTemplate[] = Array.isArray(settings.customTemplates)
+      ? [...settings.customTemplates]
+      : [];
+
+    const filtered = existingTemplates.filter((t) => t.id !== templateId);
+    const patch: Partial<NewInvoiceSettingsRecord> = {
+      customTemplates: filtered,
+    };
+
+    if (settings.templateId === templateId) {
+      patch.templateId = "modern";
+    }
+
+    await this.updateInvoiceSettings(userId, patch);
+    return filtered;
+  }
+
   async generateProjectInvoicePdf(projectId: string): Promise<{
     pdfBuffer: Buffer;
     filename: string;
@@ -101,27 +228,20 @@ export class InvoiceService {
       throw new NotFoundAppError("Project not found.");
     }
 
-    let userId = project.userId;
-    if (!userId || userId === "default-owner") {
-      try {
-        const [realUser] = await db
-          .select()
-          .from(users)
-          .where(ne(users.id, "default-owner"))
-          .limit(1);
-        if (realUser) {
-          userId = realUser.id;
-        }
-      } catch {
-        // ignore
-      }
-    }
-    if (!userId) {
-      userId = "default-owner";
-    }
+    const userId = project.userId || "default-owner";
 
     const profile = await userService.getProfile(userId);
     const settings = await this.getInvoiceSettings(userId);
+
+    const customTemplatesList = (settings.customTemplates as CustomInvoiceTemplate[]) || [];
+    const matchingCustom = customTemplatesList.find((t) => t.id === settings.templateId);
+    if (matchingCustom) {
+      if (matchingCustom.elements) settings.customElements = matchingCustom.elements;
+      if (matchingCustom.elementStyles) settings.customElementStyles = matchingCustom.elementStyles;
+      if (matchingCustom.elementOffsets) settings.customElementOffsets = matchingCustom.elementOffsets;
+      if (matchingCustom.accentColor) settings.accentColor = matchingCustom.accentColor;
+      if (matchingCustom.paperSize) settings.paperSize = matchingCustom.paperSize;
+    }
 
     // Calculate extra revisions and advance payments
     let totalRevisions = 0;
@@ -267,6 +387,28 @@ export class InvoiceService {
     const profile = await userService.getProfile(userId);
     const settings = await this.getInvoiceSettings(userId);
     const effectiveSettings = { ...settings, ...overrides };
+
+    const customTemplatesList = (settings.customTemplates as CustomInvoiceTemplate[]) || [];
+    const matchingCustom = customTemplatesList.find(
+      (t) => t.id === effectiveSettings.templateId,
+    );
+    if (matchingCustom) {
+      if (matchingCustom.elements && !overrides?.customElements) {
+        effectiveSettings.customElements = matchingCustom.elements;
+      }
+      if (matchingCustom.elementStyles && !overrides?.customElementStyles) {
+        effectiveSettings.customElementStyles = matchingCustom.elementStyles;
+      }
+      if (matchingCustom.elementOffsets && !overrides?.customElementOffsets) {
+        effectiveSettings.customElementOffsets = matchingCustom.elementOffsets;
+      }
+      if (matchingCustom.accentColor && !overrides?.accentColor) {
+        effectiveSettings.accentColor = matchingCustom.accentColor;
+      }
+      if (matchingCustom.paperSize && !overrides?.paperSize) {
+        effectiveSettings.paperSize = matchingCustom.paperSize;
+      }
+    }
 
     let logoBuffer: Buffer | null = null;
     if (profile.company?.logoStorageKey) {

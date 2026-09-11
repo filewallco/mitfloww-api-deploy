@@ -158,8 +158,9 @@ testimonialsRouter.delete("/upload", asyncHandler(async (req, res) => {
 }));
 
 testimonialsRouter.get("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const id = typeof req.params.id === "string" ? req.params.id : "";
-  const testimonial = await testimonialService.getTestimonialById(id);
+  const testimonial = await testimonialService.getTestimonialById(id, actor.id);
   return res.json({ testimonial, status: "success" });
 }));
 
@@ -223,6 +224,7 @@ testimonialsRouter.post("/download", asyncHandler(async (req, res) => {
 }));
 
 testimonialsRouter.put("/:id/autosave", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const id = typeof req.params.id === "string" ? req.params.id : "";
   const parsed = autosaveSchema.parse(req.body);
 
@@ -236,7 +238,7 @@ testimonialsRouter.put("/:id/autosave", asyncHandler(async (req, res) => {
   if (parsed.projectReviewId !== undefined) updateInput.projectReviewId = parsed.projectReviewId && isUUID(parsed.projectReviewId) ? parsed.projectReviewId : null;
   if (parsed.templateId !== undefined) updateInput.templateId = parsed.templateId && isUUID(parsed.templateId) ? parsed.templateId : null;
 
-  const updated = await testimonialService.updateTestimonial(id, updateInput);
+  const updated = await testimonialService.updateTestimonial(id, updateInput, actor.id);
 
   return res.json({
     id: updated.id,
@@ -247,6 +249,7 @@ testimonialsRouter.put("/:id/autosave", asyncHandler(async (req, res) => {
 }));
 
 testimonialsRouter.patch("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const id = typeof req.params.id === "string" ? req.params.id : "";
   const parsed = updateTestimonialSchema.parse(req.body);
 
@@ -262,7 +265,7 @@ testimonialsRouter.patch("/:id", asyncHandler(async (req, res) => {
   if (parsed.projectReviewId !== undefined) updateInput.projectReviewId = parsed.projectReviewId && isUUID(parsed.projectReviewId) ? parsed.projectReviewId : null;
   if (parsed.templateId !== undefined) updateInput.templateId = parsed.templateId && isUUID(parsed.templateId) ? parsed.templateId : null;
 
-  const updated = await testimonialService.updateTestimonial(id, updateInput);
+  const updated = await testimonialService.updateTestimonial(id, updateInput, actor.id);
 
   return res.json({
     id: updated.id,
@@ -272,7 +275,8 @@ testimonialsRouter.patch("/:id", asyncHandler(async (req, res) => {
 }));
 
 testimonialsRouter.delete("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const id = typeof req.params.id === "string" ? req.params.id : "";
-  await testimonialService.deleteTestimonial(id);
+  await testimonialService.deleteTestimonial(id, actor.id);
   return res.json({ id, status: "success" });
 }));

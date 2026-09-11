@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getRequestLocale } from "@/middleware/locale";
+import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { notificationService } from "@/lib/services/notification-service";
 import {
   notificationListQueryParamsSchema,
@@ -11,6 +12,7 @@ import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
 export const notificationsRouter = Router();
 
 notificationsRouter.get("/", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const query = parseWithSchema(
     notificationListQueryParamsSchema,
@@ -19,6 +21,7 @@ notificationsRouter.get("/", asyncHandler(async (req, res) => {
   const result = await notificationService.listNotifications(
     query,
     viewerLocale,
+    actor.id,
   );
 
   return sendSuccess(res, result.items, {
@@ -33,18 +36,21 @@ notificationsRouter.get("/", asyncHandler(async (req, res) => {
   });
 }));
 
-notificationsRouter.post("/mark-all-read", asyncHandler(async (_req, res) => {
-  const data = await notificationService.markAllNotificationsRead();
+notificationsRouter.post("/mark-all-read", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const data = await notificationService.markAllNotificationsRead(actor.id);
   return sendSuccess(res, data);
 }));
 
 notificationsRouter.patch("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(notificationIdParamsSchema, req.params);
   parseWithSchema(markNotificationReadSchema, req.body);
   const data = await notificationService.markNotificationRead(
     params.id,
     viewerLocale,
+    actor.id,
   );
 
   return sendSuccess(res, data);

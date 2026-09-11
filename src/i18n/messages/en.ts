@@ -956,7 +956,7 @@ export const enMessages: AppMessages = {
       "Upload saved, but processing could not start. You can retry processing later.",
     processingCouldNotStartTitle: "Processing could not start",
     processingCouldNotStartDescription:
-      "Start the worker and retry processing later.",
+      "Processing is temporarily delayed. Please retry in a moment.",
     processingFailedDescription: "Processing failed. Please try again.",
     fileProcessingTitle: "File processing",
     fileProcessingActiveCount: "ACTIVE: {count}",
@@ -1203,7 +1203,7 @@ export const enMessages: AppMessages = {
     fileReviewFinalDraftReplacementLargeUploadDisabled:
       "Replacement final drafts can't use the large-upload toggle.",
     fileReviewFinalDraftLargeUploadDescription:
-      "Final draft uploads bypass the standard size limit and do not use the large upload path.",
+      "Final draft uploads have no file size restrictions.",
     fileReviewFinalDraftNoSizeLimit:
       "Final draft uploads ignore the standard size limit.",
     confirmFinalDraftUploadTitle: "Upload final draft?",

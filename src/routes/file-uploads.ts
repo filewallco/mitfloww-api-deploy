@@ -12,10 +12,12 @@ import {
 } from "@/lib/validation/files";
 import { NotFoundAppError, ValidationAppError } from "@/lib/errors/app-error";
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
+import { resolveActiveActor } from "@/lib/auth/active-actor";
 
 export const fileUploadsRouter = Router();
 
 fileUploadsRouter.post("/sessions", asyncHandler(async (req, res) => {
+  await resolveActiveActor(req);
   const input = parseWithSchema(uploadSessionInitSchema, req.body);
   const data = await fileService.initiateUploadSession(input);
   return sendSuccess(res, data, { status: 201 });
@@ -71,6 +73,7 @@ fileUploadsRouter.put("/content", asyncHandler(async (req, res) => {
 }));
 
 fileUploadsRouter.post("/commit", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const input = parseWithSchema(commitUploadedFilesSchema, req.body);
   const idempotencyKeyBase = `commit:${input.projectId}:${input.files.map((f) => f.localFileId).join("|")}`;
 
@@ -78,6 +81,7 @@ fileUploadsRouter.post("/commit", asyncHandler(async (req, res) => {
     sourceLocale: req.locale || "en",
     viewerLocale: req.locale || "en",
     idempotencyKeyBase,
+    userId: actor.id,
   });
 
   return sendSuccess(res, data);

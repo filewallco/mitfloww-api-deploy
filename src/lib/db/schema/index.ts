@@ -116,6 +116,7 @@ export type {
 export type {
   InvoiceSettingsRecord,
   NewInvoiceSettingsRecord,
+  CustomInvoiceTemplate,
 } from "./invoices";
 
 export {

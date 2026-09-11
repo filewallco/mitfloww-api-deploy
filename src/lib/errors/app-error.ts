@@ -36,6 +36,13 @@ export class ForbiddenAppError extends AppError {
   }
 }
 
+export class UnauthorizedAppError extends AppError {
+  constructor(message = "Authentication required.", details?: ApiErrorDetails) {
+    super(message, 401, "unauthorized", details);
+    this.name = "UnauthorizedAppError";
+  }
+}
+
 export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }

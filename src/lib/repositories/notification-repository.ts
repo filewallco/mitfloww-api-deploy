@@ -1,7 +1,7 @@
-import { and, asc, count, desc, eq, isNull, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, type SQL } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
-import { notifications, type NewNotificationRecord, type NotificationRecord } from "@/lib/db/schema";
+import { notifications, projects, type NewNotificationRecord, type NotificationRecord } from "@/lib/db/schema";
 import type { PaginationParams } from "@/lib/query/pagination";
 
 export type CreateNotificationRecordInput = Omit<
@@ -12,6 +12,7 @@ export type CreateNotificationRecordInput = Omit<
 export type FindManyNotificationsParams = PaginationParams & {
   includeTotal?: boolean;
   unreadOnly?: boolean;
+  userId?: string;
 };
 
 export type FindManyNotificationsResult = {
@@ -21,12 +22,12 @@ export type FindManyNotificationsResult = {
 
 export interface NotificationRepository {
   create(input: CreateNotificationRecordInput): Promise<NotificationRecord | null>;
-  count(options?: { unreadOnly?: boolean }): Promise<number>;
+  count(options?: { unreadOnly?: boolean; userId?: string }): Promise<number>;
   findManyPaginated(
     params: FindManyNotificationsParams,
   ): Promise<FindManyNotificationsResult>;
-  markAllRead(readAt: Date): Promise<number>;
-  markRead(id: string, readAt: Date): Promise<NotificationRecord | null>;
+  markAllRead(readAt: Date, userId?: string): Promise<number>;
+  markRead(id: string, readAt: Date, userId?: string): Promise<NotificationRecord | null>;
 }
 
 export class DrizzleNotificationRepository implements NotificationRepository {
@@ -44,11 +45,22 @@ export class DrizzleNotificationRepository implements NotificationRepository {
     return record ?? null;
   }
 
-  async count(options?: { unreadOnly?: boolean }): Promise<number> {
+  async count(options?: { unreadOnly?: boolean; userId?: string }): Promise<number> {
     const conditions: SQL[] = [];
 
     if (options?.unreadOnly) {
       conditions.push(isNull(notifications.readAt));
+    }
+
+    if (options?.userId) {
+      conditions.push(eq(projects.userId, options.userId));
+      const query = db
+        .select({ count: count() })
+        .from(notifications)
+        .innerJoin(projects, eq(projects.id, notifications.projectId));
+
+      const [result] = await query.where(and(...conditions));
+      return Number(result?.count ?? 0);
     }
 
     const query = db
@@ -68,6 +80,55 @@ export class DrizzleNotificationRepository implements NotificationRepository {
 
     if (params.unreadOnly) {
       conditions.push(isNull(notifications.readAt));
+    }
+
+    if (params.userId) {
+      conditions.push(eq(projects.userId, params.userId));
+      const whereClause = and(...conditions);
+
+      const recordsQuery = db
+        .select({
+          category: notifications.category,
+          createdAt: notifications.createdAt,
+          description: notifications.description,
+          descriptionKey: notifications.descriptionKey,
+          eventKey: notifications.eventKey,
+          fileId: notifications.fileId,
+          id: notifications.id,
+          metadata: notifications.metadata,
+          projectId: notifications.projectId,
+          readAt: notifications.readAt,
+          title: notifications.title,
+          titleKey: notifications.titleKey,
+          updatedAt: notifications.updatedAt,
+        })
+        .from(notifications)
+        .innerJoin(projects, eq(projects.id, notifications.projectId))
+        .where(whereClause)
+        .orderBy(desc(notifications.createdAt), desc(notifications.id))
+        .limit(params.limit)
+        .offset(params.offset);
+
+      if (params.includeTotal === false) {
+        const records = await recordsQuery;
+        return { records, total: null };
+      }
+
+      const totalQuery = db
+        .select({ count: count() })
+        .from(notifications)
+        .innerJoin(projects, eq(projects.id, notifications.projectId))
+        .where(whereClause);
+
+      const [records, totalResult] = await Promise.all([
+        recordsQuery,
+        totalQuery,
+      ]);
+
+      return {
+        records,
+        total: Number(totalResult[0]?.count ?? 0),
+      };
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -106,7 +167,35 @@ export class DrizzleNotificationRepository implements NotificationRepository {
     };
   }
 
-  async markAllRead(readAt: Date): Promise<number> {
+  async markAllRead(readAt: Date, userId?: string): Promise<number> {
+    if (userId) {
+      const userProjects = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.userId, userId));
+
+      const projectIds = userProjects.map((p) => p.id);
+      if (projectIds.length === 0) {
+        return 0;
+      }
+
+      const records = await db
+        .update(notifications)
+        .set({
+          readAt,
+          updatedAt: readAt,
+        })
+        .where(
+          and(
+            isNull(notifications.readAt),
+            inArray(notifications.projectId, projectIds),
+          ),
+        )
+        .returning({ id: notifications.id });
+
+      return records.length;
+    }
+
     const records = await db
       .update(notifications)
       .set({
@@ -119,7 +208,23 @@ export class DrizzleNotificationRepository implements NotificationRepository {
     return records.length;
   }
 
-  async markRead(id: string, readAt: Date): Promise<NotificationRecord | null> {
+  async markRead(id: string, readAt: Date, userId?: string): Promise<NotificationRecord | null> {
+    if (userId) {
+      const [existing] = await db
+        .select({
+          notification: notifications,
+          projectUserId: projects.userId,
+        })
+        .from(notifications)
+        .leftJoin(projects, eq(projects.id, notifications.projectId))
+        .where(eq(notifications.id, id))
+        .limit(1);
+
+      if (!existing || (existing.notification.projectId && existing.projectUserId !== userId)) {
+        return null;
+      }
+    }
+
     const [record] = await db
       .update(notifications)
       .set({

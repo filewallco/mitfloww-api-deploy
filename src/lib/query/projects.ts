@@ -20,6 +20,7 @@ export type ProjectListFilters = {
   hasDeliverables?: boolean;
   paymentStatus?: ProjectPaymentFilter;
   search?: string;
+  userId?: string;
 };
 
 export type ProjectListQuery = PaginationInput &

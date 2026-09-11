@@ -322,6 +322,7 @@ export class FileRevisionNoteService {
   }): Promise<FileRevisionNoteMutationResultDTO> {
     const context = await this.getCommentContext(input);
     this.assertCommentIsPending(context.note);
+    await this.assertCommentNotReported(input.noteId, "edit");
 
     const updatedNote = await this.revisionNoteRepository.updateComment(
       input.noteId,
@@ -350,20 +351,7 @@ export class FileRevisionNoteService {
   }): Promise<FileRevisionNoteMutationResultDTO> {
     const context = await this.getCommentContext(input);
     this.assertCommentIsPending(context.note);
-
-    const [existingReport] = await db
-      .select({ id: revisionCommentReports.id })
-      .from(revisionCommentReports)
-      .where(eq(revisionCommentReports.commentId, input.noteId))
-      .limit(1);
-
-    if (existingReport) {
-      throw new AppError(
-        "A reported comment cannot be deleted.",
-        400,
-        "comment_reported_delete_locked",
-      );
-    }
+    await this.assertCommentNotReported(input.noteId, "delete");
 
     const deletedNote = await this.revisionNoteRepository.updateComment(
       input.noteId,
@@ -395,6 +383,7 @@ export class FileRevisionNoteService {
   }): Promise<FileRevisionNoteMutationResultDTO> {
     const context = await this.getCommentContext(input);
     this.assertCommentIsPending(context.note);
+    await this.assertCommentNotReported(input.noteId, "edit");
 
     if (context.note.comment.createdBy !== "client") {
       throw new AppError(
@@ -437,6 +426,7 @@ export class FileRevisionNoteService {
   }): Promise<FileRevisionNoteMutationResultDTO> {
     const context = await this.getCommentContext(input);
     this.assertCommentIsPending(context.note);
+    await this.assertCommentNotReported(input.noteId, "delete");
 
     if (context.note.comment.createdBy !== "client") {
       throw new AppError(
@@ -689,6 +679,7 @@ export class FileRevisionNoteService {
     }
 
     this.assertCommentIsPending(context.note);
+    await this.assertReplyNotReported(context.note.reply.id, "edit");
 
     const savedReply = await this.revisionNoteRepository.updateReply(
       input.noteId,
@@ -731,21 +722,7 @@ export class FileRevisionNoteService {
     }
 
     this.assertCommentIsPending(context.note);
-
-    const replyId = context.note.reply.id;
-    const [existingReport] = await db
-      .select({ id: revisionCommentReports.id })
-      .from(revisionCommentReports)
-      .where(eq(revisionCommentReports.replyId, replyId))
-      .limit(1);
-
-    if (existingReport) {
-      throw new AppError(
-        "A reported reply cannot be deleted.",
-        400,
-        "reply_reported_delete_locked",
-      );
-    }
+    await this.assertReplyNotReported(context.note.reply.id, "delete");
 
     const updatedNote = await this.revisionNoteRepository.deleteReply(input.noteId);
 
@@ -826,6 +803,52 @@ export class FileRevisionNoteService {
         "Resolved revision comments cannot be changed.",
         409,
         "file_revision_note_resolved",
+      );
+    }
+  }
+
+  private async assertCommentNotReported(
+    commentId: string,
+    action: "edit" | "delete" = "delete",
+  ) {
+    const [existingReport] = await db
+      .select({ id: revisionCommentReports.id })
+      .from(revisionCommentReports)
+      .where(eq(revisionCommentReports.commentId, commentId))
+      .limit(1);
+
+    if (existingReport) {
+      throw new AppError(
+        action === "edit"
+          ? "A reported comment cannot be edited."
+          : "A reported comment cannot be deleted.",
+        400,
+        action === "edit"
+          ? "comment_reported_edit_locked"
+          : "comment_reported_delete_locked",
+      );
+    }
+  }
+
+  private async assertReplyNotReported(
+    replyId: string,
+    action: "edit" | "delete" = "delete",
+  ) {
+    const [existingReport] = await db
+      .select({ id: revisionCommentReports.id })
+      .from(revisionCommentReports)
+      .where(eq(revisionCommentReports.replyId, replyId))
+      .limit(1);
+
+    if (existingReport) {
+      throw new AppError(
+        action === "edit"
+          ? "A reported reply cannot be edited."
+          : "A reported reply cannot be deleted.",
+        400,
+        action === "edit"
+          ? "reply_reported_edit_locked"
+          : "reply_reported_delete_locked",
       );
     }
   }

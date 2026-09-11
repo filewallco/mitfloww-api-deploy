@@ -74,3 +74,49 @@ invoicesRouter.get("/sample-pdf", asyncHandler(async (req, res) => {
   res.setHeader("Content-Length", String(pdfBuffer.length));
   return res.send(pdfBuffer);
 }));
+
+const customTemplateSchema = z.object({
+  id: z.string().trim().max(128).optional(),
+  name: z.string().trim().min(1, "Template name is required").max(100),
+  elements: z.array(z.string()).optional(),
+  layoutDirection: z.enum(["column", "row"]).nullable().optional(),
+  elementOffsets: z.string().nullable().optional(),
+  elementStyles: z.string().nullable().optional(),
+  accentColor: z.string().trim().max(32).nullable().optional(),
+  paperSize: z.enum(["a4", "a5", "letter"]).nullable().optional(),
+  fontFamily: z.string().trim().max(64).nullable().optional(),
+  fontWeight: z.string().trim().max(32).nullable().optional(),
+  fontStyle: z.string().trim().max(32).nullable().optional(),
+  logoAlignment: z.enum(["left", "center", "right"]).nullable().optional(),
+  nameAlignment: z.enum(["left", "center", "right"]).nullable().optional(),
+  showLogo: z.boolean().nullable().optional(),
+  showTaxNumber: z.boolean().nullable().optional(),
+  taxNumber: z.string().trim().max(50).nullable().optional(),
+  showNotes: z.boolean().nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  terms: z.string().trim().max(2000).nullable().optional(),
+});
+
+invoicesRouter.get("/templates/custom", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const templates = await invoiceService.getCustomTemplates(actor.id);
+  return res.json({ templates });
+}));
+
+invoicesRouter.post("/templates/custom", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const parsed = customTemplateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid custom template input", details: parsed.error.issues });
+  }
+
+  const result = await invoiceService.saveCustomTemplate(actor.id, parsed.data as any);
+  return res.json(result);
+}));
+
+invoicesRouter.delete("/templates/custom/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const id = String(req.params.id || "");
+  const templates = await invoiceService.deleteCustomTemplate(actor.id, id);
+  return res.json({ success: true, templates });
+}));

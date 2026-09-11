@@ -198,6 +198,7 @@ export class NotificationService {
   async listNotifications(
     params: NotificationListQueryParams,
     viewerLocale: string,
+    userId?: string,
   ): Promise<
     PaginatedResult<NotificationDTO> & {
       unreadCount: number | null;
@@ -211,10 +212,11 @@ export class NotificationService {
       this.repository.findManyPaginated({
         ...params,
         ...pagination,
+        userId,
       }),
       params.includeTotal === false
         ? Promise.resolve(null)
-        : this.repository.count({ unreadOnly: true }),
+        : this.repository.count({ unreadOnly: true, userId }),
     ]);
     const items = await this.resolveNotificationDTOs(
       result.records,
@@ -235,8 +237,8 @@ export class NotificationService {
     };
   }
 
-  async markAllNotificationsRead(): Promise<MarkAllNotificationsReadResultDTO> {
-    const markedCount = await this.repository.markAllRead(new Date());
+  async markAllNotificationsRead(userId?: string): Promise<MarkAllNotificationsReadResultDTO> {
+    const markedCount = await this.repository.markAllRead(new Date(), userId);
 
     return {
       markedCount,
@@ -246,8 +248,9 @@ export class NotificationService {
   async markNotificationRead(
     id: string,
     viewerLocale: string,
+    userId?: string,
   ): Promise<NotificationDTO> {
-    const record = await this.repository.markRead(id, new Date());
+    const record = await this.repository.markRead(id, new Date(), userId);
 
     if (!record) {
       throw new NotFoundAppError("Notification not found.");

@@ -168,6 +168,7 @@ export type UpdateFileRecordInput = Partial<
 
 export type FindManyFilesParams = FileListRepositoryQuery & {
   includeDeleted?: boolean;
+  projectIds?: string[];
 };
 
 type FileListRecord = Pick<
@@ -1286,6 +1287,14 @@ export class DrizzleFileRepository implements FileRepository {
 
     if (params.projectId !== undefined) {
       conditions.push(eq(files.projectId, params.projectId));
+    }
+
+    if (params.projectIds !== undefined) {
+      if (params.projectIds.length === 0) {
+        conditions.push(sql`1=0`);
+      } else {
+        conditions.push(inArray(files.projectId, params.projectIds));
+      }
     }
 
     if (params.fileType !== undefined) {

@@ -464,7 +464,7 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
     ) {}
 
     async listProjects(
-      params: ProjectListQueryParams,
+      params: ProjectListQueryParams & { userId?: string },
       viewerLocale: string,
     ): Promise<PaginatedResult<ProjectDTO>> {
       const pagination = buildPaginationParams({
@@ -489,10 +489,18 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       };
     }
 
-    async getProjectById(id: string, viewerLocale: string): Promise<ProjectDTO> {
+    async getProjectById(
+      id: string,
+      viewerLocale: string,
+      userId?: string,
+    ): Promise<ProjectDTO> {
       const record = await this.repository.findByIdentifier(id);
 
       if (!record) {
+        throw new NotFoundAppError("Project not found.");
+      }
+
+      if (userId && record.userId !== userId) {
         throw new NotFoundAppError("Project not found.");
       }
 
@@ -539,14 +547,15 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       const titleSourceLocale = defaultLocale;
       const clientNameSourceLocale = defaultLocale;
 
+      const actorId = options.userId || (await resolveActiveActor()).id;
+
       await this.assertProjectIdentityAvailable({
         clientName,
         title,
+        userId: actorId,
       });
 
       const publicId = await this.createUniqueProjectPublicId(title);
-
-      const actorId = options.userId || (await resolveActiveActor()).id;
       const record = await this.repository.create({
         userId: actorId,
         advancePaymentEnabled: input.advancePaymentEnabled,
@@ -589,11 +598,16 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       options: {
         sourceLocale: string;
         viewerLocale: string;
+        userId?: string;
       },
     ): Promise<ProjectDTO> {
       const existing = await this.repository.findByIdentifier(id);
 
       if (!existing) {
+        throw new NotFoundAppError("Project not found.");
+      }
+
+      if (options.userId && existing.userId !== options.userId) {
         throw new NotFoundAppError("Project not found.");
       }
 
@@ -680,6 +694,7 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
         clientName,
         excludeId: existing.id,
         title,
+        userId: existing.userId,
       });
 
       const record = await this.repository.update(existing.id, {
@@ -708,10 +723,14 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       return this.buildProjectDTO(fullRecord ?? record, options.viewerLocale);
     }
 
-    async getProjectEditLocks(id: string): Promise<ProjectEditLocksDTO> {
+    async getProjectEditLocks(id: string, userId?: string): Promise<ProjectEditLocksDTO> {
       const existing = await this.repository.findByIdentifier(id);
 
       if (!existing) {
+        throw new NotFoundAppError("Project not found.");
+      }
+
+      if (userId && existing.userId !== userId) {
         throw new NotFoundAppError("Project not found.");
       }
 
@@ -738,11 +757,15 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
 
     async getProjectShareComposer(
       id: string,
-      options?: { baseUrl?: string; viewerLocale: string; expiryDays?: number },
+      options?: { baseUrl?: string; viewerLocale: string; expiryDays?: number; userId?: string },
     ): Promise<ProjectShareComposerDTO> {
       const existing = await this.repository.findByIdentifier(id);
 
       if (!existing) {
+        throw new NotFoundAppError("Project not found.");
+      }
+
+      if (options?.userId && existing.userId !== options.userId) {
         throw new NotFoundAppError("Project not found.");
       }
 
@@ -764,11 +787,15 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
     async mutateProjectShare(
       id: string,
       input: ProjectShareLinkMutationInput,
-      options?: { baseUrl?: string; viewerLocale: string; expiryDays?: number },
+      options?: { baseUrl?: string; viewerLocale: string; expiryDays?: number; userId?: string },
     ): Promise<ProjectShareComposerDTO> {
       const existing = await this.repository.findByIdentifier(id);
 
       if (!existing) {
+        throw new NotFoundAppError("Project not found.");
+      }
+
+      if (options?.userId && existing.userId !== options.userId) {
         throw new NotFoundAppError("Project not found.");
       }
 
@@ -860,10 +887,15 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       id: string,
       shareClientEmail: string,
       viewerLocale: string,
+      userId?: string,
     ): Promise<ProjectDTO> {
       const existing = await this.repository.findByIdentifier(id);
 
       if (!existing) {
+        throw new NotFoundAppError("Project not found.");
+      }
+
+      if (userId && existing.userId !== userId) {
         throw new NotFoundAppError("Project not found.");
       }
 
@@ -883,10 +915,15 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
     async clearProjectShareClientEmail(
       id: string,
       viewerLocale: string,
+      userId?: string,
     ): Promise<ProjectDTO> {
       const existing = await this.repository.findByIdentifier(id);
 
       if (!existing) {
+        throw new NotFoundAppError("Project not found.");
+      }
+
+      if (userId && existing.userId !== userId) {
         throw new NotFoundAppError("Project not found.");
       }
 
@@ -903,10 +940,14 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       return this.buildProjectDTO(record, viewerLocale);
     }
 
-    async deleteProject(id: string): Promise<DeletedProjectDTO> {
+    async deleteProject(id: string, userId?: string): Promise<DeletedProjectDTO> {
       const existing = await this.repository.findByIdentifier(id);
 
       if (!existing) {
+        throw new NotFoundAppError("Project not found.");
+      }
+
+      if (userId && existing.userId !== userId) {
         throw new NotFoundAppError("Project not found.");
       }
 
@@ -1385,6 +1426,7 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       clientName: string;
       excludeId?: string;
       title: string;
+      userId?: string;
     }) {
       const duplicate =
         await this.repository.findActiveByCanonicalTitleAndClientName(input);
@@ -1620,8 +1662,8 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       return record;
     }
 
-    public async getPaidProjectsWithReviews() {
-      return this.repository.findPaidProjectsWithReviews();
+    public async getPaidProjectsWithReviews(userId?: string) {
+      return this.repository.findPaidProjectsWithReviews(userId);
     }
 
     private assertProjectIsActive(status: string) {

@@ -148,6 +148,7 @@ export type FileReviewProjectDTO = {
   paymentUnlockState?: string | null;
   creatorName?: string | null;
   creatorAvatarUrl?: string | null;
+  clientEmail?: string | null;
   averageRating?: number | null;
   reviewCount?: number | null;
 };

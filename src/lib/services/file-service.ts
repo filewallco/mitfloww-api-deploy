@@ -867,6 +867,7 @@ function toFileReviewVersionDTO(input: {
   unresolvedReportCount: number;
   version: FileVersionRecord;
   finalDraftReportStatus?: FileFinalDraftReportStatus;
+  uploaderName?: string | null;
 }): FileReviewVersionDTO {
   const {
     approvedVersionId,
@@ -924,7 +925,10 @@ function toFileReviewVersionDTO(input: {
     storageKey: version.storageKey,
     unresolvedReportCount,
     updatedAt: version.updatedAt.toISOString(),
-    uploadedBy: version.uploadedBy,
+    uploadedBy:
+      version.uploadedBy && version.uploadedBy !== MANAGED_UPLOAD_OWNER
+        ? version.uploadedBy
+        : (input.uploaderName || version.uploadedBy),
   };
 }
 
@@ -943,6 +947,7 @@ export class FileService {
     options: {
       sourceLocale: string;
       viewerLocale: string;
+      userId?: string;
     },
   ): Promise<FileDTO> {
     const projectIdentifier = normalizeProjectId(input.projectId);
@@ -952,6 +957,9 @@ export class FileService {
     }
 
     const project = await this.getRequiredProject(projectIdentifier);
+    if (options.userId && project.userId !== options.userId) {
+      throw new NotFoundAppError("Project not found.");
+    }
     this.assertProjectIsActive(project.status);
     await storageService.assertCanAllocateStorage({
       requiredBytes: input.sizeBytes,
@@ -1096,6 +1104,7 @@ export class FileService {
     options?: {
       allowApproved?: boolean;
       awaitStorageDelete?: boolean;
+      userId?: string;
     },
   ): Promise<DeletedFileDTO> {
     const existingRecord = await this.repository.findWithVersionsById(id, {
@@ -1107,6 +1116,9 @@ export class FileService {
     }
 
     const project = await this.getRequiredProject(existingRecord.file.projectId);
+    if (options?.userId && project.userId !== options.userId) {
+      throw new NotFoundAppError("File not found.");
+    }
     this.assertProjectIsActive(project.status);
     if (!options?.allowApproved) {
       this.assertFileIsNotApproved(existingRecord.file.approvalStatus);
@@ -1641,11 +1653,22 @@ export class FileService {
     return result;
   }
 
-  async getFileById(id: string, viewerLocale: string): Promise<FileDTO> {
+  async getFileById(
+    id: string,
+    viewerLocale: string,
+    userId?: string,
+  ): Promise<FileDTO> {
     const record = await this.repository.findById(id);
 
     if (!record) {
       throw new NotFoundAppError("File not found.");
+    }
+
+    if (userId) {
+      const project = await this.projectRepository.findById(record.projectId);
+      if (!project || project.userId !== userId) {
+        throw new NotFoundAppError("File not found.");
+      }
     }
 
     return this.buildFileDTO(record, viewerLocale);
@@ -1653,16 +1676,17 @@ export class FileService {
 
   async listFiles(
     params: FileQueryParams,
-    options?: { viewerLocale: string },
+    options?: { viewerLocale: string; userId?: string },
   ): Promise<PaginatedResult<FileDTO>> {
     let resolvedProjectId = params.projectId;
+    let scopedProjectIds: string[] | undefined = undefined;
 
     if (params.projectId !== undefined) {
       const project = await this.projectRepository.findByIdentifier(
         params.projectId,
       );
 
-      if (!project) {
+      if (!project || (options?.userId && project.userId !== options.userId)) {
         const pagination = buildPaginationParams({
           limit: params.limit,
           page: params.page,
@@ -1682,6 +1706,34 @@ export class FileService {
       }
 
       resolvedProjectId = project.id;
+    } else if (options?.userId) {
+      const userProjects = await this.projectRepository.findManyPaginated({
+        userId: options.userId,
+        limit: 1000,
+        offset: 0,
+        page: 1,
+        order: "desc",
+        sort: "createdAt",
+      });
+      scopedProjectIds = userProjects.records.map((p) => p.id);
+      if (scopedProjectIds.length === 0) {
+        const pagination = buildPaginationParams({
+          limit: params.limit,
+          page: params.page,
+        });
+
+        return {
+          items: [],
+          pagination:
+            params.includeTotal === false
+              ? null
+              : buildPaginationMeta({
+                limit: pagination.limit,
+                page: pagination.page,
+                total: 0,
+              }),
+        };
+      }
     }
 
     const pagination = buildPaginationParams({
@@ -1691,6 +1743,7 @@ export class FileService {
     const result = await this.repository.findMany({
       ...params,
       projectId: resolvedProjectId,
+      projectIds: scopedProjectIds,
       ...pagination,
     });
     const items = await this.buildFileDTOs(
@@ -1792,12 +1845,20 @@ export class FileService {
     options: {
       sourceLocale: string;
       viewerLocale: string;
+      userId?: string;
     },
   ): Promise<FileDTO> {
     const existing = await this.repository.findById(id);
 
     if (!existing) {
       throw new NotFoundAppError("File not found.");
+    }
+
+    if (options.userId) {
+      const project = await this.projectRepository.findById(existing.projectId);
+      if (!project || project.userId !== options.userId) {
+        throw new NotFoundAppError("File not found.");
+      }
     }
 
     const updatedAt = new Date();
@@ -1836,8 +1897,9 @@ export class FileService {
       contentType?: string;
     },
     viewerLocale: string,
+    userId?: string,
   ): Promise<FileDTO> {
-    const existingRecord = await this.getUploadableRecord(id);
+    const existingRecord = await this.getUploadableRecord(id, userId);
     this.assertFileIsNotApproved(existingRecord.approvalStatus);
     this.assertFileIsNotAlreadyUploaded(existingRecord.uploadStatus);
 
@@ -1878,11 +1940,6 @@ export class FileService {
         key: existingRecord.storageKey,
       });
     } catch (error) {
-      await this.safeDeleteStoredFile(
-        existingRecord.storageBucket,
-        existingRecord.storageKey,
-      );
-
       if (!input.abortSignal?.aborted && !isAbortError(error)) {
         await this.setUploadStatus(id, FileUploadStatus.Failed);
       }
@@ -1902,7 +1959,7 @@ export class FileService {
     return this.buildFileDTO(record, viewerLocale);
   }
 
-  async initiateMultipartUpload(id: string): Promise<{
+  async initiateMultipartUpload(id: string, userId?: string): Promise<{
     bucket: string;
     fileId: string;
     multipartThresholdBytes: number;
@@ -1911,7 +1968,7 @@ export class FileService {
     totalParts: number;
     uploadId: string;
   }> {
-    const existingRecord = await this.getUploadableRecord(id);
+    const existingRecord = await this.getUploadableRecord(id, userId);
     this.assertFileIsNotApproved(existingRecord.approvalStatus);
     this.assertFileIsNotAlreadyUploaded(existingRecord.uploadStatus);
 
@@ -1955,8 +2012,9 @@ export class FileService {
       partNumber: number;
       uploadId: string;
     },
+    userId?: string,
   ) {
-    const existingRecord = await this.getUploadableRecord(id);
+    const existingRecord = await this.getUploadableRecord(id, userId);
     this.assertFileIsNotApproved(existingRecord.approvalStatus);
     this.assertFileCanBeUploaded(existingRecord.uploadStatus);
 
@@ -2029,8 +2087,9 @@ export class FileService {
       uploadId: string;
     },
     viewerLocale: string,
+    userId?: string,
   ): Promise<FileDTO> {
-    const existingRecord = await this.getUploadableRecord(id);
+    const existingRecord = await this.getUploadableRecord(id, userId);
     this.assertFileCanBeUploaded(existingRecord.uploadStatus);
 
     if (!shouldUseMultipartUpload(existingRecord.sizeBytes)) {
@@ -2087,8 +2146,9 @@ export class FileService {
       reason: MultipartUploadAbortReason;
       uploadId: string;
     },
+    userId?: string,
   ): Promise<MultipartUploadAbortDTO> {
-    const existingRecord = await this.getUploadableRecord(id);
+    const existingRecord = await this.getUploadableRecord(id, userId);
 
     if (existingRecord.uploadStatus === FileUploadStatus.Uploaded) {
       return {
@@ -2133,8 +2193,9 @@ export class FileService {
       uploadId?: string;
     },
     viewerLocale = "en",
+    userId?: string,
   ): Promise<FileDTO> {
-    const existingRecord = await this.getUploadableRecord(id);
+    const existingRecord = await this.getUploadableRecord(id, userId);
 
     if (existingRecord.uploadStatus === FileUploadStatus.Uploaded) {
       return this.buildFileDTO(existingRecord, viewerLocale);
@@ -2714,6 +2775,7 @@ export class FileService {
       sourceLocale: string;
       viewerLocale: string;
       idempotencyKeyBase?: string | null;
+      userId?: string;
     },
   ): Promise<CommitUploadedFilesResultDTO> {
     const projectIdentifier = normalizeProjectId(input.projectId);
@@ -2731,6 +2793,9 @@ export class FileService {
       creditService.getOrCreateCreditAccountForScope(),
       resolveStorageBillingScope(),
     ]);
+    if (options.userId && project.userId !== options.userId) {
+      throw new NotFoundAppError("Project not found.");
+    }
     const { scope } = creditScopeResult;
 
     await Promise.all(
@@ -3640,7 +3705,7 @@ export class FileService {
 
   async getFileContent(
     id: string,
-    options?: { projectId?: string },
+    options?: { projectId?: string; userId?: string },
   ): Promise<{
     body: ReadableStream<Uint8Array>;
     contentLength: number | null;
@@ -3654,11 +3719,13 @@ export class FileService {
       throw new NotFoundAppError("File not found.");
     }
 
-    if (options?.projectId) {
-      const project = await this.getRequiredProject(options.projectId);
-      if (fileWithVersions.file.projectId !== project.id) {
-        throw new NotFoundAppError("File not found.");
-      }
+    const project = await this.getRequiredProject(fileWithVersions.file.projectId);
+    if (options?.userId && project.userId !== options.userId) {
+      throw new NotFoundAppError("File not found.");
+    }
+
+    if (options?.projectId && fileWithVersions.file.projectId !== options.projectId) {
+      throw new NotFoundAppError("File not found.");
     }
 
     const existingRecord = fileWithVersions.file;
@@ -3727,7 +3794,7 @@ export class FileService {
 
   async getFileThumbnail(
     id: string,
-    options?: { projectId?: string; width?: number; height?: number },
+    options?: { projectId?: string; width?: number; height?: number; userId?: string },
   ): Promise<{
     buffer: Buffer;
     contentType: string;
@@ -3742,6 +3809,10 @@ export class FileService {
     }
 
     const project = await this.getRequiredProject(options.projectId);
+    if (options.userId && project.userId !== options.userId) {
+      throw new NotFoundAppError("File not found.");
+    }
+
     const fileWithVersions = await this.repository.findWithVersionsById(id);
 
     if (!fileWithVersions || fileWithVersions.file.projectId !== project.id) {
@@ -4369,19 +4440,18 @@ export class FileService {
       0,
       usedRevisionCount - project.revisionLimit,
     );
-    let creatorName =
-      finalDeliverables.find((file) => file.uploadedBy)?.uploadedBy ?? null;
+    let creatorName: string | null = null;
     let creatorAvatarUrl: string | null = null;
-    if (project.userId) {
+    const projectUserId = project.userId || (await resolveActiveActor().catch(() => null))?.id;
+    if (projectUserId) {
       try {
-        const creatorUser = await userService.getUser(project.userId);
+        const creatorUser = await userService.getUser(projectUserId);
         if (creatorUser) {
-          if (!creatorName) {
-            creatorName =
-              creatorUser.displayName ||
-              [creatorUser.firstName, creatorUser.lastName].filter(Boolean).join(" ") ||
-              null;
-          }
+          creatorName =
+            creatorUser.displayName ||
+            [creatorUser.firstName, creatorUser.lastName].filter(Boolean).join(" ") ||
+            creatorUser.username ||
+            null;
           creatorAvatarUrl = creatorUser.avatarUrl ?? null;
         }
       } catch {
@@ -4393,8 +4463,8 @@ export class FileService {
       0,
     );
 
-    const completedProjectsCount = await this.projectRepository.countPaidProjects();
-    const freelancerStats = await this.projectRepository.getFreelancerStats();
+    const completedProjectsCount = await this.projectRepository.countPaidProjects(projectUserId);
+    const freelancerStats = await this.projectRepository.getFreelancerStats(projectUserId);
 
     return {
       files: finalDeliverables.map((file) => ({
@@ -4421,6 +4491,7 @@ export class FileService {
         amountCents: project.amountCents,
         creatorName,
         creatorAvatarUrl,
+        clientEmail: project.clientEmail ?? null,
         completedProjectsCount,
         currency: project.currency,
         deliveryDate:
@@ -4717,11 +4788,18 @@ export class FileService {
     }
   }
 
-  private async getUploadableRecord(id: string) {
+  private async getUploadableRecord(id: string, userId?: string) {
     const existingRecord = await this.repository.findById(id);
 
     if (!existingRecord) {
       throw new NotFoundAppError("File not found.");
+    }
+
+    if (userId) {
+      const project = await this.projectRepository.findById(existingRecord.projectId);
+      if (!project || project.userId !== userId) {
+        throw new NotFoundAppError("File not found.");
+      }
     }
 
     if (existingRecord.uploadStatus === FileUploadStatus.Deleted) {
@@ -4764,6 +4842,10 @@ export class FileService {
     }
 
     const project = await this.getRequiredProject(projectIdentifier);
+    const actor = await resolveActiveActor();
+    if (project.userId && project.userId !== actor.id) {
+      throw new NotFoundAppError("Project not found.");
+    }
     this.assertProjectIsActive(project.status);
 
     if (!input.targetFileId) {
@@ -6168,9 +6250,10 @@ export class FileService {
 
     let creatorName: string | null = null;
     let creatorAvatarUrl: string | null = null;
-    if (project.userId) {
+    const projectUserId = project.userId || (await resolveActiveActor().catch(() => null))?.id;
+    if (projectUserId) {
       try {
-        const creatorUser = await userService.getUser(project.userId);
+        const creatorUser = await userService.getUser(projectUserId);
         if (creatorUser) {
           creatorName =
             creatorUser.displayName ||
@@ -6232,6 +6315,7 @@ export class FileService {
         watermarkEnabled: project.watermarkEnabled,
         creatorName,
         creatorAvatarUrl,
+        clientEmail: project.clientEmail ?? null,
         // Unlock/payment readiness fields computed server-side so the UI
         // can decide whether project-level payment unlock is available.
         canPayAndUnlockProject:
@@ -6269,6 +6353,7 @@ export class FileService {
       versions: versionPreviews.map(({ reviewPreview, version }) =>
         toFileReviewVersionDTO({
           approvedVersionId: file.approvedVersionId,
+          uploaderName: creatorName,
           commentCount:
             versionSafetyById.get(version.id)?.commentCount ?? 0,
           currentVersionId: file.currentVersionId,

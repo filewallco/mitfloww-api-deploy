@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { DEFAULT_CREDIT_OWNER_ID } from "@/lib/credits/config/ledger";
 import type { CreditPlanKey } from "@/lib/credits";
+import { UnauthorizedAppError } from "@/lib/errors/app-error";
 import { userService } from "@/lib/services/user-service";
 import { verifySessionToken } from "./session";
 
@@ -31,7 +31,7 @@ export async function resolveActiveActor(req?: {
     id = actorStorage.getStore()?.userId || null;
   }
   if (!id) {
-    id = DEFAULT_CREDIT_OWNER_ID;
+    throw new UnauthorizedAppError("Authentication required.");
   }
 
   const user = await userService.getUser(id);

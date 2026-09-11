@@ -13,15 +13,21 @@ export class TestimonialService {
     return this.repository.listAll(userId ? { userId } : undefined);
   }
 
-  async getTestimonialById(id: string) {
+  async getTestimonialById(id: string, userId?: string) {
     const record = await this.repository.findById(id);
-    if (!record) {
+    if (!record || (userId && record.userId !== userId)) {
       throw new NotFoundAppError("Testimonial not found.");
     }
     return record;
   }
 
-  async updateTestimonial(id: string, input: UpdateTestimonialInput) {
+  async updateTestimonial(id: string, input: UpdateTestimonialInput, userId?: string) {
+    if (userId) {
+      const record = await this.repository.findById(id);
+      if (!record || record.userId !== userId) {
+        throw new NotFoundAppError("Testimonial not found.");
+      }
+    }
     const record = await this.repository.update(id, input);
     if (!record) {
       throw new NotFoundAppError("Testimonial not found.");
@@ -29,7 +35,13 @@ export class TestimonialService {
     return record;
   }
 
-  async deleteTestimonial(id: string) {
+  async deleteTestimonial(id: string, userId?: string) {
+    if (userId) {
+      const record = await this.repository.findById(id);
+      if (!record || record.userId !== userId) {
+        throw new NotFoundAppError("Testimonial not found.");
+      }
+    }
     const deleted = await this.repository.softDelete(id);
     if (!deleted) {
       throw new NotFoundAppError("Testimonial not found.");

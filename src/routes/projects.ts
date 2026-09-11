@@ -24,8 +24,17 @@ import {
   fileVersionReportBodySchema,
 } from "@/lib/validation/file-review";
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
+import { NotFoundAppError } from "@/lib/errors/app-error";
 
 export const projectsRouter = Router();
+
+async function getAuthorizedProject(identifier: string, actorId: string) {
+  const project = await projectRepository.findByIdentifier(identifier);
+  if (!project || project.userId !== actorId) {
+    throw new NotFoundAppError("Project not found.");
+  }
+  return project;
+}
 
 function getClientAppBaseUrl(req: any): string | undefined {
   const origin = req.get("origin");
@@ -84,9 +93,10 @@ function parseProjectIds(value: string | undefined) {
 }
 
 projectsRouter.get("/", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const query = parseWithSchema(projectListQueryParamsSchema, req.query);
-  const result = await projectService.listProjects(query, viewerLocale);
+  const result = await projectService.listProjects({ ...query, userId: actor.id }, viewerLocale);
 
   return sendSuccess(res, result.items, {
     meta: {
@@ -106,17 +116,20 @@ projectsRouter.get("/", asyncHandler(async (req, res) => {
 }));
 
 projectsRouter.post("/", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const requestLocale = getRequestLocale(req);
   const input = parseWithSchema(projectMutationSchema, req.body);
   const data = await projectService.createProject(input, {
     sourceLocale: requestLocale,
     viewerLocale: requestLocale,
+    userId: actor.id,
   });
 
   return sendSuccess(res, data, { status: 201 });
 }));
 
 projectsRouter.get("/metrics", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const query = parseWithSchema(projectMetricsQuerySchema, req.query);
   const projectIdentifiers = parseProjectIds(query.projectIds);
 
@@ -133,7 +146,7 @@ projectsRouter.get("/metrics", asyncHandler(async (req, res) => {
   const projectIds = Array.from(
     new Set(
       resolvedProjects
-        .map(({ project }) => project?.id ?? null)
+        .map(({ project }) => (project?.userId === actor.id ? project?.id : null))
         .filter((id): id is string => Boolean(id)),
     ),
   );
@@ -168,8 +181,9 @@ projectsRouter.get("/metrics", asyncHandler(async (req, res) => {
   );
 }));
 
-projectsRouter.get("/reviews", asyncHandler(async (_req, res) => {
-  const projectsWithReviews = await projectService.getPaidProjectsWithReviews();
+projectsRouter.get("/reviews", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const projectsWithReviews = await projectService.getPaidProjectsWithReviews(actor.id);
 
   return res.json({
     items: projectsWithReviews.map(({ project, review }) => ({
@@ -188,32 +202,37 @@ projectsRouter.get("/reviews", asyncHandler(async (_req, res) => {
 }));
 
 projectsRouter.get("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
-  const data = await projectService.getProjectById(params.id, viewerLocale);
+  const data = await projectService.getProjectById(params.id, viewerLocale, actor.id);
   return sendSuccess(res, data);
 }));
 
 projectsRouter.patch("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
   const input = parseWithSchema(projectMutationSchema, req.body);
   const data = await projectService.updateProject(params.id, input, {
     sourceLocale: requestLocale,
     viewerLocale: requestLocale,
+    userId: actor.id,
   });
   return sendSuccess(res, data);
 }));
 
 projectsRouter.delete("/:id", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
-  const data = await projectService.deleteProject(params.id);
+  const data = await projectService.deleteProject(params.id, actor.id);
   return sendSuccess(res, data);
 }));
 
 projectsRouter.get("/:id/edit-locks", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
-  const result = await projectService.getProjectEditLocks(params.id);
+  const result = await projectService.getProjectEditLocks(params.id, actor.id);
   return sendSuccess(res, result);
 }));
 
@@ -224,20 +243,21 @@ projectsRouter.get("/:id/review", asyncHandler(async (req, res) => {
 }));
 
 projectsRouter.get("/:id/share", asyncHandler(async (req, res) => {
-  const actor = await resolveActiveActor();
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
   const baseUrl = getClientAppBaseUrl(req);
   const data = await projectService.getProjectShareComposer(params.id, {
     baseUrl,
     expiryDays: actor.clientShareLinkExpiryDays,
+    userId: actor.id,
     viewerLocale,
   });
   return sendSuccess(res, data);
 }));
 
 projectsRouter.post("/:id/share", asyncHandler(async (req, res) => {
-  const actor = await resolveActiveActor();
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
   const input = parseWithSchema(projectShareLinkMutationSchema, req.body);
@@ -245,12 +265,14 @@ projectsRouter.post("/:id/share", asyncHandler(async (req, res) => {
   const data = await projectService.mutateProjectShare(params.id, input, {
     baseUrl,
     expiryDays: actor.clientShareLinkExpiryDays,
+    userId: actor.id,
     viewerLocale,
   });
   return sendSuccess(res, data);
 }));
 
 projectsRouter.patch("/:id/share", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
   const input = parseWithSchema(projectShareEmailMutationSchema, req.body);
@@ -258,38 +280,45 @@ projectsRouter.patch("/:id/share", asyncHandler(async (req, res) => {
     params.id,
     input.shareClientEmail,
     viewerLocale,
+    actor.id,
   );
   return sendSuccess(res, data);
 }));
 
 projectsRouter.delete("/:id/share", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
   const data = await projectService.clearProjectShareClientEmail(
     params.id,
     viewerLocale,
+    actor.id,
   );
   return sendSuccess(res, data);
 }));
 
 projectsRouter.get("/:id/files/:fileId/review", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const viewerLocale = getRequestLocale(req);
   const params = parseWithSchema(projectFileReviewParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
   const result = await fileService.getFileReview({
     fileId: params.fileId,
-    projectId: params.id,
+    projectId: project.id,
     viewerLocale,
   });
   return sendSuccess(res, result);
 }));
 
 projectsRouter.get("/:id/files/:fileId/thumbnail", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const params = parseWithSchema(projectFileReviewParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
   const width = req.query.w ? Number(req.query.w) : undefined;
   const height = req.query.h ? Number(req.query.h) : undefined;
 
   const result = await fileService.getFileThumbnail(params.fileId, {
-    projectId: params.id,
+    projectId: project.id,
     width,
     height,
   });
@@ -308,9 +337,11 @@ projectsRouter.get("/:id/files/:fileId/thumbnail", asyncHandler(async (req, res)
 }));
 
 projectsRouter.get("/:id/files/:fileId/content", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const params = parseWithSchema(projectFileReviewParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
   const result = await fileService.getFileContent(params.fileId, {
-    projectId: params.id,
+    projectId: project.id,
   });
 
   res.setHeader("Content-Type", result.contentType);
@@ -335,13 +366,15 @@ projectsRouter.get("/:id/files/:fileId/content", asyncHandler(async (req, res) =
 }));
 
 projectsRouter.post("/:id/files/:fileId/final-draft-report", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(projectFileReviewParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
   const input = parseWithSchema(finalDraftReportBodySchema, req.body);
   const data = await fileService.reportFinalDraft({
     fileId: params.fileId,
     message: input.message,
-    projectId: params.id,
+    projectId: project.id,
     reason: input.reason,
     sourceLocale: requestLocale,
   });
@@ -349,10 +382,12 @@ projectsRouter.post("/:id/files/:fileId/final-draft-report", asyncHandler(async 
 }));
 
 projectsRouter.post("/:id/files/:fileId/versions/commit", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(projectFileReviewParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
   const input = parseWithSchema(commitProjectFileVersionBodySchema, req.body);
-  const idempotencyKeyBase = `commit:project:${params.id}:file:${params.fileId}:${input.files.map((f) => f.localFileId).join("|")}`;
+  const idempotencyKeyBase = `commit:project:${project.id}:file:${params.fileId}:${input.files.map((f) => f.localFileId).join("|")}`;
 
   const data = await fileService.commitUploadedFileVersion(
     {
@@ -361,7 +396,7 @@ projectsRouter.post("/:id/files/:fileId/versions/commit", asyncHandler(async (re
       files: input.files,
       isFinalDraft: input.isFinalDraft,
       useSoftWatermark: input.useSoftWatermark,
-      projectId: params.id,
+      projectId: project.id,
       revisionDescription: input.revisionDescription,
       sourceLocale: requestLocale,
       viewerLocale: requestLocale,
@@ -373,23 +408,27 @@ projectsRouter.post("/:id/files/:fileId/versions/commit", asyncHandler(async (re
 }));
 
 projectsRouter.delete("/:id/files/:fileId/versions/:versionId", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const params = parseWithSchema(projectFileVersionParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
   const data = await fileService.deleteFileVersion({
     fileId: params.fileId,
-    projectId: params.id,
+    projectId: project.id,
     versionId: params.versionId,
   });
   return sendSuccess(res, data);
 }));
 
 projectsRouter.post("/:id/files/:fileId/versions/:versionId/report", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(projectFileVersionParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
   const input = parseWithSchema(fileVersionReportBodySchema, req.body);
   const data = await fileService.reportFileVersion({
     fileId: params.fileId,
     message: input.message,
-    projectId: params.id,
+    projectId: project.id,
     reason: input.reason,
     sourceLocale: requestLocale,
     versionId: params.versionId,

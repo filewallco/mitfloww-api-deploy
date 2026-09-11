@@ -1,6 +1,30 @@
-import { boolean, text, timestamp, uuid, varchar, type PgSchema } from "drizzle-orm/pg-core";
+import { boolean, jsonb, text, timestamp, uuid, varchar, type PgSchema } from "drizzle-orm/pg-core";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type { createUserTables } from "./users";
+
+export interface CustomInvoiceTemplate {
+  id: string;
+  name: string;
+  elements: string[];
+  layoutDirection?: "column" | "row" | null;
+  elementOffsets?: string | null;
+  elementStyles?: string | null;
+  accentColor?: string | null;
+  paperSize?: "a4" | "a5" | "letter" | null;
+  fontFamily?: string | null;
+  fontWeight?: string | null;
+  fontStyle?: string | null;
+  logoAlignment?: "left" | "center" | "right" | null;
+  nameAlignment?: "left" | "center" | "right" | null;
+  showLogo?: boolean | null;
+  showTaxNumber?: boolean | null;
+  taxNumber?: string | null;
+  showNotes?: boolean | null;
+  notes?: string | null;
+  terms?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export const createInvoiceTables = (
   schema: PgSchema,
@@ -33,6 +57,7 @@ export const createInvoiceTables = (
     customLayoutDirection: varchar("custom_layout_direction", { length: 16 }),
     customElementOffsets: text("custom_element_offsets"),
     customElementStyles: text("custom_element_styles"),
+    customTemplates: jsonb("custom_templates").$type<CustomInvoiceTemplate[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   });

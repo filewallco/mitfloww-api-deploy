@@ -932,7 +932,7 @@ export const hiMessages = {
       "अपलोड सहेजा गया, लेकिन प्रोसेसिंग शुरू नहीं हो सकी। आप बाद में प्रोसेसिंग पुनः प्रयास कर सकते हैं।",
     processingCouldNotStartTitle: "प्रोसेसिंग शुरू नहीं हो सकी",
     processingCouldNotStartDescription:
-      "वॉर्कर शुरू करें और बाद में प्रोसेसिंग पुनः प्रयास करें।",
+      "प्रोसेसिंग में कुछ समय लग रहा है। कृपया कुछ देर बाद पुनः प्रयास करें।",
     processingFailedDescription: "प्रोसेसिंग विफल रही। कृपया फिर से प्रयास करें।",
     fileProcessingTitle: "फ़ाइल प्रोसेसिंग",
     fileProcessingActiveCount: "\u0938\u0915\u094d\u0930\u093f\u092f: {count}",
@@ -1038,7 +1038,7 @@ export const hiMessages = {
     deleteFailedDescription:
       "The uploaded file could not be removed from storage. Please try again.",
     fileReviewFinalDraftLargeUploadDescription:
-      "\u092b\u093c\u093e\u0907\u0928\u0932 \u0921\u094d\u0930\u093e\u092b\u094d\u091f \u0905\u092a\u0932\u094b\u0921 \u0938\u094d\u091f\u0948\u0902\u0921\u0930\u094d\u0921 \u0938\u093e\u0907\u091c \u0932\u093f\u092e\u093f\u091f \u0915\u094b \u092c\u093e\u092f\u092a\u093e\u0938 \u0915\u0930\u0924\u0947 \u0939\u0948\u0902 \u0914\u0930 \u092c\u0921\u093c\u0947 \u0905\u092a\u0932\u094b\u0921 \u092a\u0925 \u0915\u093e \u0909\u092a\u092f\u094b\u0917 \u0928\u0939\u0940\u0902 \u0915\u0930\u0924\u0947 \u0939\u0948\u0902\u0964",
+      "फ़ाइनल ड्राफ्ट अपलोड पर फ़ाइल साइज़ की कोई सीमा नहीं है।",
     deleteDeferredTitle: "Removed locally",
     deleteDeferredDescription:
       "The file was removed from this draft, but storage cleanup could not finish. We'll retry later.",

@@ -49,6 +49,7 @@ export type FindProjectByCanonicalIdentityInput = {
   clientName: string;
   excludeId?: string;
   title: string;
+  userId?: string;
 };
 
 export type ProjectRecordWithMetrics = ProjectRecord & {
@@ -104,9 +105,9 @@ export interface ProjectRepository {
   softDelete(id: string, deletedAt: Date): Promise<ProjectRecord | null>;
   hardDelete(id: string): Promise<ProjectRecord | null>;
   update(id: string, input: UpdateProjectRecordInput): Promise<ProjectRecord | null>;
-  countPaidProjects(): Promise<number>;
-  getFreelancerStats(): Promise<{ averageRating: number; totalReviews: number }>;
-  findPaidProjectsWithReviews(): Promise<Array<{ project: ProjectRecord; review: ProjectClientReviewRecord }>>;
+  countPaidProjects(userId?: string): Promise<number>;
+  getFreelancerStats(userId?: string): Promise<{ averageRating: number; totalReviews: number }>;
+  findPaidProjectsWithReviews(userId?: string): Promise<Array<{ project: ProjectRecord; review: ProjectClientReviewRecord }>>;
 }
 
 const projectColumns = getTableColumns(projects);
@@ -213,6 +214,10 @@ export class DrizzleProjectRepository implements ProjectRepository {
       sql`lower(regexp_replace(btrim(${projects.clientName}), '[[:space:]]+', ' ', 'g')) = ${canonicalizeProjectIdentityPart(input.clientName)}`,
     ];
 
+    if (input.userId) {
+      conditions.push(eq(projects.userId, input.userId));
+    }
+
     if (input.excludeId) {
       conditions.push(sql`${projects.id} <> ${input.excludeId}`);
     }
@@ -302,6 +307,10 @@ export class DrizzleProjectRepository implements ProjectRepository {
 
     if (!params.includeDeleted) {
       conditions.push(isNull(projects.deletedAt));
+    }
+
+    if (params.userId) {
+      conditions.push(eq(projects.userId, params.userId));
     }
 
     if (params.paymentStatus !== undefined) {
@@ -458,21 +467,30 @@ export class DrizzleProjectRepository implements ProjectRepository {
     return record ?? null;
   }
 
-  async countPaidProjects(): Promise<number> {
+  async countPaidProjects(userId?: string): Promise<number> {
+    const conditions = [
+      isNull(projects.deletedAt),
+      eq(projects.paymentStatus, ProjectPaymentStatus.Paid),
+    ];
+    if (userId) {
+      conditions.push(eq(projects.userId, userId));
+    }
     const [result] = await db
       .select({ count: count() })
       .from(projects)
-      .where(
-        and(
-          isNull(projects.deletedAt),
-          eq(projects.paymentStatus, ProjectPaymentStatus.Paid),
-        ),
-      );
+      .where(and(...conditions));
 
     return result?.count ?? 0;
   }
 
-  async findPaidProjectsWithReviews() {
+  async findPaidProjectsWithReviews(userId?: string) {
+    const conditions = [
+      eq(projects.paymentStatus, "paid"),
+      isNull(projects.deletedAt),
+    ];
+    if (userId) {
+      conditions.push(eq(projects.userId, userId));
+    }
     const results = await db
       .select({
         project: projects,
@@ -480,23 +498,29 @@ export class DrizzleProjectRepository implements ProjectRepository {
       })
       .from(projects)
       .innerJoin(projectClientReviews, eq(projects.id, projectClientReviews.projectId))
-      .where(
-        and(
-          eq(projects.paymentStatus, "paid"),
-          isNull(projects.deletedAt)
-        )
-      )
+      .where(and(...conditions))
       .orderBy(desc(projectClientReviews.submittedAt));
 
     return results;
   }
 
-  async getFreelancerStats(): Promise<{ averageRating: number; totalReviews: number }> {
-    const records = await db
-      .select({
-        rating: projectClientReviews.rating,
-      })
-      .from(projectClientReviews);
+  async getFreelancerStats(userId?: string): Promise<{ averageRating: number; totalReviews: number }> {
+    let records;
+    if (userId) {
+      records = await db
+        .select({
+          rating: projectClientReviews.rating,
+        })
+        .from(projectClientReviews)
+        .innerJoin(projects, eq(projects.id, projectClientReviews.projectId))
+        .where(and(eq(projects.userId, userId), isNull(projects.deletedAt)));
+    } else {
+      records = await db
+        .select({
+          rating: projectClientReviews.rating,
+        })
+        .from(projectClientReviews);
+    }
 
     const totalReviews = records.length;
     const averageRating = totalReviews > 0

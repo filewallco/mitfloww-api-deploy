@@ -612,6 +612,43 @@ export class UserService {
 
     return user;
   }
+
+  async resetPassword(input: {
+    usernameOrEmail: string;
+    newPassword: string;
+  }): Promise<UserRecord> {
+    const lookup = input.usernameOrEmail.toLowerCase().trim();
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          or(eq(users.email, lookup), eq(users.username, lookup)),
+          isNull(users.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (!user) {
+      throw new AppError("User not found with this username or email.", 404, "user_not_found");
+    }
+
+    if (user.status === "deleted") {
+      throw new AppError("Account has been deleted.", 403, "account_deleted");
+    }
+
+    const passwordHash = hashPassword(input.newPassword);
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        passwordHash,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id))
+      .returning();
+
+    return updatedUser;
+  }
 }
 
 export const userService = new UserService();

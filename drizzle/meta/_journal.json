@@ -246,6 +246,13 @@
       "when": 1788638285473,
       "tag": "0034_fat_mathemanic",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788980211571,
+      "tag": "0035_jittery_madripoor",
+      "breakpoints": true
     }
   ]
 }
