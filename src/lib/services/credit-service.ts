@@ -29,6 +29,7 @@ import type {
   CreditUsageSummaryDTO,
 } from "@/lib/dto/credits";
 import type { CreditAccountRecord } from "@/lib/db/schema";
+import type { CreditLedgerMetadata } from "@/lib/credits";
 import {
   buildPaginationMeta,
   buildPaginationParams,
@@ -181,6 +182,23 @@ function buildUsageSummary(
   };
 }
 
+const INVOICE_TEMPLATE_NAMES: Record<string, string> = {
+  agency: "Agency",
+  compact: "Compact",
+  corporate: "Corporate",
+  minimal: "Minimal",
+};
+
+function getHistoryTemplateName(metadata: CreditLedgerMetadata | null) {
+  if (typeof metadata?.templateName === "string") {
+    return metadata.templateName;
+  }
+
+  return typeof metadata?.templateId === "string"
+    ? INVOICE_TEMPLATE_NAMES[metadata.templateId] ?? null
+    : null;
+}
+
 function toHistoryEntryDTO(entry: {
   actorUserId: string | null;
   balanceAfter: number;
@@ -194,7 +212,10 @@ function toHistoryEntryDTO(entry: {
   scopeType: CreditBillingScope["scopeType"] | string;
   source: CreditLedgerSource;
   type: CreditLedgerType;
+  metadata: CreditLedgerMetadata | null;
 }): CreditHistoryEntryDTO {
+  const templateName = getHistoryTemplateName(entry.metadata);
+
   return {
     actionLabelKey: entry.descriptionKey ?? "creditsHistoryActionFeatureUsage",
     actorUserId: entry.actorUserId,
@@ -209,6 +230,7 @@ function toHistoryEntryDTO(entry: {
     scopeType: entry.scopeType as CreditBillingScope["scopeType"],
     source: entry.source,
     sourceLabelKey: getSourceLabelKey(entry.source),
+    templateName,
     type: entry.type,
   };
 }

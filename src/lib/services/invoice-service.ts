@@ -92,13 +92,21 @@ export class InvoiceService {
       : null;
     const effectiveTemplateId = patch.templateId ?? currentSettings?.templateId;
     if (
+      patch.templateId &&
+      PREMIUM_TEMPLATES.includes(patch.templateId) &&
+      !options?.customizationSessionId
+    ) {
+      await this.chargePremiumTemplateUsage(userId, patch.templateId);
+    }
+
+    if (
       options?.customizationSessionId &&
       effectiveTemplateId &&
       PREMIUM_TEMPLATES.includes(effectiveTemplateId)
     ) {
       const { scope } = await creditService.getOrCreateCreditAccountForScope();
       await creditService.calculateAndDeductFeatureCredits({
-        idempotencyKey: `invoice-template-customize:${userId}:${effectiveTemplateId}:${options.customizationSessionId}`,
+        idempotencyKey: `invoice-template-customize:${userId}:${effectiveTemplateId}:${getInvoiceCreditMonthKey()}`,
         featureParams: {
           currency: DEFAULT_PROJECT_CURRENCY,
           featureKey: "invoice_template_customize",
@@ -107,7 +115,9 @@ export class InvoiceService {
         scope,
         metadata: {
           templateId: effectiveTemplateId,
-          customizationSessionId: options.customizationSessionId,
+          templateName:
+            effectiveTemplateId[0].toUpperCase() + effectiveTemplateId.slice(1),
+          billingPeriod: getInvoiceCreditMonthKey(),
         },
       });
     }
@@ -145,10 +155,11 @@ export class InvoiceService {
         templateId,
       },
       scope,
-      metadata: {
-        templateId,
-        billingPeriod: getInvoiceCreditMonthKey(),
-      },
+        metadata: {
+          templateId,
+          templateName: templateId[0].toUpperCase() + templateId.slice(1),
+          billingPeriod: getInvoiceCreditMonthKey(),
+        },
     });
   }
 
@@ -199,6 +210,7 @@ export class InvoiceService {
         scope,
         metadata: {
           templateId,
+          templateName: name,
         },
       });
     }

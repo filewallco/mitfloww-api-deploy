@@ -6,6 +6,7 @@ import type {
   CreditReservationStatus,
   ZeroCreditActionKey,
 } from "@/lib/credits";
+import type { CreditLedgerMetadata } from "@/lib/credits";
 import type { CreditBillingScope } from "@/lib/credits/credit-billing-scope";
 
 export type CreditUsageSummaryDTO = {
@@ -44,6 +45,7 @@ export type CreditHistoryEntryDTO = {
   scopeType: CreditBillingScope["scopeType"];
   source: CreditLedgerSource;
   sourceLabelKey: string;
+  templateName: string | null;
   type: CreditLedgerType;
 };
 
