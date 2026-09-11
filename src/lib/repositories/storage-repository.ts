@@ -273,7 +273,17 @@ export class DrizzleStorageRepository implements StorageRepository {
     scopeId: string;
     scopeType: StorageScopeType;
   }): Promise<StorageAccountMutationResult> {
-    return await db.transaction(async (tx) => {
+    const replay = await this.findMutationByIdempotencyKey(input.idempotencyKey);
+    if (replay) {
+      return {
+        account: await this.getRequiredAccountById(replay.accountId),
+        idempotentReplay: true,
+        mutation: replay,
+      };
+    }
+
+    try {
+      return await db.transaction(async (tx) => {
       const [account] = await tx
         .update(storageAccounts)
         .set({
@@ -310,12 +320,30 @@ export class DrizzleStorageRepository implements StorageRepository {
         throw new Error("Failed to create storage add-on mutation.");
       }
 
+        return {
+          account,
+          idempotentReplay: false,
+          mutation,
+        };
+      });
+    } catch (error) {
+      if (!isUniqueViolationError(error)) {
+        throw error;
+      }
+
+      const dedupeReplay = await this.findMutationByIdempotencyKey(
+        input.idempotencyKey,
+      );
+      if (!dedupeReplay) {
+        throw new StorageIdempotencyConflictError();
+      }
+
       return {
-        account,
-        idempotentReplay: false,
-        mutation,
+        account: await this.getRequiredAccountById(dedupeReplay.accountId),
+        idempotentReplay: true,
+        mutation: dedupeReplay,
       };
-    });
+    }
   }
 
   /**

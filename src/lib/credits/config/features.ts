@@ -11,7 +11,12 @@ export const CREDIT_FEATURE_KEYS = [
   "archive_extension",
   "video_preview_transcode",
   "deep_scan_large_upload",
+  "active_project_overage",
   "template_unlock",
+  "invoice_template_create",
+  "invoice_template_use",
+  "invoice_template_customize",
+  "testimonial_create",
   "testimonial_customize",
   "testimonial_download",
 ] as const;
@@ -136,6 +141,11 @@ export const FEATURE_CREDIT_COSTS = {
       credits: 5,
     },
   },
+  projects: {
+    activeProjectOverage: {
+      credits: 10,
+    },
+  },
   storage: {
     extra100Gb30Days: {
       credits: 450,
@@ -159,6 +169,14 @@ export const FEATURE_CREDIT_COSTS = {
     },
   },
   templates: {
+    invoiceTemplateCreate: {
+      credits: 10,
+      lifetime: false,
+    },
+    invoiceTemplateUse: {
+      credits: 10,
+      lifetime: false,
+    },
     customEmailSlot: {
       credits: 50,
       lifetime: true,
@@ -265,6 +283,58 @@ export const FEATURE_CREDIT_COSTS = {
     },
   },
 } as const;
+
+/**
+ * Premium-template usage is intentionally cheaper for higher plans and more
+ * expensive for free accounts. These values are resolved from the active plan
+ * at request time so plan changes take effect immediately.
+ */
+export const PREMIUM_TEMPLATE_CREDIT_COSTS = {
+  free: {
+    invoiceTemplateUse: 15,
+    invoiceTemplateCustomize: 10,
+    testimonialCreate: 15,
+    testimonialCustomize: 12,
+    testimonialDownload: 15,
+  },
+  standard: {
+    invoiceTemplateUse: 12,
+    invoiceTemplateCustomize: 8,
+    testimonialCreate: 12,
+    testimonialCustomize: 10,
+    testimonialDownload: 12,
+  },
+  pro: {
+    invoiceTemplateUse: 8,
+    invoiceTemplateCustomize: 5,
+    testimonialCreate: 8,
+    testimonialCustomize: 6,
+    testimonialDownload: 8,
+  },
+  studio: {
+    invoiceTemplateUse: 8,
+    invoiceTemplateCustomize: 5,
+    testimonialCreate: 8,
+    testimonialCustomize: 6,
+    testimonialDownload: 8,
+  },
+  business: {
+    invoiceTemplateUse: 8,
+    invoiceTemplateCustomize: 5,
+    testimonialCreate: 8,
+    testimonialCustomize: 6,
+    testimonialDownload: 8,
+  },
+} as const satisfies Record<
+  CreditPlanKey,
+  {
+    invoiceTemplateUse: number;
+    invoiceTemplateCustomize: number;
+    testimonialCreate: number;
+    testimonialCustomize: number;
+    testimonialDownload: number;
+  }
+>;
 
 export function getPlanTierForCreditCosts(planKey: CreditPlanKey) {
   return PLAN_TIER_BY_PLAN_KEY[planKey];

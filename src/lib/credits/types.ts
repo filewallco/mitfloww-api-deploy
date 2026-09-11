@@ -88,6 +88,11 @@ export type CreditFeatureCostParams =
     }
   | {
       currency: string;
+      featureKey: "active_project_overage";
+      planKey?: CreditPlanKey;
+    }
+  | {
+      currency: string;
       featureKey: "template_unlock";
       planKey?: CreditPlanKey;
       templateKey: TemplateCreditKey;
@@ -100,7 +105,30 @@ export type CreditFeatureCostParams =
     }
   | {
       currency: string;
+      featureKey: "testimonial_create";
+      planKey?: CreditPlanKey;
+      templateId: string;
+    }
+  | {
+      currency: string;
       featureKey: "testimonial_download";
+      planKey?: CreditPlanKey;
+      templateId: string;
+    }
+  | {
+      currency: string;
+      featureKey: "invoice_template_create";
+      planKey?: CreditPlanKey;
+    }
+  | {
+      currency: string;
+      featureKey: "invoice_template_use";
+      planKey?: CreditPlanKey;
+      templateId: string;
+    }
+  | {
+      currency: string;
+      featureKey: "invoice_template_customize";
       planKey?: CreditPlanKey;
       templateId: string;
     };

@@ -254,8 +254,12 @@ export type TestimonialTemplate = {
   previewCapability?: TestimonialTemplateCapabilityLevel;
   /** Who can customize this template */
   customizeCapability?: TestimonialTemplateCapabilityLevel;
-  /** Credit cost to customize (0 = free) */
+  /** Credit cost to create/use this testimonial template */
   creditCost?: number;
+  /** Credit cost to customize this testimonial template */
+  customizeCreditCost?: number;
+  /** Credit cost to download this testimonial template */
+  downloadCreditCost?: number;
 };
 
 // ─── Review item type (returned by /api/projects/reviews) ─────────────────

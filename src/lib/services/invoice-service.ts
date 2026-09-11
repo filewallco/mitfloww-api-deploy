@@ -7,7 +7,9 @@ import type { InvoiceSettingsRecord, NewInvoiceSettingsRecord, CustomInvoiceTemp
 import { userService } from "./user-service";
 import { invoicePdfService, type InvoicePdfData } from "./invoice-pdf-service";
 import { r2Storage } from "@/lib/storage/r2";
-import { AppError, ForbiddenAppError, NotFoundAppError } from "@/lib/errors/app-error";
+import { AppError, NotFoundAppError } from "@/lib/errors/app-error";
+import { creditService } from "./credit-service";
+import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
 
 export interface SaveCustomTemplateInput {
   id?: string;
@@ -29,6 +31,10 @@ export interface SaveCustomTemplateInput {
   showNotes?: boolean | null;
   notes?: string | null;
   terms?: string | null;
+}
+
+function getInvoiceCreditMonthKey(date = new Date()) {
+  return date.toISOString().slice(0, 7);
 }
 
 export const DEFAULT_INVOICE_SETTINGS: Omit<InvoiceSettingsRecord, "id" | "userId" | "createdAt" | "updatedAt"> = {
@@ -78,16 +84,32 @@ export class InvoiceService {
   async updateInvoiceSettings(
     userId: string,
     patch: Partial<NewInvoiceSettingsRecord>,
+    options?: { customizationSessionId?: string | null },
   ): Promise<InvoiceSettingsRecord> {
     const PREMIUM_TEMPLATES = ["corporate", "agency", "minimal", "compact"];
-    if (patch.templateId && PREMIUM_TEMPLATES.includes(patch.templateId)) {
-      const user = await userService.getUser(userId);
-      const planKey = user.planKey?.toLowerCase();
-      if (!planKey || planKey === "free") {
-        throw new ForbiddenAppError(
-          "The selected template is available exclusively on Pro plans. Upgrade to unlock all premium invoice templates."
-        );
-      }
+    const currentSettings = patch.templateId
+      ? await this.getInvoiceSettings(userId)
+      : null;
+    const effectiveTemplateId = patch.templateId ?? currentSettings?.templateId;
+    if (
+      options?.customizationSessionId &&
+      effectiveTemplateId &&
+      PREMIUM_TEMPLATES.includes(effectiveTemplateId)
+    ) {
+      const { scope } = await creditService.getOrCreateCreditAccountForScope();
+      await creditService.calculateAndDeductFeatureCredits({
+        idempotencyKey: `invoice-template-customize:${userId}:${effectiveTemplateId}:${options.customizationSessionId}`,
+        featureParams: {
+          currency: DEFAULT_PROJECT_CURRENCY,
+          featureKey: "invoice_template_customize",
+          templateId: effectiveTemplateId,
+        },
+        scope,
+        metadata: {
+          templateId: effectiveTemplateId,
+          customizationSessionId: options.customizationSessionId,
+        },
+      });
     }
 
     const [saved] = await db
@@ -108,6 +130,26 @@ export class InvoiceService {
       .returning();
 
     return saved;
+  }
+
+  private async chargePremiumTemplateUsage(userId: string, templateId: string) {
+    const premiumTemplates = new Set(["corporate", "agency", "minimal", "compact"]);
+    if (!premiumTemplates.has(templateId)) return;
+
+    const { scope } = await creditService.getOrCreateCreditAccountForScope();
+    await creditService.calculateAndDeductFeatureCredits({
+      idempotencyKey: `invoice-template-use:${userId}:${templateId}:${getInvoiceCreditMonthKey()}`,
+      featureParams: {
+        currency: DEFAULT_PROJECT_CURRENCY,
+        featureKey: "invoice_template_use",
+        templateId,
+      },
+      scope,
+      metadata: {
+        templateId,
+        billingPeriod: getInvoiceCreditMonthKey(),
+      },
+    });
   }
 
   async getCustomTemplates(userId: string): Promise<CustomInvoiceTemplate[]> {
@@ -145,6 +187,21 @@ export class InvoiceService {
 
     const now = new Date().toISOString();
     const existingIndex = existingTemplates.findIndex((t) => t.id === templateId);
+
+    if (existingIndex < 0) {
+      const { scope } = await creditService.getOrCreateCreditAccountForScope();
+      await creditService.calculateAndDeductFeatureCredits({
+        idempotencyKey: `invoice-template-create-${userId}-${templateId}`,
+        featureParams: {
+          currency: DEFAULT_PROJECT_CURRENCY,
+          featureKey: "invoice_template_create",
+        },
+        scope,
+        metadata: {
+          templateId,
+        },
+      });
+    }
 
     const updatedTemplate: CustomInvoiceTemplate = {
       id: templateId,
@@ -242,6 +299,8 @@ export class InvoiceService {
       if (matchingCustom.accentColor) settings.accentColor = matchingCustom.accentColor;
       if (matchingCustom.paperSize) settings.paperSize = matchingCustom.paperSize;
     }
+
+    await this.chargePremiumTemplateUsage(userId, settings.templateId);
 
     // Calculate extra revisions and advance payments
     let totalRevisions = 0;

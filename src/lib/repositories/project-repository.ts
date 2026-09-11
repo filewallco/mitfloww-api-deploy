@@ -67,7 +67,7 @@ export type FindManyProjectsResult = {
   total: number | null;
 };
 
-import { ProjectPaymentStatus } from "@/lib/dto/projects";
+import { ProjectPaymentStatus, ProjectStatus } from "@/lib/dto/projects";
 
 export interface ProjectRepository {
   create(input: CreateProjectRecordInput): Promise<ProjectRecord>;
@@ -106,6 +106,7 @@ export interface ProjectRepository {
   hardDelete(id: string): Promise<ProjectRecord | null>;
   update(id: string, input: UpdateProjectRecordInput): Promise<ProjectRecord | null>;
   countPaidProjects(userId?: string): Promise<number>;
+  countActiveProjects(userId?: string): Promise<number>;
   getFreelancerStats(userId?: string): Promise<{ averageRating: number; totalReviews: number }>;
   findPaidProjectsWithReviews(userId?: string): Promise<Array<{ project: ProjectRecord; review: ProjectClientReviewRecord }>>;
 }
@@ -475,6 +476,23 @@ export class DrizzleProjectRepository implements ProjectRepository {
     if (userId) {
       conditions.push(eq(projects.userId, userId));
     }
+    const [result] = await db
+      .select({ count: count() })
+      .from(projects)
+      .where(and(...conditions));
+
+    return result?.count ?? 0;
+  }
+
+  async countActiveProjects(userId?: string): Promise<number> {
+    const conditions = [
+      isNull(projects.deletedAt),
+      eq(projects.status, ProjectStatus.Active),
+    ];
+    if (userId) {
+      conditions.push(eq(projects.userId, userId));
+    }
+
     const [result] = await db
       .select({ count: count() })
       .from(projects)

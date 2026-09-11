@@ -1,4 +1,6 @@
-import { resolveActiveActor } from "@/lib/auth/active-actor";
+  import { resolveActiveActor } from "@/lib/auth/active-actor";
+  import { creditService } from "@/lib/services/credit-service";
+  import { CREDIT_PLANS } from "@/lib/credits";
   import { INPUT_LIMITS } from "@/config/input-limits";
   import {
     PROJECT_SHARE_LINK_EXPIRY_DAYS,
@@ -556,6 +558,30 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
       });
 
       const publicId = await this.createUniqueProjectPublicId(title);
+      const { account: creditAccount, scope: creditScope } =
+        await creditService.getOrCreateCreditAccountForScope();
+      const activeProjectsLimit = CREDIT_PLANS[creditAccount.planKey].activeProjectsLimit;
+      const activeProjectCount = await this.repository.countActiveProjects(actorId);
+
+      if (
+        activeProjectsLimit !== null &&
+        activeProjectCount >= activeProjectsLimit
+      ) {
+        await creditService.calculateAndDeductFeatureCredits({
+          idempotencyKey: `active-project-overage:${creditScope.scopeType}:${creditScope.scopeId}:${publicId}`,
+          featureParams: {
+            currency: DEFAULT_PROJECT_CURRENCY,
+            featureKey: "active_project_overage",
+          },
+          metadata: {
+            activeProjectCount,
+            activeProjectsLimit,
+            featureReason: "active_project_overage",
+          },
+          scope: creditScope,
+        });
+      }
+
       const record = await this.repository.create({
         userId: actorId,
         advancePaymentEnabled: input.advancePaymentEnabled,

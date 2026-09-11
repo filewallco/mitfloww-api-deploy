@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { testimonialService } from "@/lib/services/testimonial-service";
 import { creditService } from "@/lib/services/credit-service";
+import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
 import { AppError } from "@/lib/errors/app-error";
 import type { UpdateTestimonialInput } from "@/lib/repositories/testimonial-repository";
 import { asyncHandler } from "@/lib/api/route";
@@ -173,10 +174,10 @@ testimonialsRouter.post("/", asyncHandler(async (req, res) => {
   if (validTemplateId) {
     const { scope } = await creditService.getOrCreateCreditAccountForScope();
     await creditService.calculateAndDeductFeatureCredits({
-      idempotencyKey: `testimonial-customize-${parsed.id}`,
+      idempotencyKey: `testimonial-create-${parsed.id}`,
       featureParams: {
-        currency: "USD",
-        featureKey: "testimonial_customize",
+        currency: DEFAULT_PROJECT_CURRENCY,
+        featureKey: "testimonial_create",
         templateId: validTemplateId,
       },
       scope,
@@ -210,7 +211,7 @@ testimonialsRouter.post("/download", asyncHandler(async (req, res) => {
   await creditService.calculateAndDeductFeatureCredits({
     idempotencyKey: `testimonial-download-${parsed.templateId}-${Date.now()}`,
     featureParams: {
-      currency: "USD",
+      currency: DEFAULT_PROJECT_CURRENCY,
       featureKey: "testimonial_download",
       templateId: parsed.templateId,
     },

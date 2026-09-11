@@ -1,5 +1,9 @@
-import { CREDIT_PLANS } from "@/lib/credits";
-import type { CreditPlanKey } from "@/lib/credits";
+import {
+  CREDIT_PLANS,
+  FEATURE_CREDIT_COSTS,
+  type CreditPlanKey,
+  type StorageAddOnKey,
+} from "@/lib/credits";
 import type { StorageBalanceDTO } from "@/lib/dto/storage";
 import {
   DrizzleStorageRepository,
@@ -12,6 +16,8 @@ import {
   type StorageBillingScope,
 } from "@/lib/storage/storage-billing-scope";
 import type { StorageLedgerMetadata } from "@/lib/storage/types";
+
+const BYTES_PER_GB = 1024 * 1024 * 1024;
 
 /**
  * Normalizes a storage account snapshot into the client-facing balance DTO.
@@ -119,6 +125,68 @@ export class StorageService {
       storageLimitBytes: account.storageLimitBytes,
       usedStorageBytes: account.usedStorageBytes,
     });
+  }
+
+  async purchaseStorageAddOn(input: {
+    currency: string;
+    idempotencyKey: string;
+    storageAddOnKey: StorageAddOnKey;
+    scope?: StorageBillingScope;
+  }) {
+    const resolvedScope = input.scope ?? (await resolveStorageBillingScope());
+    const addOn = FEATURE_CREDIT_COSTS.storage[input.storageAddOnKey];
+    const { quote, deduction } =
+      await creditService.calculateAndDeductFeatureCredits({
+        featureParams: {
+          currency: input.currency,
+          featureKey: "storage_add_on",
+          storageAddOnKey: input.storageAddOnKey,
+        },
+        idempotencyKey: `storage-addon:${resolvedScope.scopeType}:${resolvedScope.scopeId}:${input.idempotencyKey}`,
+        metadata: {
+          featureReason: "storage_add_on_purchase",
+          storageAddOnKey: input.storageAddOnKey,
+          storageGb: addOn.storageGb,
+        },
+        scope: resolvedScope,
+      });
+
+    const expiresAt = new Date(
+      Date.now() + addOn.validityDays * 24 * 60 * 60 * 1000,
+    );
+
+    try {
+      await this.getOrCreateStorageAccount(resolvedScope);
+      await this.repository.grantStorageAddOn({
+        actorUserId: resolvedScope.actorUserId,
+        bytesDelta: addOn.storageGb * BYTES_PER_GB,
+        expiresAt,
+        idempotencyKey: `storage-addon:${resolvedScope.scopeType}:${resolvedScope.scopeId}:${input.idempotencyKey}`,
+        scopeId: resolvedScope.scopeId,
+        scopeType: resolvedScope.scopeType,
+      });
+    } catch (error) {
+      if (deduction) {
+        await creditService.refundCredits({
+          credits: quote.requiredCredits,
+          idempotencyKey: `refund:storage-addon:${resolvedScope.scopeType}:${resolvedScope.scopeId}:${input.idempotencyKey}`,
+          metadata: {
+            featureReason: "storage_add_on_purchase_failed",
+            storageAddOnKey: input.storageAddOnKey,
+          },
+          scope: resolvedScope,
+        });
+      }
+      throw error;
+    }
+
+    return {
+      creditsUsed: quote.requiredCredits,
+      expiresAt: expiresAt.toISOString(),
+      storageAddOnKey: input.storageAddOnKey,
+      storageGb: addOn.storageGb,
+      balance: await this.getStorageBalance(resolvedScope),
+    };
   }
 
   /**

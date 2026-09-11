@@ -9,6 +9,7 @@ import {
   CREDIT_USAGE_PROGRESS_THRESHOLDS,
   CREDIT_PACKS,
   FEATURE_CREDIT_COSTS,
+  PREMIUM_TEMPLATE_CREDIT_COSTS,
   getPlanTierForCreditCosts,
   ZERO_CREDIT_ACTION_KEYS,
   type CreditPlanKey,
@@ -75,6 +76,20 @@ function calculateFinalDraftMismatchReuploadBaseCredits() {
 
 function calculateTemplateBaseCredits(templateKey: TemplateCreditKey) {
   return FEATURE_CREDIT_COSTS.templates[templateKey].credits;
+}
+
+function getPremiumTemplateCreditCost(
+  feature: keyof (typeof PREMIUM_TEMPLATE_CREDIT_COSTS)[CreditPlanKey],
+  planKey: CreditPlanKey | undefined,
+) {
+  return PREMIUM_TEMPLATE_CREDIT_COSTS[planKey ?? DEFAULT_CREDIT_PLAN_KEY][feature];
+}
+
+function isPremiumTestimonialTemplate(template: ReturnType<typeof getTestimonialTemplate>) {
+  return Boolean(
+    template?.customizeCapability === "premium" ||
+      template?.palettes?.some((palette) => palette.capability === "premium"),
+  );
 }
 
 function getExtraStepCount(totalUnits: number, includedUnits: number, stepSize: number) {
@@ -480,15 +495,51 @@ export function calculateFeatureCreditCost(params: CreditFeatureCostParams) {
     case "video_preview_transcode":
     case "deep_scan_large_upload":
       return calculateLargeFileCreditCost(params);
+    case "active_project_overage":
+      return applyCurrencyCreditMultiplier(
+        FEATURE_CREDIT_COSTS.projects.activeProjectOverage.credits,
+        params.currency,
+      );
     case "template_unlock":
       return calculateTemplateCreditCost({
         currency: params.currency,
         templateKey: params.templateKey,
       });
-    case "testimonial_customize":
+    case "invoice_template_create":
+      return applyCurrencyCreditMultiplier(
+        FEATURE_CREDIT_COSTS.templates.invoiceTemplateCreate.credits,
+        params.currency,
+      );
+    case "invoice_template_use":
+      return applyCurrencyCreditMultiplier(
+        getPremiumTemplateCreditCost("invoiceTemplateUse", params.planKey),
+        params.currency,
+      );
+    case "invoice_template_customize":
+      return applyCurrencyCreditMultiplier(
+        getPremiumTemplateCreditCost("invoiceTemplateCustomize", params.planKey),
+        params.currency,
+      );
+    case "testimonial_create": {
+      const template = getTestimonialTemplate(params.templateId);
+      if (isPremiumTestimonialTemplate(template)) {
+        return getPremiumTemplateCreditCost("testimonialCreate", params.planKey);
+      }
+      return template?.creditCost ?? 0;
+    }
+    case "testimonial_customize": {
+      const template = getTestimonialTemplate(params.templateId);
+      if (isPremiumTestimonialTemplate(template)) {
+        return getPremiumTemplateCreditCost("testimonialCustomize", params.planKey);
+      }
+      return template?.customizeCreditCost ?? template?.creditCost ?? 0;
+    }
     case "testimonial_download": {
       const template = getTestimonialTemplate(params.templateId);
-      return template?.creditCost ?? 0;
+      if (isPremiumTestimonialTemplate(template)) {
+        return getPremiumTemplateCreditCost("testimonialDownload", params.planKey);
+      }
+      return template?.downloadCreditCost ?? template?.creditCost ?? 0;
     }
     default:
       throw new UnknownCreditFeatureError();

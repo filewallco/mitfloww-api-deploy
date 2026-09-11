@@ -3,13 +3,27 @@ import mime from "mime-types";
 import { storage } from "@/lib/storage";
 import { verifyLocalSignature } from "@/lib/storage/local";
 import { storageService } from "@/lib/services/storage-service";
-import { sendSuccess, asyncHandler } from "@/lib/api/route";
+import { asyncHandler, parseWithSchema, sendSuccess } from "@/lib/api/route";
 import { Readable } from "node:stream";
+import { z } from "zod";
+import { STORAGE_ADD_ON_KEYS } from "@/lib/credits";
+
+const storageAddOnSchema = z.object({
+  currency: z.string().trim().length(3).default("INR"),
+  idempotencyKey: z.string().trim().min(8).max(128),
+  storageAddOnKey: z.enum(STORAGE_ADD_ON_KEYS),
+});
 
 export const storageRouter = Router();
 
 storageRouter.get("/balance", asyncHandler(async (_req, res) => {
   const data = await storageService.getStorageBalance();
+  return sendSuccess(res, data);
+}));
+
+storageRouter.post("/add-ons", asyncHandler(async (req, res) => {
+  const input = parseWithSchema(storageAddOnSchema, req.body);
+  const data = await storageService.purchaseStorageAddOn(input);
   return sendSuccess(res, data);
 }));
 

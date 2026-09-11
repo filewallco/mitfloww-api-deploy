@@ -118,8 +118,18 @@ function getFeatureActionLabelKey(featureKey: CreditFeatureCostParams["featureKe
       return "creditsHistoryActionVideoPreview";
     case "deep_scan_large_upload":
       return "creditsHistoryActionDeepScan";
+    case "active_project_overage":
+      return "creditsHistoryActionActiveProjectOverage";
     case "template_unlock":
       return "creditsHistoryActionTemplate";
+    case "invoice_template_create":
+      return "creditsHistoryActionInvoiceTemplateCreate";
+    case "invoice_template_use":
+      return "creditsHistoryActionInvoiceTemplateUse";
+    case "invoice_template_customize":
+      return "creditsHistoryActionInvoiceTemplateCustomize";
+    case "testimonial_create":
+      return "creditsHistoryActionTestimonialCreate";
     case "testimonial_customize":
       return "creditsHistoryActionTestimonialCustomize";
     case "testimonial_download":
@@ -649,10 +659,7 @@ export class CreditService {
         : account.planKey;
     const featureParams = {
       ...params.featureParams,
-      ...(params.featureParams.featureKey === "watermark" ||
-      params.featureParams.featureKey === "large_upload_overage"
-        ? { planKey: resolvedPlanKey }
-        : {}),
+      planKey: resolvedPlanKey,
     } as CreditFeatureCostParams;
     const requiredCredits = calculateFeatureCreditCost(featureParams);
     const quoteMessage = getCreditFeatureQuoteMessage(featureParams);

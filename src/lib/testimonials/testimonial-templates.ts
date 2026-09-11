@@ -123,7 +123,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: SOLID_VIBRANT_PALETTES,
     previewCapability: "free",
     customizeCapability: "free",
-    creditCost: 1,
+    creditCost: 5,
+    customizeCreditCost: 3,
+    downloadCreditCost: 5,
   },
   {
     accessLevel: TestimonialTemplateAccessLevel.Free,
@@ -155,7 +157,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: GLASS_PALETTES,
     previewCapability: "free",
     customizeCapability: "free",
-    creditCost: 1,
+    creditCost: 5,
+    customizeCreditCost: 3,
+    downloadCreditCost: 5,
   },
   {
     accessLevel: TestimonialTemplateAccessLevel.Free,
@@ -185,7 +189,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: NEON_PALETTES,
     previewCapability: "free",
     customizeCapability: "premium",
-    creditCost: 1,
+    creditCost: 12,
+    customizeCreditCost: 10,
+    downloadCreditCost: 10,
   },
   {
     accessLevel: TestimonialTemplateAccessLevel.Free,
@@ -215,7 +221,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: SPLIT_PALETTES,
     previewCapability: "free",
     customizeCapability: "paid",
-    creditCost: 1,
+    creditCost: 10,
+    customizeCreditCost: 8,
+    downloadCreditCost: 10,
   },
   {
     accessLevel: TestimonialTemplateAccessLevel.Free,
@@ -245,7 +253,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: CORPORATE_PALETTES,
     previewCapability: "free",
     customizeCapability: "free",
-    creditCost: 1,
+    creditCost: 5,
+    customizeCreditCost: 3,
+    downloadCreditCost: 5,
   },
   {
     accessLevel: TestimonialTemplateAccessLevel.Free,
@@ -278,7 +288,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: BUBBLE_PALETTES,
     previewCapability: "free",
     customizeCapability: "free",
-    creditCost: 1,
+    creditCost: 5,
+    customizeCreditCost: 3,
+    downloadCreditCost: 5,
   },
   {
     accessLevel: TestimonialTemplateAccessLevel.Free,
@@ -307,7 +319,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: DARK_SLATE_PALETTES,
     previewCapability: "free",
     customizeCapability: "paid",
-    creditCost: 1,
+    creditCost: 10,
+    customizeCreditCost: 8,
+    downloadCreditCost: 10,
   },
   {
     accessLevel: TestimonialTemplateAccessLevel.Free,
@@ -338,7 +352,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: GRID_PALETTES,
     previewCapability: "free",
     customizeCapability: "paid",
-    creditCost: 1,
+    creditCost: 10,
+    customizeCreditCost: 8,
+    downloadCreditCost: 10,
   },
   {
     accessLevel: TestimonialTemplateAccessLevel.Free,
@@ -367,7 +383,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: POLAROID_PALETTES,
     previewCapability: "free",
     customizeCapability: "paid",
-    creditCost: 1,
+    creditCost: 10,
+    customizeCreditCost: 8,
+    downloadCreditCost: 10,
   },
   {
     accessLevel: TestimonialTemplateAccessLevel.Free,
@@ -396,7 +414,9 @@ export const TESTIMONIAL_TEMPLATES: TestimonialTemplate[] = [
     palettes: MAGAZINE_PALETTES,
     previewCapability: "free",
     customizeCapability: "premium",
-    creditCost: 1,
+    creditCost: 12,
+    customizeCreditCost: 10,
+    downloadCreditCost: 10,
   }
 ];
 

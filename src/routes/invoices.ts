@@ -26,6 +26,7 @@ const updateInvoiceSettingsSchema = z.object({
   customLayoutDirection: z.enum(["column", "row"]).nullable().optional(),
   customElementOffsets: z.string().nullable().optional(),
   customElementStyles: z.string().nullable().optional(),
+  customizationSessionId: z.string().trim().max(128).nullable().optional(),
 });
 
 invoicesRouter.get("/settings", asyncHandler(async (req, res) => {
@@ -41,7 +42,12 @@ invoicesRouter.patch("/settings", asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Invalid invoice settings input", details: parsed.error.issues });
   }
 
-  const updated = await invoiceService.updateInvoiceSettings(actor.id, parsed.data as any);
+  const { customizationSessionId, ...settingsPatch } = parsed.data;
+  const updated = await invoiceService.updateInvoiceSettings(
+    actor.id,
+    settingsPatch as any,
+    { customizationSessionId },
+  );
   return res.json({ settings: updated });
 }));
 

@@ -125,6 +125,7 @@ import { ProjectPaymentStatus, ProjectStatus } from "@/lib/dto/projects";
 import { createTranslatedTextDTO } from "@/lib/translation/create-translated-text";
 import { UNKNOWN_TRANSLATION_LOCALE } from "@/lib/translation/locales";
 import type { CreditFeatureCostParams } from "@/lib/credits";
+import { CREDIT_PLANS } from "@/lib/credits";
 import { creditService } from "@/lib/services/credit-service";
 import { storageService } from "@/lib/services/storage-service";
 import { resolveStorageBillingScope } from "@/lib/storage/storage-billing-scope";
@@ -3273,7 +3274,12 @@ export class FileService {
       const creditActions: Parameters<typeof chargeCreditActions>[0] = [];
       // Resolve the active credit billing scope so idempotency keys can
       // include scope type/id and be stable across retries.
-      const { scope } = await creditService.getOrCreateCreditAccountForScope();
+      const { account: creditAccount, scope } =
+        await creditService.getOrCreateCreditAccountForScope();
+      const includedRevisionLimit = Math.min(
+        project.revisionLimit,
+        CREDIT_PLANS[creditAccount.planKey].revisionsPerProject,
+      );
 
       if (plan.willChargeLargeUploadCredits) {
         creditActions.push({
@@ -3323,7 +3329,7 @@ export class FileService {
           await this.repository.countProjectBillableRevisions(project.id);
         const nextBillableRevisionCount = totalBillableRevisions + 1;
 
-        if (nextBillableRevisionCount > project.revisionLimit) {
+        if (nextBillableRevisionCount > includedRevisionLimit) {
           creditActions.push({
             featureParams: {
               currency: project.currency,
