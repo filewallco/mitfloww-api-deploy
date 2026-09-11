@@ -1,6 +1,7 @@
 import { Readable } from "stream";
 import sharp from "sharp";
 import {
+  getUploadCategoryForExtension,
   isWorkerSupportedUploadExtension,
   standardUploadMaxSizeBytes,
   uploadConfig,
@@ -3144,6 +3145,21 @@ export class FileService {
       );
     }
 
+    const originalCategory = getUploadCategoryForExtension(fileWithVersions.file.extension);
+    const newCategory = getUploadCategoryForExtension(targetFile.extension);
+    if (originalCategory && newCategory && originalCategory !== newCategory) {
+      const categoryLabel = originalCategory === "document" ? "PDF" : originalCategory;
+      throw new AppError(
+        `New versions must be of the same file type as the original file (${categoryLabel}). Received ${newCategory}.`,
+        400,
+        "file_type_mismatch",
+        {
+          expectedCategory: originalCategory,
+          receivedCategory: newCategory,
+        },
+      );
+    }
+
     if (input.isFinalDraft && input.allowLargeUploads) {
       throw new AppError(
         "Final draft uploads cannot enable the large upload path.",
@@ -4873,6 +4889,21 @@ export class FileService {
       fileWithVersions,
       isFinalDraft: input.isFinalDraft,
     });
+
+    const originalCategory = getUploadCategoryForExtension(fileWithVersions.file.extension);
+    const newCategory = getUploadCategoryForExtension(input.extension);
+    if (originalCategory && newCategory && originalCategory !== newCategory) {
+      const categoryLabel = originalCategory === "document" ? "PDF" : originalCategory;
+      throw new AppError(
+        `New versions must be of the same file type as the original file (${categoryLabel}). Received ${newCategory}.`,
+        400,
+        "file_type_mismatch",
+        {
+          expectedCategory: originalCategory,
+          receivedCategory: newCategory,
+        },
+      );
+    }
 
     const nextRevisionNumber =
       fileWithVersions.versions.reduce(
