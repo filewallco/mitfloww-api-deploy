@@ -66,12 +66,12 @@ export interface InvoicePdfData {
 }
 
 const ACCENT_COLORS: Record<string, { r: number; g: number; b: number }> = {
-  primary: { r: 0 / 255, g: 91 / 255, b: 221 / 255 }, // #005bdd
-  violet: { r: 106 / 255, g: 30 / 255, b: 219 / 255 }, // #6a1edb
+  primary: { r: 99 / 255, g: 102 / 255, b: 241 / 255 }, // #6366f1
+  violet: { r: 124 / 255, g: 58 / 255, b: 237 / 255 }, // #7c3aed
   indigo: { r: 79 / 255, g: 70 / 255, b: 229 / 255 }, // #4f46e5
   emerald: { r: 5 / 255, g: 150 / 255, b: 105 / 255 }, // #059669
   amber: { r: 217 / 255, g: 119 / 255, b: 6 / 255 }, // #d97706
-  slate: { r: 71 / 255, g: 85 / 255, b: 105 / 255 }, // #475569
+  slate: { r: 51 / 255, g: 65 / 255, b: 85 / 255 }, // #334155
 };
 
 function parseHexColor(hex: string): { r: number; g: number; b: number } | null {
@@ -280,29 +280,59 @@ export class InvoicePdfService {
     };
     const fontFor = (style: Record<string, any>, fallback: PDFFont) => {
       if (style.fontStyle === "italic") return helveticaOblique;
-      return style.fontWeight === "bold" || Number(style.fontWeight) >= 600
-        ? helveticaBold
-        : fallback;
+      if (style.fontWeight === "bold" || Number(style.fontWeight) >= 600) return helveticaBold;
+      if (style.fontWeight) return helvetica;
+      return fallback;
     };
     const sizeFor = (style: Record<string, any>, fallback: number) => {
       const value = Number(style.fontSize);
       return Number.isFinite(value) && value > 0 ? Math.max(6, Math.min(26, value * 0.75)) : fallback;
     };
-    const textLines = (value: unknown, maxChars: number) => {
+    const textLines = (
+      value: unknown,
+      maxChars: number,
+      font: PDFFont,
+      size: number,
+      maxWidth?: number,
+    ) => {
       const source = String(value ?? "");
-      const words = source.split(/\s+/).filter(Boolean);
       const lines: string[] = [];
-      let line = "";
-      for (const word of words) {
-        if ((line + (line ? " " : "") + word).length > maxChars && line) {
-          lines.push(line);
-          line = word;
-        } else {
-          line += (line ? " " : "") + word;
+      const widthLimit = maxWidth && Number.isFinite(maxWidth) ? maxWidth : undefined;
+      const fits = (text: string) =>
+        !widthLimit || font.widthOfTextAtSize(text, size) <= widthLimit;
+
+      // Preserve explicit newlines and wrap by measured font width. This keeps
+      // long client names, addresses and deliverable names inside their
+      // element instead of relying on a character-count approximation.
+      for (const paragraph of source.split(/\r?\n/)) {
+        const words = paragraph.split(/\s+/).filter(Boolean);
+        let line = "";
+        for (const word of words.length > 0 ? words : [""]) {
+          // Break a single unbroken token (URLs, IDs and filenames) when it
+          // cannot fit on one line.
+          let remaining = word;
+          while (remaining && !fits(remaining) && remaining.length > 1) {
+            let cut = remaining.length - 1;
+            while (cut > 1 && !fits(remaining.slice(0, cut))) cut -= 1;
+            const chunk = remaining.slice(0, cut);
+            if (line) {
+              lines.push(line);
+              line = "";
+            }
+            lines.push(chunk);
+            remaining = remaining.slice(cut);
+          }
+          const candidate = line ? `${line} ${remaining}` : remaining;
+          if (line && (!fits(candidate) || candidate.length > maxChars)) {
+            lines.push(line);
+            line = remaining;
+          } else {
+            line = candidate;
+          }
         }
+        if (line || words.length === 0) lines.push(line);
       }
-      if (line || lines.length === 0) lines.push(line);
-      return lines;
+      return lines.length > 0 ? lines : [""];
     };
     const drawText = (
       value: unknown,
@@ -315,6 +345,7 @@ export class InvoicePdfService {
         maxChars?: number;
         lineGap?: number;
         align?: "left" | "center" | "right";
+        maxWidth?: number;
       } = {},
     ) => {
       const size = options.size ?? 9;
@@ -322,7 +353,7 @@ export class InvoicePdfService {
       const color = options.color ?? dark;
       const maxChars = options.maxChars ?? 90;
       const lineGap = options.lineGap ?? size + 3;
-      const lines = textLines(value, maxChars);
+      const lines = textLines(value, maxChars, font, size, options.maxWidth);
       lines.forEach((line, index) => {
         const lineWidth = font.widthOfTextAtSize(line, size);
         let lineX = x;
@@ -351,7 +382,7 @@ export class InvoicePdfService {
           width: elementWidth,
           height: elementHeight,
           color: colorFor(style.fillColor, white),
-          opacity: Number(style.opacity) || 1,
+          opacity: typeof style.opacity === "number" ? style.opacity : 1,
         });
       }
       if (style.showBorder || style.borderColor) {
@@ -371,12 +402,14 @@ export class InvoicePdfService {
       value: unknown,
       x: number,
       y: number,
-      options: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; maxChars?: number; align?: "left" | "center" | "right" } = {},
+      options: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; maxChars?: number; maxWidth?: number; align?: "left" | "center" | "right" } = {},
     ) => {
       const style = styleFor(id);
       const offset = offsetFor(id);
-      const font = options.font || fontFor(style, helvetica);
-      const size = options.size || sizeFor(style, 9);
+      const font = style.fontWeight || style.fontStyle
+        ? fontFor(style, options.font || helvetica)
+        : options.font || fontFor(style, helvetica);
+      const size = style.fontSize ? sizeFor(style, options.size || 9) : options.size || sizeFor(style, 9);
       const color = options.color || colorFor(style.fontColor, dark);
       return drawText(value, x + offset.x, y - offset.y, { ...options, font, size, color });
     };
@@ -403,7 +436,12 @@ export class InvoicePdfService {
     const invoiceStatus = isPaid ? "PAID IN FULL" : String(data.paymentStatus || "PENDING").toUpperCase();
     const companyName = data.company.name || data.user.name || "Invoice";
     const clientName = data.clientName || data.clientEmail || "Valued Client";
-    const titleSize = templateId === "minimal" ? 26 : templateId === "compact" ? 19 : 22;
+    // Browser preview sizes are CSS pixels; the PDF renderer works in points
+    // (1 CSS px = 0.75 pt). Keeping this conversion here prevents titles and
+    // metadata from growing disproportionately in downloaded invoices.
+    const titleSize = templateId === "agency" ? 22.5 : templateId === "compact" ? 13.5 : 18;
+    const headerStyle = styleFor("header");
+    const headerOffset = offsetFor("header");
 
     // These header treatments mirror the six editor templates. The content
     // blocks below are shared so all templates use the same real invoice data.
@@ -411,7 +449,25 @@ export class InvoicePdfService {
       page.drawRectangle({ x: 0, y: 0, width: 12, height: 841.89, color: accent });
       page.drawRectangle({ x: left, y: 770, width: contentWidth, height: 2.5, color: dark });
     } else if (templateId === "compact") {
-      page.drawRectangle({ x: left, y: 785, width: contentWidth, height: 42, color: accent });
+      const headerTop = 809;
+      page.drawRectangle({
+        x: left + headerOffset.x,
+        y: headerTop - 60 - headerOffset.y,
+        width: contentWidth,
+        height: 60,
+        color: colorFor(headerStyle.fillColor, accent),
+        opacity: typeof headerStyle.opacity === "number" ? headerStyle.opacity : 1,
+      });
+      if (headerStyle.showBorder || headerStyle.borderColor) {
+        page.drawRectangle({
+          x: left + headerOffset.x,
+          y: headerTop - 60 - headerOffset.y,
+          width: contentWidth,
+          height: 60,
+          borderColor: colorFor(headerStyle.borderColor, border),
+          borderWidth: Number(headerStyle.borderWidth) || 0.75,
+        });
+      }
     } else if (templateId === "modern") {
       page.drawLine({ start: { x: left, y: 755 }, end: { x: right, y: 755 }, thickness: 2, color: accent });
     } else if (templateId === "minimal") {
@@ -423,66 +479,152 @@ export class InvoicePdfService {
       page.drawLine({ start: { x: left, y: 738 }, end: { x: right, y: 738 }, thickness: 1.5, color: dark });
     }
 
-    const headerTop = templateId === "corporate" ? 720 : templateId === "compact" ? 780 : 760;
-    const logoX = data.settings.logoAlignment === "right" ? right - 80 : left;
-    drawLogo("logo", logoX, headerTop + 8, 80);
-    const titleBaseY = templateId === "corporate" && logoImage && data.settings.showLogo
-      ? headerTop - 42
-      : headerTop;
-    const titleX = data.settings.nameAlignment === "center" ? width / 2 : data.settings.nameAlignment === "right" ? right : left;
+    const headerTop = templateId === "corporate" ? 720 : templateId === "compact" ? 770 : 760;
+    const headerContentTop = headerTop - (templateId === "compact" ? headerOffset.y : 0);
+    const headerContentX = templateId === "compact" ? headerOffset.x : 0;
+    const logoX = (data.settings.logoAlignment === "right" ? right - 80 : left) + headerContentX;
+    // In the editor the logo sits above the company name (except Compact,
+    // where it shares the header row). The previous PDF placement put it
+    // below the sender block and caused visible overlap.
+    const logoTop = templateId === "compact" ? headerContentTop + 27 : headerContentTop + 28;
+    drawLogo("logo", logoX, logoTop, templateId === "compact" ? 36 : 50);
+    const titleBaseY = templateId === "compact"
+      ? headerContentTop
+      : logoImage && data.settings.showLogo
+        ? headerContentTop - 30
+        : headerContentTop;
+    const titleX = (data.settings.nameAlignment === "center" ? width / 2 : data.settings.nameAlignment === "right" ? right : left) + headerContentX;
     const titleAlign = data.settings.nameAlignment || "left";
+    let senderBottomY: number | null = null;
     if (visible("title")) {
-      elementFrame("title", left, titleBaseY, contentWidth, 32);
+      elementFrame("title", left + headerContentX, titleBaseY, contentWidth, 32);
       drawElementText("title", companyName, titleX, titleBaseY, {
         size: titleSize,
         font: helveticaBold,
+        color: templateId === "compact" ? white : undefined,
         align: titleAlign,
         maxChars: 38,
+        maxWidth: contentWidth,
       });
     }
-    if (visible("sender")) {
+    if (visible("sender") && templateId !== "compact") {
       const senderX = titleAlign === "center" ? left : titleAlign === "right" ? right - 230 : left;
+      const senderTextX = titleAlign === "center" ? width / 2 : titleAlign === "right" ? right : senderX;
+      const senderTextAlign = titleAlign as "left" | "center" | "right";
       const senderY = titleBaseY - 25;
-      elementFrame("sender", senderX, senderY + 8, 230, 38);
-      drawElementText("sender", data.user.address || data.company.email || "", senderX, senderY, { size: 8, maxChars: 42 });
-      drawElementText("sender", `${data.company.email || data.user.email || ""}${data.user.phone ? ` • ${data.user.phone}` : ""}`, senderX, senderY - 11, { size: 8, maxChars: 42 });
+      const senderAddress = data.user.address || data.company.email || "";
+      const senderContact = `${data.company.email || data.user.email || ""}${data.user.phone ? ` • ${data.user.phone}` : ""}`;
+      const senderAddressLines = textLines(senderAddress, 42, helvetica, 8, 172);
+      const senderContactLines = textLines(senderContact, 42, helvetica, 8, 172);
+      const senderTaxLines = data.settings.showTaxNumber && data.settings.taxNumber
+        ? textLines(`Tax ID: ${data.settings.taxNumber}`, 42, helvetica, 7.5, 172)
+        : [];
+      const senderHeight = Math.max(38, 10 + (senderAddressLines.length + senderContactLines.length + senderTaxLines.length) * 11);
+      elementFrame("sender", senderX, senderY + 8, 230, senderHeight);
+      const addressEndY = drawElementText("sender", senderAddress, senderTextX, senderY, { size: 8, maxChars: 42, maxWidth: 172, align: senderTextAlign });
+      const contactEndY = drawElementText("sender", senderContact, senderTextX, addressEndY - 2, { size: 8, maxChars: 42, maxWidth: 172, align: senderTextAlign });
+      senderBottomY = contactEndY;
       if (data.settings.showTaxNumber && data.settings.taxNumber) {
-        drawElementText("sender", `Tax ID: ${data.settings.taxNumber}`, senderX, senderY - 22, { size: 7.5, maxChars: 42 });
+        senderBottomY = drawElementText("sender", `Tax ID: ${data.settings.taxNumber}`, senderTextX, contactEndY - 2, { size: 7.5, maxChars: 42, maxWidth: 172, align: senderTextAlign });
       }
     }
     if (visible("meta")) {
-      const metaX = right;
-      const metaY = headerTop + (templateId === "corporate" ? 4 : 0);
-      elementFrame("meta", right - 150, metaY + 8, 150, 58);
-      drawElementText("meta", "INVOICE", metaX, metaY, { size: templateId === "compact" ? 17 : 23, font: helveticaBold, color: colorFor(styleFor("meta").fontColor, dark), align: "right", maxChars: 20 });
-      drawElementText("meta", `#${sampleValue(data.invoiceNumber, "<invoice_number>")}`, metaX, metaY - 19, { size: 8, align: "right", maxChars: 24 });
-      drawElementText("meta", `Issue Date: ${sampleValue(data.invoiceDate, "<date>")}`, metaX, metaY - 31, { size: 7.5, align: "right", maxChars: 32 });
-      drawElementText("meta", `Payment: ${invoiceStatus}`, metaX, metaY - 42, { size: 7.5, font: helveticaBold, color: isPaid ? rgb(0.05, 0.48, 0.25) : muted, align: "right", maxChars: 32 });
+      const metaX = right + headerContentX;
+      const metaY = headerContentTop + (templateId === "corporate" ? 4 : 0);
+      elementFrame("meta", right - 150 + headerContentX, metaY + 8, 150, 58);
+      const metaColor = colorFor(styleFor("meta").fontColor, dark);
+      if (templateId === "corporate") {
+        drawElementText("meta", "INVOICE", metaX, metaY, { size: 22.5, font: helveticaBold, color: metaColor, align: "right", maxChars: 20, maxWidth: 170 });
+        drawElementText("meta", `#${sampleValue(data.invoiceNumber, "<invoice_number>")}`, metaX, metaY - 20, { size: 9, align: "right", maxChars: 24, maxWidth: 170 });
+        drawElementText("meta", `Issue Date: ${sampleValue(data.invoiceDate, "<date>")}`, metaX, metaY - 33, { size: 8, align: "right", maxChars: 32, maxWidth: 170 });
+        drawElementText("meta", `Payment: ${invoiceStatus}`, metaX, metaY - 45, { size: 8, font: helveticaBold, color: isPaid ? rgb(0.05, 0.48, 0.25) : muted, align: "right", maxChars: 32, maxWidth: 170 });
+      } else if (templateId === "agency") {
+        drawElementText("meta", "STATEMENT / INVOICE", metaX, metaY, { size: 8.25, font: helveticaBold, color: colorFor(styleFor("meta").accentColor, accent), align: "right", maxChars: 30, maxWidth: 170 });
+        drawElementText("meta", `#${sampleValue(data.invoiceNumber, "<invoice_number>")}`, metaX, metaY - 17, { size: 13.5, font: helveticaBold, color: metaColor, align: "right", maxChars: 24, maxWidth: 170 });
+        drawElementText("meta", sampleValue(data.invoiceDate, "<date>"), metaX, metaY - 33, { size: 8, align: "right", maxChars: 32, maxWidth: 170 });
+      } else if (templateId === "compact") {
+        drawElementText("meta", `#${sampleValue(data.invoiceNumber, "<invoice_number>")}`, metaX, metaY, { size: 10.5, font: helveticaBold, color: white, align: "right", maxChars: 24, maxWidth: 170 });
+        drawElementText("meta", sampleValue(data.invoiceDate, "<date>"), metaX, metaY - 15, { size: 8, color: rgb(1, 1, 1), align: "right", maxChars: 32, maxWidth: 170 });
+      } else if (templateId === "minimal") {
+        drawElementText("meta", "INVOICE", metaX, metaY, { size: 7.5, font: helvetica, color: colorFor(styleFor("meta").fontColor, muted), align: "right", maxChars: 20, maxWidth: 170 });
+        drawElementText("meta", `#${sampleValue(data.invoiceNumber, "<invoice_number>")}`, metaX, metaY - 14, { size: 10.5, align: "right", maxChars: 24, maxWidth: 170 });
+        drawElementText("meta", sampleValue(data.invoiceDate, "<date>"), metaX, metaY - 28, { size: 8, align: "right", maxChars: 32, maxWidth: 170 });
+      } else {
+        drawElementText("meta", "INVOICE", metaX, metaY, { size: 8.25, font: helveticaBold, color: colorFor(styleFor("meta").accentColor, accent), align: "right", maxChars: 20, maxWidth: 170 });
+        drawElementText("meta", `#${sampleValue(data.invoiceNumber, "<invoice_number>")}`, metaX, metaY - 17, { size: 12, font: helveticaBold, color: metaColor, align: "right", maxChars: 24, maxWidth: 170 });
+        drawElementText("meta", `Date: ${sampleValue(data.invoiceDate, "<date>")}`, metaX, metaY - 32, { size: 8, align: "right", maxChars: 32, maxWidth: 170 });
+        drawElementText("meta", `Payment: ${invoiceStatus}`, metaX, metaY - 44, { size: 7.5, font: helveticaBold, color: isPaid ? rgb(0.05, 0.48, 0.25) : muted, align: "right", maxChars: 32, maxWidth: 170 });
+      }
     }
 
-    let currentY = templateId === "corporate" ? 625 : templateId === "compact" ? 675 : 650;
+    let currentY = templateId === "corporate" ? 625 : templateId === "compact" ? 739 : 650;
+    if (senderBottomY !== null) {
+      // The browser preview grows the sender block when an address wraps.
+      // Reserve the same space before placing the client strip.
+      currentY = Math.min(currentY, senderBottomY - 20);
+    }
     if (visible("client")) {
       const boxY = currentY;
       const clientStyle = styleFor("client");
+      const clientNameValue = sampleValue(clientName, "<client_name>");
+      const clientEmailValue = sampleValue(data.clientEmail || "", "<client_email>");
+      const clientTextWidth = templateId === "compact" ? contentWidth / 3 - 8 : 220;
+      const clientNameLines = textLines(clientNameValue, 28, helveticaBold, templateId === "compact" ? 9 : 10, clientTextWidth);
+      const clientEmailLines = textLines(clientEmailValue, 30, helvetica, templateId === "compact" ? 7.5 : 8, clientTextWidth);
+      const clientBoxHeight = templateId === "compact"
+        ? Math.max(64, 31 + Math.max(clientNameLines.length, clientEmailLines.length + 1) * 13)
+        : Math.max(64, 39 + clientNameLines.length * 13 + Math.max(0, clientEmailLines.length - 1) * 11);
+      const compactColumnWidth = contentWidth / 3 - 8;
+      const compactClientX = left + contentWidth / 3;
+      const compactStatusX = left + (contentWidth / 3) * 2;
+      const clientOffset = offsetFor("client");
       page.drawRectangle({
-        x: left,
-        y: boxY - 64,
+        x: templateId === "compact" ? left : left + clientOffset.x,
+        y: templateId === "compact" ? boxY - clientBoxHeight : boxY - clientBoxHeight - clientOffset.y,
         width: contentWidth,
-        height: 64,
-        color: colorFor(clientStyle.fillColor, templateId === "minimal" ? white : light),
-        borderColor: clientStyle.showBorder ? colorFor(clientStyle.borderColor, border) : undefined,
-        borderWidth: clientStyle.showBorder ? Number(clientStyle.borderWidth) || 0.75 : 0,
+        height: clientBoxHeight,
+        color: templateId === "compact" ? light : colorFor(clientStyle.fillColor, templateId === "corporate" ? light : white),
+        borderColor: templateId === "compact" || clientStyle.showBorder ? colorFor(clientStyle.borderColor, border) : undefined,
+        borderWidth: templateId === "compact" || clientStyle.showBorder ? Number(clientStyle.borderWidth) || 0.75 : 0,
       });
-      elementFrame("client", left, boxY, contentWidth, 64);
-      const split = left + contentWidth / 2 + 10 + offsetFor("client").x;
-      const clientBaseY = boxY - 16 - offsetFor("client").y;
-      drawElementText("client", "CLIENT DETAILS", left + 12, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 22 });
-      drawElementText("client", sampleValue(clientName, "<client_name>"), left + 12, clientBaseY - 13, { size: 10, font: helveticaBold, maxChars: 28 });
-      drawElementText("client", sampleValue(data.clientEmail || "", "<client_email>"), left + 12, clientBaseY - 27, { size: 8, maxChars: 30 });
-      drawElementText("client", "PAYMENT SUMMARY", split, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 22 });
-      drawElementText("client", `Ref: ${sampleValue(data.paymentReference || data.invoiceNumber, "<payment_reference>")}`, split, clientBaseY - 13, { size: 8, maxChars: 30 });
-      drawElementText("client", `Status: ${invoiceStatus}`, split, clientBaseY - 27, { size: 8, font: helveticaBold, color: isPaid ? rgb(0.05, 0.48, 0.25) : muted, maxChars: 30 });
-      currentY = boxY - 82;
+      if (templateId === "compact") {
+        elementFrame("sender", left, boxY, compactColumnWidth, clientBoxHeight);
+        elementFrame("client", compactClientX, boxY, compactColumnWidth, clientBoxHeight);
+        elementFrame("status", compactStatusX, boxY, compactColumnWidth, clientBoxHeight);
+      } else {
+        elementFrame("client", left, boxY, contentWidth, clientBoxHeight);
+      }
+      const clientBaseY = boxY - 16;
+      if (templateId === "compact") {
+        // Compact uses a real three-column strip in the editor. Keep the
+        // status as its own element so its saved offset/style is respected.
+        const columnWidth = compactColumnWidth;
+        const clientX = compactClientX;
+        const statusX = compactStatusX;
+        const senderStyle = styleFor("sender");
+        const statusStyle = styleFor("status");
+        const statusOffset = offsetFor("status");
+        drawElementText("sender", "FROM", left + 8, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 10, maxWidth: columnWidth });
+        drawElementText("sender", sampleValue(data.user.name || data.company.name, "<owner_name>"), left + 8, clientBaseY - 13, { size: 9, font: helveticaBold, color: colorFor(senderStyle.fontColor, dark), maxChars: 28, maxWidth: columnWidth });
+        if (data.settings.showTaxNumber && data.settings.taxNumber) {
+          drawElementText("sender", `Tax: ${data.settings.taxNumber}`, left + 8, clientBaseY - 26, { size: 7.5, color: colorFor(senderStyle.fontColor, muted), maxChars: 24, maxWidth: columnWidth });
+        }
+        drawElementText("client", "TO", clientX + 8, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 10, maxWidth: columnWidth });
+        const clientNameEnd = drawElementText("client", clientNameValue, clientX + 8, clientBaseY - 13, { size: 9, font: helveticaBold, maxChars: 28, maxWidth: columnWidth });
+        drawElementText("client", clientEmailValue, clientX + 8, clientNameEnd - 2, { size: 7.5, maxChars: 30, maxWidth: columnWidth });
+        drawElementText("status", "STATUS", statusX + 8, boxY - 16, { size: 7.5, font: helveticaBold, color: colorFor(statusStyle.fontColor, dark), maxChars: 10, maxWidth: columnWidth });
+        drawElementText("status", isPaid ? "PAID" : invoiceStatus, statusX + 8, boxY - 29, { size: 8.5, font: helveticaBold, color: colorFor(statusStyle.accentColor || statusStyle.fontColor, isPaid ? rgb(0.05, 0.48, 0.25) : muted), maxChars: 20, maxWidth: columnWidth });
+        drawElementText("status", sampleValue(data.paymentReference || data.invoiceNumber, "<payment_reference>"), statusX + 8, boxY - 42, { size: 7.5, color: colorFor(statusStyle.fontColor, muted), maxChars: 24, maxWidth: columnWidth });
+      } else {
+        const split = left + contentWidth / 2 + 10;
+        drawElementText("client", "CLIENT DETAILS", left + 12, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 22, maxWidth: 220 });
+        const clientNameEnd = drawElementText("client", clientNameValue, left + 12, clientBaseY - 13, { size: 10, font: helveticaBold, maxChars: 28, maxWidth: 220 });
+        drawElementText("client", clientEmailValue, left + 12, clientNameEnd - 2, { size: 8, maxChars: 30, maxWidth: 220 });
+        drawElementText("client", "PAYMENT SUMMARY", split, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 22, maxWidth: 220 });
+        drawElementText("client", `Ref: ${sampleValue(data.paymentReference || data.invoiceNumber, "<payment_reference>")}`, split, clientBaseY - 13, { size: 8, maxChars: 30, maxWidth: 220 });
+        drawElementText("client", `Status: ${invoiceStatus}`, split, clientBaseY - 27, { size: 8, font: helveticaBold, color: isPaid ? rgb(0.05, 0.48, 0.25) : muted, maxChars: 30, maxWidth: 220 });
+      }
+      currentY = boxY - clientBoxHeight - 18;
     }
 
     if (visible("items")) {
@@ -490,34 +632,57 @@ export class InvoicePdfService {
       const tableX = left;
       const tableWidth = contentWidth;
       const headerHeight = templateId === "compact" ? 22 : 25;
-      const rowHeight = 25;
+      const estimateRowHeight = (item: InvoiceLineItem) => {
+        const description = item.description;
+        const lines = textLines(description, 42, helveticaBold, 8, 300);
+        return Math.max(25, lines.length * 10 + 9);
+      };
       const drawItemsTable = (rows: InvoiceLineItem[], tableTop: number) => {
-        const tableHeight = headerHeight + rows.length * rowHeight;
+        const rowHeights = rows.map(estimateRowHeight);
+        const tableHeight = headerHeight + rowHeights.reduce((sum, height) => sum + height, 0);
         elementFrame("items", tableX, tableTop, tableWidth, tableHeight);
         const itemOffset = offsetFor("items");
         const renderedTableX = tableX + itemOffset.x;
         const renderedTableTop = tableTop - itemOffset.y;
-        page.drawRectangle({ x: renderedTableX, y: renderedTableTop - headerHeight, width: tableWidth, height: headerHeight, color: colorFor(itemStyle.tableHeaderFill, templateId === "agency" ? accent : light), borderColor: border, borderWidth: 0.6 });
-        const headerColor = colorFor(itemStyle.tableHeaderTextColor, templateId === "agency" ? white : dark);
-        drawText(templateId === "corporate" ? "ITEM & DESCRIPTION" : "DESCRIPTION", renderedTableX + 10, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, maxChars: 28 });
+        const defaultHeaderFill = templateId === "modern" || templateId === "agency"
+          ? accent
+          : templateId === "compact"
+            ? light
+            : white;
+        const defaultHeaderText = templateId === "modern" || templateId === "agency" ? white : dark;
+        page.drawRectangle({ x: renderedTableX, y: renderedTableTop - headerHeight, width: tableWidth, height: headerHeight, color: colorFor(itemStyle.tableHeaderFill, defaultHeaderFill), borderColor: border, borderWidth: 0.6 });
+        const headerColor = colorFor(itemStyle.tableHeaderTextColor, defaultHeaderText);
+        drawText(templateId === "corporate" ? "ITEM & DESCRIPTION" : templateId === "compact" ? "ITEM" : "DESCRIPTION", renderedTableX + 10, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, maxChars: 28 });
         drawText("QTY", renderedTableX + 320, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "center", maxChars: 8 });
-        drawText("UNIT PRICE", renderedTableX + 412, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 12 });
-        drawText("AMOUNT", renderedTableX + tableWidth - 10, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 10 });
+        drawText(templateId === "compact" ? "PRICE" : "UNIT PRICE", renderedTableX + 412, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 12 });
+        drawText(templateId === "compact" ? "TOTAL" : "AMOUNT", renderedTableX + tableWidth - 10, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 10 });
+        let rowOffset = 0;
         rows.forEach((item, index) => {
-          const rowTop = renderedTableTop - headerHeight - index * rowHeight;
-          const baseRowTop = tableTop - headerHeight - index * rowHeight;
+          const rowHeight = rowHeights[index] || 25;
+          const rowTop = renderedTableTop - headerHeight - rowOffset;
+          const baseRowTop = tableTop - headerHeight - rowOffset;
           page.drawRectangle({ x: renderedTableX, y: rowTop - rowHeight, width: tableWidth, height: rowHeight, color: white, borderColor: border, borderWidth: itemStyle.tableRowLines === false ? 0 : 0.45 });
-          drawElementText("items", data.isSample ? "<file_name>" : item.description, tableX + 10, baseRowTop - 16, { size: 8, font: helveticaBold, maxChars: 42 });
+          drawElementText("items", item.description, tableX + 10, baseRowTop - 16, { size: 8, font: helveticaBold, maxChars: 42, maxWidth: 300 });
           drawElementText("items", data.isSample ? "<qty>" : item.qty, tableX + 320, baseRowTop - 16, { size: 8, align: "center", maxChars: 8 });
           drawElementText("items", moneyValue(item.rate, "<price>"), tableX + 412, baseRowTop - 16, { size: 8, align: "right", maxChars: 16 });
           drawElementText("items", moneyValue(item.amount, "<total>"), tableX + tableWidth - 10, baseRowTop - 16, { size: 8, font: helveticaBold, align: "right", maxChars: 16 });
+          rowOffset += rowHeight;
         });
-        return renderedTableTop - tableHeight - 22;
+        return renderedTableTop - tableHeight - (templateId === "compact" ? 8 : 22);
       };
 
       // Leave room for totals and notes on the first page. Any remaining
       // rows are moved to continuation pages with the same table geometry.
-      const firstPageRows = Math.max(1, Math.min(items.length, Math.floor((currentY - 225) / rowHeight)));
+      const availableRowsHeight = Math.max(25, currentY - 225 - headerHeight);
+      let firstPageRows = 0;
+      let usedRowsHeight = 0;
+      for (const item of items) {
+        const rowHeight = estimateRowHeight(item);
+        if (firstPageRows > 0 && usedRowsHeight + rowHeight > availableRowsHeight) break;
+        usedRowsHeight += rowHeight;
+        firstPageRows += 1;
+      }
+      firstPageRows = Math.max(1, Math.min(items.length, firstPageRows));
       currentY = drawItemsTable(items.slice(0, firstPageRows), currentY);
       let nextItemIndex = firstPageRows;
       while (nextItemIndex < items.length) {
@@ -555,16 +720,23 @@ export class InvoicePdfService {
       const customStyle = styleFor("customText");
       const customContent = customStyle.customContent;
       if (customContent) {
-        elementFrame("customText", left, currentY, contentWidth, 28);
-        drawElementText("customText", customContent, left, currentY - 13, { size: 8, maxChars: 100 });
-        currentY -= 35;
+        const customLines = textLines(customContent, 100, fontFor(customStyle, helvetica), sizeFor(customStyle, 8), contentWidth);
+        const customHeight = Math.max(28, 12 + customLines.length * 11);
+        elementFrame("customText", left, currentY, contentWidth, customHeight);
+        drawElementText("customText", customContent, left, currentY - 13, { size: 8, maxChars: 100, maxWidth: contentWidth });
+        currentY -= customHeight + 7;
       }
     }
     if (visible("notes") && data.settings.showNotes && (data.settings.notes || data.settings.terms)) {
       const notesY = Math.max(65, currentY - 5);
-      elementFrame("notes", left, notesY, contentWidth, 48);
-      drawElementText("notes", data.settings.notes || "", left, notesY - 13, { size: 8, maxChars: 100 });
-      drawElementText("notes", data.settings.terms || "", left, notesY - 27, { size: 8, color: muted, maxChars: 100 });
+      const notesFont = fontFor(styleFor("notes"), helvetica);
+      const notesSize = sizeFor(styleFor("notes"), 8);
+      const noteLines = textLines(data.settings.notes || "", 100, notesFont, notesSize, contentWidth);
+      const termLines = textLines(data.settings.terms || "", 100, notesFont, notesSize, contentWidth);
+      const notesHeight = Math.max(48, 10 + (noteLines.length + termLines.length) * 11);
+      elementFrame("notes", left, notesY, contentWidth, notesHeight);
+      const notesEndY = drawElementText("notes", data.settings.notes || "", left, notesY - 13, { size: 8, maxChars: 100, maxWidth: contentWidth });
+      drawElementText("notes", data.settings.terms || "", left, notesEndY - 2, { size: 8, color: muted, maxChars: 100, maxWidth: contentWidth });
     }
     page.drawText(`${companyName} • ${data.invoiceNumber}`, { x: left, y: 28, size: 7, font: helvetica, color: rgb(0.55, 0.58, 0.62) });
     page.pushOperators(popGraphicsState());

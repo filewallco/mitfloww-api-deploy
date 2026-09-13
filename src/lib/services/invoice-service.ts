@@ -603,8 +603,8 @@ export class InvoiceService {
       clientEmail: "<client_email>",
       projectTitle: "<project_name>",
       lineItems: [
-        { description: "<file_name>", qty: 0, rate: 0, amount: 0 },
-        { description: "<file_name>", qty: 0, rate: 0, amount: 0 },
+        { description: "<item_description_1>", qty: 0, rate: 0, amount: 0 },
+        { description: "<item_description_2>", qty: 0, rate: 0, amount: 0 },
       ],
       company: {
         name: profile.company?.name || userName || "My Design Company",
