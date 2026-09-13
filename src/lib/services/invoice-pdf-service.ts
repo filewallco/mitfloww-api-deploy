@@ -1,4 +1,13 @@
-import { PDFDocument, rgb, StandardFonts, type PDFPage, type PDFFont } from "pdf-lib";
+import {
+  PDFDocument,
+  concatTransformationMatrix,
+  popGraphicsState,
+  pushGraphicsState,
+  rgb,
+  StandardFonts,
+  type PDFPage,
+  type PDFFont,
+} from "pdf-lib";
 import sharp from "sharp";
 
 export interface InvoiceLineItem {
@@ -143,6 +152,29 @@ export class InvoicePdfService {
     }
 
     const page = doc.addPage(pageDimensions);
+    const basePageWidth = 595.28;
+    const basePageHeight = 841.89;
+    const pageScale = Math.min(
+      pageDimensions[0] / basePageWidth,
+      pageDimensions[1] / basePageHeight,
+    );
+    const pageOffsetX = (pageDimensions[0] - basePageWidth * pageScale) / 2;
+    const pageOffsetY = (pageDimensions[1] - basePageHeight * pageScale) / 2;
+
+    // Template renderers use A4 points as their design coordinate system.
+    // Scale that coordinate system to the selected paper size so A5/Letter
+    // invoices stay inside the page instead of being clipped off-canvas.
+    page.pushOperators(
+      pushGraphicsState(),
+      concatTransformationMatrix(
+        pageScale,
+        0,
+        0,
+        pageScale,
+        pageOffsetX,
+        pageOffsetY,
+      ),
+    );
     const helvetica = await doc.embedFont(StandardFonts.Helvetica);
     const helveticaBold = await doc.embedFont(StandardFonts.HelveticaBold);
     const helveticaOblique = await doc.embedFont(StandardFonts.HelveticaOblique);
@@ -179,6 +211,8 @@ export class InvoicePdfService {
         this.renderModernTemplate({ doc, page, data, helvetica, helveticaBold, helveticaOblique, logoImage });
         break;
     }
+
+    page.pushOperators(popGraphicsState());
 
     const pdfBytes = await doc.save();
     return Buffer.from(pdfBytes);

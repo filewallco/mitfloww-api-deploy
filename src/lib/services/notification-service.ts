@@ -140,6 +140,20 @@ function resolveNotificationText(input: {
           messages.notificationClientApprovalCanceledDescription,
           { fileName, projectSuffix },
         );
+      case "notification.clientPaymentCompletedTitle":
+        return messages.notificationClientPaymentCompletedTitle;
+      case "notification.clientPaymentCompletedDescription":
+        return replaceTemplate(
+          messages.notificationClientPaymentCompletedDescription,
+          { projectSuffix },
+        );
+      case "notification.clientReviewSubmittedTitle":
+        return messages.notificationClientReviewSubmittedTitle;
+      case "notification.clientReviewSubmittedDescription":
+        return replaceTemplate(
+          messages.notificationClientReviewSubmittedDescription,
+          { projectSuffix },
+        );
       default:
         return null;
     }

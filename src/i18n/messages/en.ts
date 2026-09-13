@@ -111,6 +111,12 @@ export const enMessages: AppMessages = {
     notificationClientApprovalCanceledTitle: "Client canceled approval",
     notificationClientApprovalCanceledDescription:
       "Approval was canceled for {fileName} from the shared client review{projectSuffix}.",
+    notificationClientPaymentCompletedTitle: "Client completed payment",
+    notificationClientPaymentCompletedDescription:
+      "The client completed payment for your project{projectSuffix}.",
+    notificationClientReviewSubmittedTitle: "Client submitted a review",
+    notificationClientReviewSubmittedDescription:
+      "The client left a review for your project{projectSuffix}.",
     loadFailedTitle: "Couldn't load this yet",
     loadFailedDescription: "Please try again in a moment.",
     "errors.unexpected": "Something went wrong. Please try again.",

@@ -4355,6 +4355,13 @@ export class FileService {
         updatedAt: new Date(),
       });
 
+      await this.createProjectActionNotification({
+        descriptionKey: "notification.clientPaymentCompletedDescription",
+        eventKey: `client-payment-completed:${project.id}`,
+        projectId: project.id,
+        titleKey: "notification.clientPaymentCompletedTitle",
+      });
+
       // Cleanup files on payment success:
       // 1. Delete all versions that are not final drafts and not reported.
       // 2. For final drafts, delete the processed/watermarked storage object (keep original).
@@ -4467,6 +4474,8 @@ export class FileService {
     }
 
     const submittedAt = new Date();
+    const existingReview =
+      await this.projectRepository.findClientReviewByProjectId(project.id);
     const record = await this.projectRepository.upsertClientReview({
       projectId: project.id,
       rating: input.rating,
@@ -4475,6 +4484,15 @@ export class FileService {
       submittedAt,
       updatedAt: submittedAt,
     });
+
+    if (!existingReview) {
+      await this.createProjectActionNotification({
+        descriptionKey: "notification.clientReviewSubmittedDescription",
+        eventKey: `client-review-submitted:${project.id}`,
+        projectId: project.id,
+        titleKey: "notification.clientReviewSubmittedTitle",
+      });
+    }
 
     return {
       rating: record.rating,
@@ -5388,6 +5406,25 @@ export class FileService {
         category: "system",
         descriptionKey: input.descriptionKey,
         fileId: input.fileId,
+        projectId: input.projectId,
+        titleKey: input.titleKey,
+      });
+    } catch {
+      // Notifications should never block client actions.
+    }
+  }
+
+  private async createProjectActionNotification(input: {
+    descriptionKey: string;
+    eventKey: string;
+    projectId: string;
+    titleKey: string;
+  }) {
+    try {
+      await notificationService.createNotification({
+        category: "system",
+        descriptionKey: input.descriptionKey,
+        eventKey: input.eventKey,
         projectId: input.projectId,
         titleKey: input.titleKey,
       });

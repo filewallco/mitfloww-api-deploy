@@ -137,6 +137,7 @@ shareLinksRouter.get("/:token/invoice/pdf", asyncHandler(async (req, res) => {
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.setHeader("Content-Length", String(pdfBuffer.length));
+  res.setHeader("Cache-Control", "no-store, max-age=0");
   return res.send(pdfBuffer);
 }));
 

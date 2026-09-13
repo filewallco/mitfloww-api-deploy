@@ -330,7 +330,9 @@ export class InvoiceService {
     const baseAmount = Number(project.amountCents) / 100 || 0;
     const subtotal = baseAmount + extraRevisionAmount;
 
-    const advancePaymentPaid = (project.advancePaymentEnabled && project.advanceAmountCents > 0)
+    const advancePaymentPaid = (project.advancePaymentEnabled &&
+      project.advancePaymentStatus === "paid" &&
+      project.advanceAmountCents > 0)
       ? Number(project.advanceAmountCents) / 100
       : 0;
 
@@ -387,7 +389,9 @@ export class InvoiceService {
         });
 
     const invoiceNumber = project.clientPaymentReference
-      ? `INV-${project.clientPaymentReference}`
+      ? project.clientPaymentReference.startsWith("INV-")
+        ? project.clientPaymentReference
+        : `INV-${project.clientPaymentReference}`
       : `INV-${project.publicId.slice(0, 8).toUpperCase()}`;
 
     const userName =
