@@ -585,28 +585,27 @@ export class InvoiceService {
       }
     }
 
-    const todayStr = new Date().toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-
     const userName =
       profile.user.displayName ||
       [profile.user.firstName, profile.user.lastName].filter(Boolean).join(" ") ||
       "Freelancer Name";
 
     const pdfData: InvoicePdfData = {
-      invoiceNumber: "INV-SAMPLE-2026",
-      paymentReference: "UPI-SAMPLE-REF",
-      invoiceDate: todayStr,
-      paymentMethod: "UPI",
+      isSample: true,
+      invoiceNumber: "<invoice_number>",
+      paymentReference: "<payment_reference>",
+      invoiceDate: "<date>",
+      paymentMethod: "<payment_method>",
       paymentStatus: "PAID",
       currency: "INR",
-      amount: 2500,
-      clientName: "Sample Client Corp",
-      clientEmail: "billing@sampleclient.com",
-      projectTitle: "Sample Design & Brand Assets",
+      amount: 0,
+      clientName: "<client_name>",
+      clientEmail: "<client_email>",
+      projectTitle: "<project_name>",
+      lineItems: [
+        { description: "<file_name>", qty: 0, rate: 0, amount: 0 },
+        { description: "<file_name>", qty: 0, rate: 0, amount: 0 },
+      ],
       company: {
         name: profile.company?.name || userName || "My Design Company",
         tagline: profile.company?.tagline || "Professional Creative Services",

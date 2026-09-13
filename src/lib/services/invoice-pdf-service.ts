@@ -18,6 +18,7 @@ export interface InvoiceLineItem {
 }
 
 export interface InvoicePdfData {
+  isSample?: boolean;
   lineItems?: InvoiceLineItem[];
   subtotal?: number;
   advancePaymentPaid?: number;
@@ -194,12 +195,28 @@ export class InvoicePdfService {
     }
 
     const templateId = data.settings.templateId || "modern";
+    const createTemplatePage = () => {
+      const nextPage = doc.addPage(pageDimensions);
+      nextPage.pushOperators(
+        pushGraphicsState(),
+        concatTransformationMatrix(
+          pageScale,
+          0,
+          0,
+          pageScale,
+          pageOffsetX,
+          pageOffsetY,
+        ),
+      );
+      return nextPage;
+    };
     // The editor preview and the old PDF renderer had two separate designs.
     // Keep one renderer for sample and project PDFs so the selected editor
     // template (including its elements, styles and offsets) is the source of
     // truth for both downloads.
     this.renderEditorTemplate({
       page,
+      createPage: createTemplatePage,
       data,
       helvetica,
       helveticaBold,
@@ -208,14 +225,13 @@ export class InvoicePdfService {
       templateId,
     });
 
-    page.pushOperators(popGraphicsState());
-
     const pdfBytes = await doc.save();
     return Buffer.from(pdfBytes);
   }
 
   private renderEditorTemplate(ctx: {
     page: PDFPage;
+    createPage: () => PDFPage;
     data: InvoicePdfData;
     helvetica: PDFFont;
     helveticaBold: PDFFont;
@@ -223,7 +239,8 @@ export class InvoicePdfService {
     logoImage: any;
     templateId: string;
   }) {
-    const { page, data, helvetica, helveticaBold, helveticaOblique, logoImage, templateId } = ctx;
+    const { data, helvetica, helveticaBold, helveticaOblique, logoImage, templateId, createPage } = ctx;
+    let page = ctx.page;
     const width = 595.28;
     const left = 50;
     const right = width - 50;
@@ -378,6 +395,8 @@ export class InvoicePdfService {
     };
 
     const items = getLineItems(data);
+    const sampleValue = (realValue: string, placeholder: string) => data.isSample ? placeholder : realValue;
+    const moneyValue = (value: number, placeholder: string) => data.isSample ? placeholder : formatCurrencyString(data.currency, value);
     const subtotal = data.subtotal ?? items.reduce((sum, item) => sum + item.amount, 0);
     const total = data.amount ?? subtotal;
     const isPaid = String(data.paymentStatus).toLowerCase() === "paid";
@@ -407,11 +426,14 @@ export class InvoicePdfService {
     const headerTop = templateId === "corporate" ? 720 : templateId === "compact" ? 780 : 760;
     const logoX = data.settings.logoAlignment === "right" ? right - 80 : left;
     drawLogo("logo", logoX, headerTop + 8, 80);
+    const titleBaseY = templateId === "corporate" && logoImage && data.settings.showLogo
+      ? headerTop - 42
+      : headerTop;
     const titleX = data.settings.nameAlignment === "center" ? width / 2 : data.settings.nameAlignment === "right" ? right : left;
     const titleAlign = data.settings.nameAlignment || "left";
     if (visible("title")) {
-      const frame = elementFrame("title", titleX - (titleAlign === "center" ? 125 : 0), headerTop, 250, 32);
-      drawElementText("title", companyName, titleAlign === "right" ? right : frame.x, frame.y, {
+      elementFrame("title", left, titleBaseY, contentWidth, 32);
+      drawElementText("title", companyName, titleX, titleBaseY, {
         size: titleSize,
         font: helveticaBold,
         align: titleAlign,
@@ -420,7 +442,7 @@ export class InvoicePdfService {
     }
     if (visible("sender")) {
       const senderX = titleAlign === "center" ? left : titleAlign === "right" ? right - 230 : left;
-      const senderY = headerTop - 25;
+      const senderY = titleBaseY - 25;
       elementFrame("sender", senderX, senderY + 8, 230, 38);
       drawElementText("sender", data.user.address || data.company.email || "", senderX, senderY, { size: 8, maxChars: 42 });
       drawElementText("sender", `${data.company.email || data.user.email || ""}${data.user.phone ? ` • ${data.user.phone}` : ""}`, senderX, senderY - 11, { size: 8, maxChars: 42 });
@@ -433,8 +455,8 @@ export class InvoicePdfService {
       const metaY = headerTop + (templateId === "corporate" ? 4 : 0);
       elementFrame("meta", right - 150, metaY + 8, 150, 58);
       drawElementText("meta", "INVOICE", metaX, metaY, { size: templateId === "compact" ? 17 : 23, font: helveticaBold, color: colorFor(styleFor("meta").fontColor, dark), align: "right", maxChars: 20 });
-      drawElementText("meta", `#${data.invoiceNumber}`, metaX, metaY - 19, { size: 8, align: "right", maxChars: 24 });
-      drawElementText("meta", `Issue Date: ${data.invoiceDate}`, metaX, metaY - 31, { size: 7.5, align: "right", maxChars: 32 });
+      drawElementText("meta", `#${sampleValue(data.invoiceNumber, "<invoice_number>")}`, metaX, metaY - 19, { size: 8, align: "right", maxChars: 24 });
+      drawElementText("meta", `Issue Date: ${sampleValue(data.invoiceDate, "<date>")}`, metaX, metaY - 31, { size: 7.5, align: "right", maxChars: 32 });
       drawElementText("meta", `Payment: ${invoiceStatus}`, metaX, metaY - 42, { size: 7.5, font: helveticaBold, color: isPaid ? rgb(0.05, 0.48, 0.25) : muted, align: "right", maxChars: 32 });
     }
 
@@ -455,54 +477,77 @@ export class InvoicePdfService {
       const split = left + contentWidth / 2 + 10 + offsetFor("client").x;
       const clientBaseY = boxY - 16 - offsetFor("client").y;
       drawElementText("client", "CLIENT DETAILS", left + 12, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 22 });
-      drawElementText("client", clientName, left + 12, clientBaseY - 13, { size: 10, font: helveticaBold, maxChars: 28 });
-      drawElementText("client", data.clientEmail || "", left + 12, clientBaseY - 27, { size: 8, maxChars: 30 });
+      drawElementText("client", sampleValue(clientName, "<client_name>"), left + 12, clientBaseY - 13, { size: 10, font: helveticaBold, maxChars: 28 });
+      drawElementText("client", sampleValue(data.clientEmail || "", "<client_email>"), left + 12, clientBaseY - 27, { size: 8, maxChars: 30 });
       drawElementText("client", "PAYMENT SUMMARY", split, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 22 });
-      drawElementText("client", `Ref: ${data.paymentReference || data.invoiceNumber}`, split, clientBaseY - 13, { size: 8, maxChars: 30 });
+      drawElementText("client", `Ref: ${sampleValue(data.paymentReference || data.invoiceNumber, "<payment_reference>")}`, split, clientBaseY - 13, { size: 8, maxChars: 30 });
       drawElementText("client", `Status: ${invoiceStatus}`, split, clientBaseY - 27, { size: 8, font: helveticaBold, color: isPaid ? rgb(0.05, 0.48, 0.25) : muted, maxChars: 30 });
       currentY = boxY - 82;
     }
 
     if (visible("items")) {
       const itemStyle = styleFor("items");
-      const tableX = left + offsetFor("items").x;
+      const tableX = left;
       const tableWidth = contentWidth;
       const headerHeight = templateId === "compact" ? 22 : 25;
       const rowHeight = 25;
-      const tableTop = currentY - offsetFor("items").y;
-      const tableHeight = headerHeight + Math.min(items.length, 18) * rowHeight;
-      elementFrame("items", left, currentY, tableWidth, tableHeight);
-      page.drawRectangle({ x: tableX, y: tableTop - headerHeight, width: tableWidth, height: headerHeight, color: colorFor(itemStyle.tableHeaderFill, templateId === "agency" ? accent : light), borderColor: border, borderWidth: 0.6 });
-      const headerColor = colorFor(itemStyle.tableHeaderTextColor, templateId === "agency" ? white : dark);
-      drawText(templateId === "corporate" ? "ITEM & DESCRIPTION" : "DESCRIPTION", tableX + 10, tableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, maxChars: 28 });
-      drawText("QTY", tableX + 320, tableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "center", maxChars: 8 });
-      drawText("UNIT PRICE", tableX + 412, tableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 12 });
-      drawText("AMOUNT", tableX + tableWidth - 10, tableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 10 });
-      items.slice(0, 18).forEach((item, index) => {
-        const rowTop = tableTop - headerHeight - index * rowHeight;
-        page.drawRectangle({ x: tableX, y: rowTop - rowHeight, width: tableWidth, height: rowHeight, color: white, borderColor: border, borderWidth: itemStyle.tableRowLines === false ? 0 : 0.45 });
-        drawElementText("items", item.description, tableX + 10, rowTop - 16, { size: 8, font: helveticaBold, maxChars: 42 });
-        drawElementText("items", item.qty, tableX + 320, rowTop - 16, { size: 8, align: "center", maxChars: 8 });
-        drawElementText("items", formatCurrencyString(data.currency, item.rate), tableX + 412, rowTop - 16, { size: 8, align: "right", maxChars: 16 });
-        drawElementText("items", formatCurrencyString(data.currency, item.amount), tableX + tableWidth - 10, rowTop - 16, { size: 8, font: helveticaBold, align: "right", maxChars: 16 });
-      });
-      currentY = tableTop - tableHeight - 22;
+      const drawItemsTable = (rows: InvoiceLineItem[], tableTop: number) => {
+        const tableHeight = headerHeight + rows.length * rowHeight;
+        elementFrame("items", tableX, tableTop, tableWidth, tableHeight);
+        const itemOffset = offsetFor("items");
+        const renderedTableX = tableX + itemOffset.x;
+        const renderedTableTop = tableTop - itemOffset.y;
+        page.drawRectangle({ x: renderedTableX, y: renderedTableTop - headerHeight, width: tableWidth, height: headerHeight, color: colorFor(itemStyle.tableHeaderFill, templateId === "agency" ? accent : light), borderColor: border, borderWidth: 0.6 });
+        const headerColor = colorFor(itemStyle.tableHeaderTextColor, templateId === "agency" ? white : dark);
+        drawText(templateId === "corporate" ? "ITEM & DESCRIPTION" : "DESCRIPTION", renderedTableX + 10, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, maxChars: 28 });
+        drawText("QTY", renderedTableX + 320, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "center", maxChars: 8 });
+        drawText("UNIT PRICE", renderedTableX + 412, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 12 });
+        drawText("AMOUNT", renderedTableX + tableWidth - 10, renderedTableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 10 });
+        rows.forEach((item, index) => {
+          const rowTop = renderedTableTop - headerHeight - index * rowHeight;
+          const baseRowTop = tableTop - headerHeight - index * rowHeight;
+          page.drawRectangle({ x: renderedTableX, y: rowTop - rowHeight, width: tableWidth, height: rowHeight, color: white, borderColor: border, borderWidth: itemStyle.tableRowLines === false ? 0 : 0.45 });
+          drawElementText("items", data.isSample ? "<file_name>" : item.description, tableX + 10, baseRowTop - 16, { size: 8, font: helveticaBold, maxChars: 42 });
+          drawElementText("items", data.isSample ? "<qty>" : item.qty, tableX + 320, baseRowTop - 16, { size: 8, align: "center", maxChars: 8 });
+          drawElementText("items", moneyValue(item.rate, "<price>"), tableX + 412, baseRowTop - 16, { size: 8, align: "right", maxChars: 16 });
+          drawElementText("items", moneyValue(item.amount, "<total>"), tableX + tableWidth - 10, baseRowTop - 16, { size: 8, font: helveticaBold, align: "right", maxChars: 16 });
+        });
+        return renderedTableTop - tableHeight - 22;
+      };
+
+      // Leave room for totals and notes on the first page. Any remaining
+      // rows are moved to continuation pages with the same table geometry.
+      const firstPageRows = Math.max(1, Math.min(items.length, Math.floor((currentY - 225) / rowHeight)));
+      currentY = drawItemsTable(items.slice(0, firstPageRows), currentY);
+      let nextItemIndex = firstPageRows;
+      while (nextItemIndex < items.length) {
+        page.pushOperators(popGraphicsState());
+        page = createPage();
+        drawText(`${companyName} — ${data.invoiceNumber} (continued)`, left, 800, { size: 11, font: helveticaBold, color: dark, maxChars: 70 });
+        page.drawLine({ start: { x: left, y: 785 }, end: { x: right, y: 785 }, thickness: 1, color: accent });
+        const pageRows = items.slice(nextItemIndex, nextItemIndex + 20);
+        currentY = drawItemsTable(pageRows, 755);
+        nextItemIndex += pageRows.length;
+      }
     }
 
     if (visible("totals")) {
       const totalsStyle = styleFor("totals");
-      const totalsX = right - 205 + offsetFor("totals").x;
-      const totalsY = currentY - offsetFor("totals").y;
+      const totalsX = right - 205;
+      const totalsY = currentY;
       elementFrame("totals", totalsX, totalsY + 8, 205, 70);
-      page.drawLine({ start: { x: totalsX, y: totalsY }, end: { x: right, y: totalsY }, thickness: 1.2, color: colorFor(totalsStyle.borderColor, dark) });
+      const totalsOffset = offsetFor("totals");
+      const renderedTotalsX = totalsX + totalsOffset.x;
+      const renderedTotalsY = totalsY - totalsOffset.y;
+      page.drawLine({ start: { x: renderedTotalsX, y: renderedTotalsY }, end: { x: right + totalsOffset.x, y: renderedTotalsY }, thickness: 1.2, color: colorFor(totalsStyle.borderColor, dark) });
       drawElementText("totals", "Subtotal:", totalsX, totalsY - 15, { size: 8.5, maxChars: 18 });
-      drawElementText("totals", formatCurrencyString(data.currency, subtotal), right, totalsY - 15, { size: 8.5, align: "right", maxChars: 18 });
+      drawElementText("totals", moneyValue(subtotal, "<subtotal>"), right, totalsY - 15, { size: 8.5, align: "right", maxChars: 18 });
       if (data.advancePaymentPaid && data.advancePaymentPaid > 0) {
         drawElementText("totals", "Advance Paid:", totalsX, totalsY - 29, { size: 8.5, maxChars: 18 });
         drawElementText("totals", `-${formatCurrencyString(data.currency, data.advancePaymentPaid)}`, right, totalsY - 29, { size: 8.5, align: "right", maxChars: 18 });
       }
       drawElementText("totals", isPaid ? "Amount Paid:" : "Amount Due:", totalsX, totalsY - 47, { size: 10, font: helveticaBold, maxChars: 18 });
-      drawElementText("totals", formatCurrencyString(data.currency, total), right, totalsY - 47, { size: 10, font: helveticaBold, color: accent, align: "right", maxChars: 18 });
+      drawElementText("totals", moneyValue(total, "<total>"), right, totalsY - 47, { size: 10, font: helveticaBold, color: accent, align: "right", maxChars: 18 });
       currentY = totalsY - 72;
     }
 
@@ -522,6 +567,7 @@ export class InvoicePdfService {
       drawElementText("notes", data.settings.terms || "", left, notesY - 27, { size: 8, color: muted, maxChars: 100 });
     }
     page.drawText(`${companyName} • ${data.invoiceNumber}`, { x: left, y: 28, size: 7, font: helvetica, color: rgb(0.55, 0.58, 0.62) });
+    page.pushOperators(popGraphicsState());
   }
 
   // 1. MODERN MINIMAL TEMPLATE
