@@ -84,6 +84,7 @@ export type FileReviewVersionDTO = {
   processedStorageKey: string | null;
   processingErrorCode: string | null;
   processingErrorMessage: string | null;
+  processingJobId: string | null;
   processingStatus: FileProcessingStatus;
   revisionDescription: string | null;
   revisionDescriptionSourceLocale: string | null;

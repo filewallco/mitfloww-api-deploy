@@ -456,6 +456,28 @@ function getFileReviewUploadMode(input: {
   return "normal";
 }
 
+function hasUploadBlockingFinalDraft(input: {
+  finalDraftVersionId: string | null;
+  versions: FileVersionRecord[];
+}) {
+  if (!input.finalDraftVersionId) {
+    return false;
+  }
+
+  const finalDraftVersion = input.versions.find(
+    (version) => version.id === input.finalDraftVersionId,
+  );
+
+  if (!finalDraftVersion) {
+    return false;
+  }
+
+  return (
+    finalDraftVersion.processingStatus !== FileProcessingStatus.Failed &&
+    finalDraftVersion.processingStatus !== FileProcessingStatus.Corrupt
+  );
+}
+
 function canDeleteFinalDraftVersion(input: {
   finalDraftDownloadCount: number;
   finalDraftDownloadedAt: Date | null;
@@ -576,6 +598,13 @@ function getVersionDeleteBlockReason(input: {
     input.version.processingStatus === FileProcessingStatus.Retrying
   ) {
     return "processing_active";
+  }
+
+  if (
+    input.version.isFinalDraft &&
+    input.version.processingStatus === FileProcessingStatus.Completed
+  ) {
+    return "final_draft_processing_completed";
   }
 
   if (input.activeVersionCount <= 1) {
@@ -918,6 +947,7 @@ function toFileReviewVersionDTO(input: {
     processedStorageKey: version.processedStorageKey,
     processingErrorCode: version.processingErrorCode,
     processingErrorMessage: version.processingErrorMessage,
+    processingJobId: version.processingJobId,
     processingStatus: version.processingStatus,
     revisionDescription: version.revisionDescription ?? null,
     revisionDescriptionSourceLocale: version.revisionDescriptionSourceLocale ?? null,
@@ -1268,6 +1298,22 @@ export class FileService {
       paymentStatus: project.paymentStatus,
       version: effectiveTargetVersion,
     });
+
+    if (deleteBlockReason === "processing_active") {
+      throw new AppError(
+        "A file version cannot be deleted while processing is active. Please cancel processing first.",
+        409,
+        "file_processing_active",
+      );
+    }
+
+    if (deleteBlockReason === "final_draft_processing_completed") {
+      throw new AppError(
+        "A final draft cannot be deleted after processing has completed.",
+        409,
+        "final_draft_processing_completed",
+      );
+    }
 
     if (deleteBlockReason === "last_remaining_version") {
       throw new AppError(
@@ -3114,11 +3160,10 @@ export class FileService {
       throw new NotFoundAppError("File not found.");
     }
 
-    const hasFinalDraft = fileWithVersions.versions.some(
-      (version) =>
-        version.id === fileWithVersions.file.finalDraftVersionId ||
-        version.isFinalDraft,
-    );
+    const hasFinalDraft = hasUploadBlockingFinalDraft({
+      finalDraftVersionId: fileWithVersions.file.finalDraftVersionId,
+      versions: fileWithVersions.versions,
+    });
     const uploadMode = getFileReviewUploadMode({
       finalDraftReportStatus: fileWithVersions.file.finalDraftReportStatus,
       hasFinalDraft,
@@ -4941,11 +4986,10 @@ export class FileService {
     if (!input.isFinalDraft) {
       this.assertFileIsNotApproved(input.fileWithVersions.file.approvalStatus);
     }
-    const hasFinalDraft = input.fileWithVersions.versions.some(
-      (version) =>
-        version.id === input.fileWithVersions.file.finalDraftVersionId ||
-        version.isFinalDraft,
-    );
+    const hasFinalDraft = hasUploadBlockingFinalDraft({
+      finalDraftVersionId: input.fileWithVersions.file.finalDraftVersionId,
+      versions: input.fileWithVersions.versions,
+    });
     const uploadMode = getFileReviewUploadMode({
       finalDraftReportStatus: input.fileWithVersions.file.finalDraftReportStatus,
       hasFinalDraft,
@@ -5249,6 +5293,7 @@ export class FileService {
     return {
       ...version,
       downloadUrl: null,
+      processingJobId: null,
       preview: nextPreview,
       processedStorageBucket: null,
       processedStorageKey: null,
@@ -6263,10 +6308,10 @@ export class FileService {
     );
     const uploadMode = getFileReviewUploadMode({
       finalDraftReportStatus: file.finalDraftReportStatus,
-      hasFinalDraft: versions.some(
-        (version) =>
-          version.id === file.finalDraftVersionId || version.isFinalDraft,
-      ),
+      hasFinalDraft: hasUploadBlockingFinalDraft({
+        finalDraftVersionId: file.finalDraftVersionId,
+        versions,
+      }),
     });
 
     const currentVersion =

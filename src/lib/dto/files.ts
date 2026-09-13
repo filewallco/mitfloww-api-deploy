@@ -21,6 +21,7 @@ export const FILE_VERSION_DELETE_BLOCK_REASONS = [
   "last_remaining_version",
   "version_under_review",
   "final_draft_locked",
+  "final_draft_processing_completed",
   "processing_active",
 ] as const;
 
