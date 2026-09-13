@@ -86,17 +86,27 @@ cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
 
   for (const mut of expiredStorage) {
     await db.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(storageAccountMutations)
+        .set({ isExpired: true })
+        .where(
+          and(
+            eq(storageAccountMutations.id, mut.id),
+            eq(storageAccountMutations.isExpired, false),
+          ),
+        )
+        .returning({ id: storageAccountMutations.id });
+
+      if (!claimed) {
+        return;
+      }
+
       await tx
         .update(storageAccounts)
         .set({
-          storageLimitBytes: sql`${storageAccounts.storageLimitBytes} - ${mut.bytesDelta}`,
+          storageLimitBytes: sql`greatest(${storageAccounts.storageLimitBytes} - ${mut.bytesDelta}, 0)`,
         })
         .where(eq(storageAccounts.id, mut.accountId));
-
-      await tx
-        .update(storageAccountMutations)
-        .set({ isExpired: true })
-        .where(eq(storageAccountMutations.id, mut.id));
     });
   }
 

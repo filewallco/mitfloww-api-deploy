@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 
 import type { CreditPlanKey } from "@/lib/credits";
 import { db } from "@/lib/db/client";
@@ -248,11 +248,27 @@ export class DrizzleStorageRepository implements StorageRepository {
     planKey: CreditPlanKey;
     storageLimitBytes: number;
   }): Promise<StorageAccountRecord> {
+    const [activeAddOns] = await db
+      .select({
+        bytes: sql<number>`coalesce(sum(${storageAccountMutations.bytesDelta}), 0)`,
+      })
+      .from(storageAccountMutations)
+      .where(
+        and(
+          eq(storageAccountMutations.accountId, input.accountId),
+          eq(storageAccountMutations.operation, "adjustment"),
+          eq(storageAccountMutations.isExpired, false),
+          isNotNull(storageAccountMutations.expiresAt),
+          gt(storageAccountMutations.expiresAt, new Date()),
+        ),
+      );
+
+    const activeAddOnBytes = Number(activeAddOns?.bytes ?? 0);
     const [account] = await db
       .update(storageAccounts)
       .set({
         planKey: input.planKey,
-        storageLimitBytes: input.storageLimitBytes,
+        storageLimitBytes: input.storageLimitBytes + activeAddOnBytes,
         updatedAt: new Date(),
       })
       .where(eq(storageAccounts.id, input.accountId))

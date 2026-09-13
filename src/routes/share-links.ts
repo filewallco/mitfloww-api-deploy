@@ -19,6 +19,7 @@ import {
   clientShareVersionParamsSchema,
   clientShareRevisionNotesQuerySchema,
   clientShareRevisionNoteBodySchema,
+  clientShareRevisionNoteUpdateBodySchema,
   clientShareRevisionNoteMutationParamsSchema,
   clientShareReplyToFileRevisionNoteBodySchema,
   clientShareRevisionNoteMarkerParamsSchema,
@@ -324,10 +325,11 @@ shareLinksRouter.patch("/:token/files/:fileId/revision-notes/:noteId", asyncHand
   const requestLocale = getRequestLocale(req);
   const params = parseWithSchema(clientShareRevisionNoteMutationParamsSchema, req.params);
   await requireAuthorizedShareProject(req, params.token);
-  const input = parseWithSchema(clientShareRevisionNoteBodySchema, req.body);
-  const note = await fileRevisionNoteService.updateFileRevisionNote({
+  const input = parseWithSchema(clientShareRevisionNoteUpdateBodySchema, req.body);
+  const note = await fileRevisionNoteService.updateClientFileRevisionNote({
     fileId: params.fileId,
     fileVersionId: input.fileVersionId,
+    items: input.items,
     note: input.note,
     noteId: params.noteId,
     sourceLocale: requestLocale,
@@ -480,4 +482,3 @@ shareLinksRouter.post("/:token/files/:fileId/versions/:versionId/report", asyncH
   });
   return sendSuccess(res, result, { status: 201 });
 }));
-

@@ -69,25 +69,17 @@ export class StorageService {
     const existing = await this.repository.getAccountByScope(resolvedScope);
 
     if (existing) {
-      if (
-        existing.planKey !== creditAccount.planKey ||
-        existing.storageLimitBytes !== storageLimitBytes
-      ) {
-        const synced = await this.repository.syncAccountLimits({
-          accountId: existing.id,
-          planKey: creditAccount.planKey,
-          storageLimitBytes,
-        });
-
-        return {
-          account: synced,
-          created: false,
-          scope: resolvedScope,
-        };
-      }
-
+      // Recalculate the plan quota plus active, non-expired add-ons on every
+      // balance read. This keeps the billing UI correct even before the cron
+      // expiration job has run, and prevents a plan change from dropping a
+      // still-active add-on.
+      const synced = await this.repository.syncAccountLimits({
+        accountId: existing.id,
+        planKey: creditAccount.planKey,
+        storageLimitBytes,
+      });
       return {
-        account: existing,
+        account: synced,
         created: false,
         scope: resolvedScope,
       };
