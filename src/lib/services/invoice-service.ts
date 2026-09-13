@@ -310,14 +310,53 @@ export class InvoiceService {
       if (matchingCustom.elementOffsets) settings.customElementOffsets = matchingCustom.elementOffsets;
       if (matchingCustom.accentColor) settings.accentColor = matchingCustom.accentColor;
       if (matchingCustom.paperSize) settings.paperSize = matchingCustom.paperSize;
+      if (matchingCustom.logoAlignment) settings.logoAlignment = matchingCustom.logoAlignment;
+      if (matchingCustom.nameAlignment) settings.nameAlignment = matchingCustom.nameAlignment;
+      if (matchingCustom.showLogo !== null && matchingCustom.showLogo !== undefined) settings.showLogo = matchingCustom.showLogo;
+      if (matchingCustom.showTaxNumber !== null && matchingCustom.showTaxNumber !== undefined) settings.showTaxNumber = matchingCustom.showTaxNumber;
+      if (matchingCustom.taxNumber !== null && matchingCustom.taxNumber !== undefined) settings.taxNumber = matchingCustom.taxNumber;
+      if (matchingCustom.showNotes !== null && matchingCustom.showNotes !== undefined) settings.showNotes = matchingCustom.showNotes;
+      if (matchingCustom.notes !== null && matchingCustom.notes !== undefined) settings.notes = matchingCustom.notes;
+      if (matchingCustom.terms !== null && matchingCustom.terms !== undefined) settings.terms = matchingCustom.terms;
     }
 
     await this.chargePremiumTemplateUsage(userId, settings.templateId);
 
+    const fileRepo = new DrizzleFileRepository();
+
+    // Invoice line items must come from the files that were actually delivered
+    // in this project. The old implementation used one generic "Base Project
+    // Deliverables" row, which made every client invoice look like a sample.
+    const projectFiles = await fileRepo.findMany({
+      projectId: project.id,
+      page: 1,
+      limit: 500,
+      offset: 0,
+      sort: "name",
+      order: "asc",
+      includeTotal: false,
+    });
+    const deliveredFiles = (await Promise.all(
+      projectFiles.records.map(async (file) => {
+        if (!file.finalDraftVersionId) return null;
+        const withVersions = await fileRepo.findWithVersionsById(file.id, {
+          includeDeletedVersions: true,
+        });
+        const finalVersion = withVersions?.versions.find(
+          (version) =>
+            version.id === file.finalDraftVersionId && !version.deletedAt,
+        );
+        if (!finalVersion) return null;
+        return {
+          name: file.name || file.originalName,
+          size: finalVersion.sizeBytes,
+        };
+      }),
+    )).filter((file): file is { name: string; size: number } => Boolean(file));
+
     // Calculate extra revisions and advance payments
     let totalRevisions = 0;
     try {
-      const fileRepo = new DrizzleFileRepository();
       totalRevisions = await fileRepo.countProjectAddedRevisions(project.id);
     } catch {
       // ignore
@@ -338,14 +377,22 @@ export class InvoiceService {
 
     const balanceAmount = Math.max(0, subtotal - advancePaymentPaid);
 
-    const lineItems = [
-      {
-        description: `${project.title || "Project Deliverables"} - Base Project Deliverables`,
+    const invoiceFiles = deliveredFiles.length > 0
+      ? deliveredFiles
+      : [{ name: `${project.title || "Project"} Deliverables`, size: 0 }];
+    const fileAmount = baseAmount / invoiceFiles.length;
+    const lineItems = invoiceFiles.map((file, index) => {
+      // Keep the sum exact when the project amount cannot be divided evenly.
+      const amount = index === invoiceFiles.length - 1
+        ? baseAmount - fileAmount * index
+        : fileAmount;
+      return {
+        description: file.name,
         qty: 1,
-        rate: baseAmount,
-        amount: baseAmount,
-      },
-    ];
+        rate: amount,
+        amount,
+      };
+    });
 
     if (extraRevisionCount > 0 && extraRevisionAmount > 0) {
       lineItems.push({
@@ -398,9 +445,14 @@ export class InvoiceService {
       profile.user.displayName ||
       [profile.user.firstName, profile.user.lastName].filter(Boolean).join(" ") ||
       "Freelancer";
+    const storedClientName = project.clientName?.trim();
+    const clientName = storedClientName && !/^new client$/i.test(storedClientName)
+      ? storedClientName
+      : project.clientEmail || project.shareClientEmail || "Valued Client";
 
     const pdfData: InvoicePdfData = {
       invoiceNumber,
+      paymentReference: project.clientPaymentReference,
       invoiceDate: completedDate,
       paymentMethod: "UPI",
       paymentStatus: project.paymentStatus === "paid" ? "PAID" : "PENDING",
@@ -410,9 +462,13 @@ export class InvoiceService {
       subtotal,
       advancePaymentPaid,
       balanceAmount,
-      clientName: project.clientName || "Valued Client",
-      clientEmail: project.clientEmail,
+      clientName,
+      clientEmail: project.clientEmail || project.shareClientEmail,
       projectTitle: project.title || "Creative Deliverables",
+      deliverables: deliveredFiles.map((file) => ({
+        name: file.name,
+        size: file.size > 0 ? `${Math.round(file.size / 1024)} KB` : undefined,
+      })),
       company: {
         name: profile.company?.name || userName || "Provider",
         tagline: profile.company?.tagline,
@@ -483,6 +539,30 @@ export class InvoiceService {
       if (matchingCustom.paperSize && !overrides?.paperSize) {
         effectiveSettings.paperSize = matchingCustom.paperSize;
       }
+      if (matchingCustom.logoAlignment && !overrides?.logoAlignment) {
+        effectiveSettings.logoAlignment = matchingCustom.logoAlignment;
+      }
+      if (matchingCustom.nameAlignment && !overrides?.nameAlignment) {
+        effectiveSettings.nameAlignment = matchingCustom.nameAlignment;
+      }
+      if (matchingCustom.showLogo !== null && matchingCustom.showLogo !== undefined && overrides?.showLogo === undefined) {
+        effectiveSettings.showLogo = matchingCustom.showLogo;
+      }
+      if (matchingCustom.showTaxNumber !== null && matchingCustom.showTaxNumber !== undefined && overrides?.showTaxNumber === undefined) {
+        effectiveSettings.showTaxNumber = matchingCustom.showTaxNumber;
+      }
+      if (matchingCustom.taxNumber !== null && matchingCustom.taxNumber !== undefined && overrides?.taxNumber === undefined) {
+        effectiveSettings.taxNumber = matchingCustom.taxNumber;
+      }
+      if (matchingCustom.showNotes !== null && matchingCustom.showNotes !== undefined && overrides?.showNotes === undefined) {
+        effectiveSettings.showNotes = matchingCustom.showNotes;
+      }
+      if (matchingCustom.notes !== null && matchingCustom.notes !== undefined && overrides?.notes === undefined) {
+        effectiveSettings.notes = matchingCustom.notes;
+      }
+      if (matchingCustom.terms !== null && matchingCustom.terms !== undefined && overrides?.terms === undefined) {
+        effectiveSettings.terms = matchingCustom.terms;
+      }
     }
 
     let logoBuffer: Buffer | null = null;
@@ -518,6 +598,7 @@ export class InvoiceService {
 
     const pdfData: InvoicePdfData = {
       invoiceNumber: "INV-SAMPLE-2026",
+      paymentReference: "UPI-SAMPLE-REF",
       invoiceDate: todayStr,
       paymentMethod: "UPI",
       paymentStatus: "PAID",

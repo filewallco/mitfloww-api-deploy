@@ -23,6 +23,7 @@ export interface InvoicePdfData {
   advancePaymentPaid?: number;
   balanceAmount?: number;
   invoiceNumber: string;
+  paymentReference?: string | null;
   invoiceDate: string;
   paymentMethod: string;
   paymentStatus: string;
@@ -193,29 +194,334 @@ export class InvoicePdfService {
     }
 
     const templateId = data.settings.templateId || "modern";
-    switch (templateId) {
-      case "corporate":
-        this.renderCorporateTemplate({ doc, page, data, helvetica, helveticaBold, helveticaOblique, logoImage });
-        break;
-      case "agency":
-        this.renderAgencyTemplate({ doc, page, data, helvetica, helveticaBold, helveticaOblique, logoImage });
-        break;
-      case "minimal":
-        this.renderMinimalTemplate({ doc, page, data, helvetica, helveticaBold, helveticaOblique, logoImage });
-        break;
-      case "compact":
-        this.renderCompactTemplate({ doc, page, data, helvetica, helveticaBold, helveticaOblique, logoImage });
-        break;
-      case "modern":
-      default:
-        this.renderModernTemplate({ doc, page, data, helvetica, helveticaBold, helveticaOblique, logoImage });
-        break;
-    }
+    // The editor preview and the old PDF renderer had two separate designs.
+    // Keep one renderer for sample and project PDFs so the selected editor
+    // template (including its elements, styles and offsets) is the source of
+    // truth for both downloads.
+    this.renderEditorTemplate({
+      page,
+      data,
+      helvetica,
+      helveticaBold,
+      helveticaOblique,
+      logoImage,
+      templateId,
+    });
 
     page.pushOperators(popGraphicsState());
 
     const pdfBytes = await doc.save();
     return Buffer.from(pdfBytes);
+  }
+
+  private renderEditorTemplate(ctx: {
+    page: PDFPage;
+    data: InvoicePdfData;
+    helvetica: PDFFont;
+    helveticaBold: PDFFont;
+    helveticaOblique: PDFFont;
+    logoImage: any;
+    templateId: string;
+  }) {
+    const { page, data, helvetica, helveticaBold, helveticaOblique, logoImage, templateId } = ctx;
+    const width = 595.28;
+    const left = 50;
+    const right = width - 50;
+    const contentWidth = right - left;
+    const accent = resolveRgbColor(data.settings.accentColor);
+    const dark = rgb(0.08, 0.1, 0.14);
+    const muted = rgb(0.36, 0.4, 0.46);
+    const border = rgb(0.82, 0.84, 0.87);
+    const light = rgb(0.96, 0.97, 0.98);
+    const white = rgb(1, 1, 1);
+
+    const parseJson = (value: unknown): Record<string, any> => {
+      if (!value) return {};
+      if (typeof value === "object") return value as Record<string, any>;
+      try {
+        const parsed = JSON.parse(String(value));
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch {
+        return {};
+      }
+    };
+    const styles = parseJson(data.settings.customElementStyles);
+    const offsets = parseJson(data.settings.customElementOffsets);
+    const elements = data.settings.customElements;
+    const visible = (id: string) =>
+      !elements || elements.length === 0
+        ? templateId !== "custom"
+        : elements.includes(id);
+    const styleFor = (id: string) => styles[id] || {};
+    const offsetFor = (id: string) => {
+      const value = offsets[id] || {};
+      return { x: Number(value.x) || 0, y: Number(value.y) || 0 };
+    };
+    const colorFor = (value: unknown, fallback: ReturnType<typeof rgb>) => {
+      if (typeof value !== "string" || !value.trim()) return fallback;
+      return resolveRgbColor(value);
+    };
+    const fontFor = (style: Record<string, any>, fallback: PDFFont) => {
+      if (style.fontStyle === "italic") return helveticaOblique;
+      return style.fontWeight === "bold" || Number(style.fontWeight) >= 600
+        ? helveticaBold
+        : fallback;
+    };
+    const sizeFor = (style: Record<string, any>, fallback: number) => {
+      const value = Number(style.fontSize);
+      return Number.isFinite(value) && value > 0 ? Math.max(6, Math.min(26, value * 0.75)) : fallback;
+    };
+    const textLines = (value: unknown, maxChars: number) => {
+      const source = String(value ?? "");
+      const words = source.split(/\s+/).filter(Boolean);
+      const lines: string[] = [];
+      let line = "";
+      for (const word of words) {
+        if ((line + (line ? " " : "") + word).length > maxChars && line) {
+          lines.push(line);
+          line = word;
+        } else {
+          line += (line ? " " : "") + word;
+        }
+      }
+      if (line || lines.length === 0) lines.push(line);
+      return lines;
+    };
+    const drawText = (
+      value: unknown,
+      x: number,
+      y: number,
+      options: {
+        size?: number;
+        font?: PDFFont;
+        color?: ReturnType<typeof rgb>;
+        maxChars?: number;
+        lineGap?: number;
+        align?: "left" | "center" | "right";
+      } = {},
+    ) => {
+      const size = options.size ?? 9;
+      const font = options.font ?? helvetica;
+      const color = options.color ?? dark;
+      const maxChars = options.maxChars ?? 90;
+      const lineGap = options.lineGap ?? size + 3;
+      const lines = textLines(value, maxChars);
+      lines.forEach((line, index) => {
+        const lineWidth = font.widthOfTextAtSize(line, size);
+        let lineX = x;
+        if (options.align === "center") lineX = x - lineWidth / 2;
+        if (options.align === "right") lineX = x - lineWidth;
+        page.drawText(line, { x: lineX, y: y - index * lineGap, size, font, color });
+      });
+      return y - lines.length * lineGap;
+    };
+    const elementFrame = (
+      id: string,
+      x: number,
+      y: number,
+      elementWidth: number,
+      elementHeight: number,
+    ) => {
+      const offset = offsetFor(id);
+      const style = styleFor(id);
+      const frameX = x + offset.x;
+      // The editor's CSS y offset grows downwards; PDF coordinates grow upwards.
+      const frameY = y - offset.y;
+      if (style.fillColor) {
+        page.drawRectangle({
+          x: frameX,
+          y: frameY - elementHeight,
+          width: elementWidth,
+          height: elementHeight,
+          color: colorFor(style.fillColor, white),
+          opacity: Number(style.opacity) || 1,
+        });
+      }
+      if (style.showBorder || style.borderColor) {
+        page.drawRectangle({
+          x: frameX,
+          y: frameY - elementHeight,
+          width: elementWidth,
+          height: elementHeight,
+          borderColor: colorFor(style.borderColor, border),
+          borderWidth: Number(style.borderWidth) || 0.75,
+        });
+      }
+      return { x: frameX, y: frameY, style };
+    };
+    const drawElementText = (
+      id: string,
+      value: unknown,
+      x: number,
+      y: number,
+      options: { size?: number; font?: PDFFont; color?: ReturnType<typeof rgb>; maxChars?: number; align?: "left" | "center" | "right" } = {},
+    ) => {
+      const style = styleFor(id);
+      const offset = offsetFor(id);
+      const font = options.font || fontFor(style, helvetica);
+      const size = options.size || sizeFor(style, 9);
+      const color = options.color || colorFor(style.fontColor, dark);
+      return drawText(value, x + offset.x, y - offset.y, { ...options, font, size, color });
+    };
+    const drawLogo = (id: string, x: number, y: number, maxWidth: number) => {
+      if (!logoImage || !visible(id) || !data.settings.showLogo) return;
+      const offset = offsetFor(id);
+      const logoWidth = Math.min(maxWidth, logoImage.width);
+      const logoHeight = (logoWidth / logoImage.width) * logoImage.height;
+      page.drawImage(logoImage, {
+        x: x + offset.x,
+        y: y - offset.y - logoHeight,
+        width: logoWidth,
+        height: logoHeight,
+      });
+      elementFrame(id, x, y, logoWidth, logoHeight);
+    };
+
+    const items = getLineItems(data);
+    const subtotal = data.subtotal ?? items.reduce((sum, item) => sum + item.amount, 0);
+    const total = data.amount ?? subtotal;
+    const isPaid = String(data.paymentStatus).toLowerCase() === "paid";
+    const invoiceStatus = isPaid ? "PAID IN FULL" : String(data.paymentStatus || "PENDING").toUpperCase();
+    const companyName = data.company.name || data.user.name || "Invoice";
+    const clientName = data.clientName || data.clientEmail || "Valued Client";
+    const titleSize = templateId === "minimal" ? 26 : templateId === "compact" ? 19 : 22;
+
+    // These header treatments mirror the six editor templates. The content
+    // blocks below are shared so all templates use the same real invoice data.
+    if (templateId === "agency") {
+      page.drawRectangle({ x: 0, y: 0, width: 12, height: 841.89, color: accent });
+      page.drawRectangle({ x: left, y: 770, width: contentWidth, height: 2.5, color: dark });
+    } else if (templateId === "compact") {
+      page.drawRectangle({ x: left, y: 785, width: contentWidth, height: 42, color: accent });
+    } else if (templateId === "modern") {
+      page.drawLine({ start: { x: left, y: 755 }, end: { x: right, y: 755 }, thickness: 2, color: accent });
+    } else if (templateId === "minimal") {
+      page.drawLine({ start: { x: left, y: 790 }, end: { x: right, y: 790 }, thickness: 0.75, color: border });
+    } else if (templateId === "custom") {
+      page.drawLine({ start: { x: left, y: 770 }, end: { x: right, y: 770 }, thickness: 1, color: accent });
+    } else {
+      // Corporate editor: white paper, thin dark header divider, no legacy banner.
+      page.drawLine({ start: { x: left, y: 738 }, end: { x: right, y: 738 }, thickness: 1.5, color: dark });
+    }
+
+    const headerTop = templateId === "corporate" ? 720 : templateId === "compact" ? 780 : 760;
+    const logoX = data.settings.logoAlignment === "right" ? right - 80 : left;
+    drawLogo("logo", logoX, headerTop + 8, 80);
+    const titleX = data.settings.nameAlignment === "center" ? width / 2 : data.settings.nameAlignment === "right" ? right : left;
+    const titleAlign = data.settings.nameAlignment || "left";
+    if (visible("title")) {
+      const frame = elementFrame("title", titleX - (titleAlign === "center" ? 125 : 0), headerTop, 250, 32);
+      drawElementText("title", companyName, titleAlign === "right" ? right : frame.x, frame.y, {
+        size: titleSize,
+        font: helveticaBold,
+        align: titleAlign,
+        maxChars: 38,
+      });
+    }
+    if (visible("sender")) {
+      const senderX = titleAlign === "center" ? left : titleAlign === "right" ? right - 230 : left;
+      const senderY = headerTop - 25;
+      elementFrame("sender", senderX, senderY + 8, 230, 38);
+      drawElementText("sender", data.user.address || data.company.email || "", senderX, senderY, { size: 8, maxChars: 42 });
+      drawElementText("sender", `${data.company.email || data.user.email || ""}${data.user.phone ? ` • ${data.user.phone}` : ""}`, senderX, senderY - 11, { size: 8, maxChars: 42 });
+      if (data.settings.showTaxNumber && data.settings.taxNumber) {
+        drawElementText("sender", `Tax ID: ${data.settings.taxNumber}`, senderX, senderY - 22, { size: 7.5, maxChars: 42 });
+      }
+    }
+    if (visible("meta")) {
+      const metaX = right;
+      const metaY = headerTop + (templateId === "corporate" ? 4 : 0);
+      elementFrame("meta", right - 150, metaY + 8, 150, 58);
+      drawElementText("meta", "INVOICE", metaX, metaY, { size: templateId === "compact" ? 17 : 23, font: helveticaBold, color: colorFor(styleFor("meta").fontColor, dark), align: "right", maxChars: 20 });
+      drawElementText("meta", `#${data.invoiceNumber}`, metaX, metaY - 19, { size: 8, align: "right", maxChars: 24 });
+      drawElementText("meta", `Issue Date: ${data.invoiceDate}`, metaX, metaY - 31, { size: 7.5, align: "right", maxChars: 32 });
+      drawElementText("meta", `Payment: ${invoiceStatus}`, metaX, metaY - 42, { size: 7.5, font: helveticaBold, color: isPaid ? rgb(0.05, 0.48, 0.25) : muted, align: "right", maxChars: 32 });
+    }
+
+    let currentY = templateId === "corporate" ? 625 : templateId === "compact" ? 675 : 650;
+    if (visible("client")) {
+      const boxY = currentY;
+      const clientStyle = styleFor("client");
+      page.drawRectangle({
+        x: left,
+        y: boxY - 64,
+        width: contentWidth,
+        height: 64,
+        color: colorFor(clientStyle.fillColor, templateId === "minimal" ? white : light),
+        borderColor: clientStyle.showBorder ? colorFor(clientStyle.borderColor, border) : undefined,
+        borderWidth: clientStyle.showBorder ? Number(clientStyle.borderWidth) || 0.75 : 0,
+      });
+      elementFrame("client", left, boxY, contentWidth, 64);
+      const split = left + contentWidth / 2 + 10 + offsetFor("client").x;
+      const clientBaseY = boxY - 16 - offsetFor("client").y;
+      drawElementText("client", "CLIENT DETAILS", left + 12, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 22 });
+      drawElementText("client", clientName, left + 12, clientBaseY - 13, { size: 10, font: helveticaBold, maxChars: 28 });
+      drawElementText("client", data.clientEmail || "", left + 12, clientBaseY - 27, { size: 8, maxChars: 30 });
+      drawElementText("client", "PAYMENT SUMMARY", split, clientBaseY, { size: 7.5, font: helveticaBold, maxChars: 22 });
+      drawElementText("client", `Ref: ${data.paymentReference || data.invoiceNumber}`, split, clientBaseY - 13, { size: 8, maxChars: 30 });
+      drawElementText("client", `Status: ${invoiceStatus}`, split, clientBaseY - 27, { size: 8, font: helveticaBold, color: isPaid ? rgb(0.05, 0.48, 0.25) : muted, maxChars: 30 });
+      currentY = boxY - 82;
+    }
+
+    if (visible("items")) {
+      const itemStyle = styleFor("items");
+      const tableX = left + offsetFor("items").x;
+      const tableWidth = contentWidth;
+      const headerHeight = templateId === "compact" ? 22 : 25;
+      const rowHeight = 25;
+      const tableTop = currentY - offsetFor("items").y;
+      const tableHeight = headerHeight + Math.min(items.length, 18) * rowHeight;
+      elementFrame("items", left, currentY, tableWidth, tableHeight);
+      page.drawRectangle({ x: tableX, y: tableTop - headerHeight, width: tableWidth, height: headerHeight, color: colorFor(itemStyle.tableHeaderFill, templateId === "agency" ? accent : light), borderColor: border, borderWidth: 0.6 });
+      const headerColor = colorFor(itemStyle.tableHeaderTextColor, templateId === "agency" ? white : dark);
+      drawText(templateId === "corporate" ? "ITEM & DESCRIPTION" : "DESCRIPTION", tableX + 10, tableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, maxChars: 28 });
+      drawText("QTY", tableX + 320, tableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "center", maxChars: 8 });
+      drawText("UNIT PRICE", tableX + 412, tableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 12 });
+      drawText("AMOUNT", tableX + tableWidth - 10, tableTop - 16, { size: 7.5, font: helveticaBold, color: headerColor, align: "right", maxChars: 10 });
+      items.slice(0, 18).forEach((item, index) => {
+        const rowTop = tableTop - headerHeight - index * rowHeight;
+        page.drawRectangle({ x: tableX, y: rowTop - rowHeight, width: tableWidth, height: rowHeight, color: white, borderColor: border, borderWidth: itemStyle.tableRowLines === false ? 0 : 0.45 });
+        drawElementText("items", item.description, tableX + 10, rowTop - 16, { size: 8, font: helveticaBold, maxChars: 42 });
+        drawElementText("items", item.qty, tableX + 320, rowTop - 16, { size: 8, align: "center", maxChars: 8 });
+        drawElementText("items", formatCurrencyString(data.currency, item.rate), tableX + 412, rowTop - 16, { size: 8, align: "right", maxChars: 16 });
+        drawElementText("items", formatCurrencyString(data.currency, item.amount), tableX + tableWidth - 10, rowTop - 16, { size: 8, font: helveticaBold, align: "right", maxChars: 16 });
+      });
+      currentY = tableTop - tableHeight - 22;
+    }
+
+    if (visible("totals")) {
+      const totalsStyle = styleFor("totals");
+      const totalsX = right - 205 + offsetFor("totals").x;
+      const totalsY = currentY - offsetFor("totals").y;
+      elementFrame("totals", totalsX, totalsY + 8, 205, 70);
+      page.drawLine({ start: { x: totalsX, y: totalsY }, end: { x: right, y: totalsY }, thickness: 1.2, color: colorFor(totalsStyle.borderColor, dark) });
+      drawElementText("totals", "Subtotal:", totalsX, totalsY - 15, { size: 8.5, maxChars: 18 });
+      drawElementText("totals", formatCurrencyString(data.currency, subtotal), right, totalsY - 15, { size: 8.5, align: "right", maxChars: 18 });
+      if (data.advancePaymentPaid && data.advancePaymentPaid > 0) {
+        drawElementText("totals", "Advance Paid:", totalsX, totalsY - 29, { size: 8.5, maxChars: 18 });
+        drawElementText("totals", `-${formatCurrencyString(data.currency, data.advancePaymentPaid)}`, right, totalsY - 29, { size: 8.5, align: "right", maxChars: 18 });
+      }
+      drawElementText("totals", isPaid ? "Amount Paid:" : "Amount Due:", totalsX, totalsY - 47, { size: 10, font: helveticaBold, maxChars: 18 });
+      drawElementText("totals", formatCurrencyString(data.currency, total), right, totalsY - 47, { size: 10, font: helveticaBold, color: accent, align: "right", maxChars: 18 });
+      currentY = totalsY - 72;
+    }
+
+    if (visible("customText")) {
+      const customStyle = styleFor("customText");
+      const customContent = customStyle.customContent;
+      if (customContent) {
+        elementFrame("customText", left, currentY, contentWidth, 28);
+        drawElementText("customText", customContent, left, currentY - 13, { size: 8, maxChars: 100 });
+        currentY -= 35;
+      }
+    }
+    if (visible("notes") && data.settings.showNotes && (data.settings.notes || data.settings.terms)) {
+      const notesY = Math.max(65, currentY - 5);
+      elementFrame("notes", left, notesY, contentWidth, 48);
+      drawElementText("notes", data.settings.notes || "", left, notesY - 13, { size: 8, maxChars: 100 });
+      drawElementText("notes", data.settings.terms || "", left, notesY - 27, { size: 8, color: muted, maxChars: 100 });
+    }
+    page.drawText(`${companyName} • ${data.invoiceNumber}`, { x: left, y: 28, size: 7, font: helvetica, color: rgb(0.55, 0.58, 0.62) });
   }
 
   // 1. MODERN MINIMAL TEMPLATE
