@@ -543,11 +543,10 @@ export class InvoiceService {
           day: "numeric",
         });
 
-    const invoiceNumber = project.clientPaymentReference
-      ? project.clientPaymentReference.startsWith("INV-")
-        ? project.clientPaymentReference
-        : `INV-${project.clientPaymentReference}`
-      : `INV-${project.publicId.slice(0, 8).toUpperCase()}`;
+    const invoiceNumber = await ensureProjectInvoiceNumber(project.id);
+    const finalAmount = balanceAmount > 0 ? balanceAmount : subtotal;
+    const clientName = project.clientName || "Valued Client";
+    const clientEmail = project.clientEmail || project.shareClientEmail || "";
 
     const user = profile.user;
     const company = profile.company;
@@ -569,25 +568,32 @@ export class InvoiceService {
       : "Bangalore, Kerala, India";
 
     const pdfData: InvoicePdfData = {
-      isSample: true,
-      invoiceNumber: "INV-2026-0001",
-      paymentReference: "INV-2026-0001",
-      invoiceDate: "<date>",
-      dueDate: "<due_date>",
-      paymentMethod: "<payment_method>",
+      isSample: false,
+      invoiceNumber,
+      paymentReference: invoiceNumber,
+      invoiceDate: completedDate,
+      dueDate: completedDate,
+      paymentMethod: "UPI",
       paymentStatus: "PAID",
-      currency: "INR",
-      amount: 0,
-      clientName: "<client_name>",
-      clientCompany: "<client_company>",
-      clientEmail: "<client_email>",
-      clientPhone: "<client_phone>",
-      clientAddress: "<client_address>",
-      projectTitle: "<project_name>",
-      lineItems: [
-        { description: "<item_description_1>", qty: 0, rate: 0, amount: 0 },
-        { description: "<item_description_2>", qty: 0, rate: 0, amount: 0 },
-      ],
+      currency: project.currency || "INR",
+      amount: finalAmount,
+      subtotal,
+      advancePaymentPaid,
+      balanceAmount,
+      clientName,
+      clientCompany: "",
+      clientEmail,
+      clientPhone: "",
+      clientAddress: "",
+      projectTitle: project.title || "Project Deliverables",
+      lineItems,
+      deliverables: deliveredFiles.map((f) => {
+        const sizeMb = f.size ? (f.size / (1024 * 1024)).toFixed(1) : "0";
+        return {
+          name: f.name,
+          size: `${sizeMb} MB`,
+        };
+      }),
       company: {
         name: company?.name || ownerName || "DilCo Design Company",
         tagline: company?.tagline || "DESIGNING IDEAS, DELIVERING IMPACT",

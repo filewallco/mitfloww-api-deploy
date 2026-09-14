@@ -85,7 +85,11 @@ export interface StorageRepository {
     accountId: string;
     planKey: CreditPlanKey;
     storageLimitBytes: number;
-  }): Promise<StorageAccountRecord>;
+  }): Promise<{
+    account: StorageAccountRecord;
+    extraStorageBytes: number;
+    extraStorageExpiresAt: string | null;
+  }>;
 }
 
 /**
@@ -247,10 +251,15 @@ export class DrizzleStorageRepository implements StorageRepository {
     accountId: string;
     planKey: CreditPlanKey;
     storageLimitBytes: number;
-  }): Promise<StorageAccountRecord> {
+  }): Promise<{
+    account: StorageAccountRecord;
+    extraStorageBytes: number;
+    extraStorageExpiresAt: string | null;
+  }> {
     const [activeAddOns] = await db
       .select({
         bytes: sql<number>`coalesce(sum(${storageAccountMutations.bytesDelta}), 0)`,
+        maxExpiresAt: sql<Date | null>`max(${storageAccountMutations.expiresAt})`,
       })
       .from(storageAccountMutations)
       .where(
@@ -264,6 +273,10 @@ export class DrizzleStorageRepository implements StorageRepository {
       );
 
     const activeAddOnBytes = Number(activeAddOns?.bytes ?? 0);
+    const maxExpiresAt = activeAddOns?.maxExpiresAt
+      ? new Date(activeAddOns.maxExpiresAt).toISOString()
+      : null;
+
     const [account] = await db
       .update(storageAccounts)
       .set({
@@ -278,7 +291,11 @@ export class DrizzleStorageRepository implements StorageRepository {
       throw new Error(`Failed to sync storage account limits for ${input.accountId}`);
     }
 
-    return account;
+    return {
+      account,
+      extraStorageBytes: activeAddOnBytes,
+      extraStorageExpiresAt: maxExpiresAt,
+    };
   }
 
   async grantStorageAddOn(input: {

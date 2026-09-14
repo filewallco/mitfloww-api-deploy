@@ -10,4 +10,6 @@ export type StorageBalanceDTO = {
   scopeType: StorageScopeType;
   storageLimitBytes: number;
   usedStorageBytes: number;
+  extraStorageBytes?: number;
+  extraStorageExpiresAt?: string | null;
 };

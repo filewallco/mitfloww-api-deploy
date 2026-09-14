@@ -30,6 +30,8 @@ function toStorageBalanceDTO(input: {
   scopeType: StorageBillingScope["scopeType"];
   storageLimitBytes: number;
   usedStorageBytes: number;
+  extraStorageBytes?: number;
+  extraStorageExpiresAt?: string | null;
 }): StorageBalanceDTO {
   return {
     actorUserId: input.actorUserId,
@@ -45,6 +47,8 @@ function toStorageBalanceDTO(input: {
     scopeType: input.scopeType,
     storageLimitBytes: input.storageLimitBytes,
     usedStorageBytes: input.usedStorageBytes,
+    extraStorageBytes: input.extraStorageBytes ?? 0,
+    extraStorageExpiresAt: input.extraStorageExpiresAt ?? null,
   };
 }
 
@@ -79,7 +83,9 @@ export class StorageService {
         storageLimitBytes,
       });
       return {
-        account: synced,
+        account: synced.account,
+        extraStorageBytes: synced.extraStorageBytes,
+        extraStorageExpiresAt: synced.extraStorageExpiresAt,
         created: false,
         scope: resolvedScope,
       };
@@ -105,8 +111,8 @@ export class StorageService {
    * Returns the current billed storage summary for the active scope.
    */
   async getStorageBalance(scope?: StorageBillingScope): Promise<StorageBalanceDTO> {
-    const { account, scope: resolvedScope } =
-      await this.getOrCreateStorageAccount(scope);
+    const res = await this.getOrCreateStorageAccount(scope);
+    const { account, scope: resolvedScope } = res;
 
     return toStorageBalanceDTO({
       actorUserId: resolvedScope.actorUserId,
@@ -116,6 +122,8 @@ export class StorageService {
       scopeType: account.scopeType,
       storageLimitBytes: account.storageLimitBytes,
       usedStorageBytes: account.usedStorageBytes,
+      extraStorageBytes: (res as any).extraStorageBytes ?? 0,
+      extraStorageExpiresAt: (res as any).extraStorageExpiresAt ?? null,
     });
   }
 
