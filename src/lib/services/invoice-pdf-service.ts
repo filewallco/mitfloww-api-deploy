@@ -166,10 +166,10 @@ export class InvoicePdfService {
       company: {
         name: data.company.name,
         tagline: data.company.tagline,
-        email: data.company.email,
-        phone: data.user.phone,
+        email: data.company.email || data.user.email,
+        phone: data.company.phone || data.user.phone,
         website: data.company.website,
-        address: data.user.address,
+        address: data.company.address || data.user.address,
         taxNumber: data.settings.taxNumber,
         logoBuffer: data.company.logoBuffer,
         logoUrl: undefined,
@@ -224,7 +224,7 @@ export class InvoicePdfService {
       });
 
       // Explicitly wait for Google Fonts to be loaded into Chromium's font cache!
-      await page.evaluate("Boolean(document.fonts && document.fonts.ready)");
+      await page.evaluate(() => (document.fonts ? document.fonts.ready : Promise.resolve()));
 
       const pdfBuffer = await page.pdf({
         format: paperConfig.pdfFormat,

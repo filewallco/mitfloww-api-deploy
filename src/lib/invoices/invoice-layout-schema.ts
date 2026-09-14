@@ -227,7 +227,7 @@ export function computeNormalizedInvoiceLayout(input: LayoutInput): NormalizedIn
 
     let alignment: InvoiceAlignment =
       style.alignment ||
-      (id === "logo" ? input.logoAlignment || "left" : "left");
+      (id === "logo" ? input.logoAlignment || "left" : id === "totals" ? "right" : "left");
     if (id === "title") alignment = style.alignment || input.nameAlignment || "left";
 
     // Build style string
@@ -265,27 +265,32 @@ export function computeNormalizedInvoiceLayout(input: LayoutInput): NormalizedIn
   let defaultHeaderFill = itemsStyle.accentColor || accentColor;
   let defaultHeaderTextColor = "#ffffff";
   let col1Label = "Description";
+  let col3Label = "Rate";
   let col4Label = "Amount";
 
   if (templateId === "compact") {
     defaultHeaderFill = "#f1f5f9";
     defaultHeaderTextColor = "#334155";
     col1Label = "Item";
+    col3Label = "Price";
     col4Label = "Total";
   } else if (templateId === "corporate") {
     defaultHeaderFill = "#f8fafc";
     defaultHeaderTextColor = "#1e293b";
     col1Label = "ITEM & DESCRIPTION";
+    col3Label = "PRICE";
     col4Label = "TOTAL";
   } else if (templateId === "agency") {
     defaultHeaderFill = "transparent";
     defaultHeaderTextColor = "#0284c7";
     col1Label = "Deliverable";
+    col3Label = "Rate";
     col4Label = "Total";
   } else if (templateId === "minimal") {
     defaultHeaderFill = "transparent";
     defaultHeaderTextColor = "#0f172a";
     col1Label = "Description";
+    col3Label = "Price";
     col4Label = "Total";
   }
 
@@ -293,13 +298,13 @@ export function computeNormalizedInvoiceLayout(input: LayoutInput): NormalizedIn
     columns: [
       { key: "description", label: col1Label, width: "48%", align: itemsStyle.tableCellAlignment || "left" },
       { key: "quantity", label: "Qty", width: "14%", align: "center" },
-      { key: "unitPrice", label: "Price", width: "18%", align: "right" },
+      { key: "unitPrice", label: col3Label, width: "18%", align: "right" },
       { key: "total", label: col4Label, width: "20%", align: "right" },
     ],
     outerBorder: itemsStyle.tableOuterBorder ?? itemsStyle.showBorder ?? true,
     rowLines: itemsStyle.tableRowLines ?? true,
     colLines: itemsStyle.tableColLines ?? false,
-    headerFill: itemsStyle.tableHeaderFill || itemsStyle.fillColor || defaultHeaderFill,
+    headerFill: itemsStyle.tableHeaderFill || itemsStyle.accentColor || defaultHeaderFill,
     headerTextColor: itemsStyle.tableHeaderTextColor || defaultHeaderTextColor,
     cellAlignment: itemsStyle.tableCellAlignment || "left",
     fontColor: itemsStyle.fontColor,

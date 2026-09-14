@@ -549,48 +549,59 @@ export class InvoiceService {
         : `INV-${project.clientPaymentReference}`
       : `INV-${project.publicId.slice(0, 8).toUpperCase()}`;
 
-    const userName =
-      profile.user.displayName ||
-      [profile.user.firstName, profile.user.lastName].filter(Boolean).join(" ") ||
-      "Freelancer";
-    const storedClientName = project.clientName?.trim();
-    const clientName = storedClientName && !/^new client$/i.test(storedClientName)
-      ? storedClientName
-      : project.clientEmail || project.shareClientEmail || "Valued Client";
+    const user = profile.user;
+    const company = profile.company;
+
+    const ownerName =
+      [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+      user.displayName ||
+      "Freelancer Name";
+
+    const addressParts = [
+      user.city,
+      user.state,
+      user.country,
+      user.postcode,
+    ].filter(Boolean);
+
+    const address = addressParts.length > 0
+      ? addressParts.join(", ")
+      : "Bangalore, Kerala, India";
 
     const pdfData: InvoicePdfData = {
-      invoiceNumber,
-      paymentReference: project.clientPaymentReference,
-      invoiceDate: completedDate,
-      paymentMethod: "UPI",
-      paymentStatus: project.paymentStatus === "paid" ? "PAID" : "PENDING",
-      currency: project.currency || "INR",
-      amount: subtotal,
-      lineItems,
-      subtotal,
-      advancePaymentPaid,
-      balanceAmount,
-      clientName,
-      clientEmail: project.clientEmail || project.shareClientEmail,
-      projectTitle: project.title || "Creative Deliverables",
-      deliverables: deliveredFiles.map((file) => ({
-        name: file.name,
-        size: file.size > 0 ? `${Math.round(file.size / 1024)} KB` : undefined,
-      })),
+      isSample: true,
+      invoiceNumber: "INV-2026-0001",
+      paymentReference: "INV-2026-0001",
+      invoiceDate: "<date>",
+      dueDate: "<due_date>",
+      paymentMethod: "<payment_method>",
+      paymentStatus: "PAID",
+      currency: "INR",
+      amount: 0,
+      clientName: "<client_name>",
+      clientCompany: "<client_company>",
+      clientEmail: "<client_email>",
+      clientPhone: "<client_phone>",
+      clientAddress: "<client_address>",
+      projectTitle: "<project_name>",
+      lineItems: [
+        { description: "<item_description_1>", qty: 0, rate: 0, amount: 0 },
+        { description: "<item_description_2>", qty: 0, rate: 0, amount: 0 },
+      ],
       company: {
-        name: profile.company?.name || userName || "Provider",
-        tagline: profile.company?.tagline,
-        email: profile.company?.email || profile.user.email,
-        website: profile.company?.website,
+        name: company?.name || ownerName || "DilCo Design Company",
+        tagline: company?.tagline || "DESIGNING IDEAS, DELIVERING IMPACT",
+        email: user.email || company?.email || "example@gmail.com",
+        phone: user.phone || "95678 12345",
+        address,
+        website: company?.website || "www.example.com",
         logoBuffer,
       },
       user: {
-        name: userName,
-        email: profile.user.email,
-        phone: profile.user.phone,
-        address: [profile.user.city, profile.user.state, profile.user.country]
-          .filter(Boolean)
-          .join(", "),
+        name: ownerName,
+        email: user.email,
+        phone: user.phone || "95678 12345",
+        address,
       },
       settings: {
         templateId: settings.templateId,
@@ -693,41 +704,59 @@ export class InvoiceService {
       }
     }
 
-    const userName =
-      profile.user.displayName ||
-      [profile.user.firstName, profile.user.lastName].filter(Boolean).join(" ") ||
+    const user = profile.user;
+    const company = profile.company;
+
+    const ownerName =
+      [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+      user.displayName ||
       "Freelancer Name";
+
+    const addressParts = [
+      user.city,
+      user.state,
+      user.country,
+      user.postcode,
+    ].filter(Boolean);
+
+    const address = addressParts.length > 0
+      ? addressParts.join(", ")
+      : "Bangalore, Kerala, India";
 
     const pdfData: InvoicePdfData = {
       isSample: true,
-      invoiceNumber: "<invoice_number>",
-      paymentReference: "<payment_reference>",
+      invoiceNumber: "INV-2026-0001",
+      paymentReference: "INV-2026-0001",
       invoiceDate: "<date>",
+      dueDate: "<due_date>",
       paymentMethod: "<payment_method>",
       paymentStatus: "PAID",
       currency: "INR",
       amount: 0,
       clientName: "<client_name>",
+      clientCompany: "<client_company>",
       clientEmail: "<client_email>",
+      clientPhone: "<client_phone>",
+      clientAddress: "<client_address>",
       projectTitle: "<project_name>",
       lineItems: [
         { description: "<item_description_1>", qty: 0, rate: 0, amount: 0 },
         { description: "<item_description_2>", qty: 0, rate: 0, amount: 0 },
       ],
       company: {
-        name: profile.company?.name || userName || "My Design Company",
-        tagline: profile.company?.tagline || "Professional Creative Services",
-        email: profile.company?.email || profile.user.email,
-        website: profile.company?.website || "www.example.com",
+        name: company?.name || ownerName || "DilCo Design Company",
+        tagline: company?.tagline || "DESIGNING IDEAS, DELIVERING IMPACT",
+        email: user.email || company?.email || "example@gmail.com",
+        phone: user.phone || "95678 12345",
+        address,
+        website: company?.website || "www.example.com",
         logoBuffer,
       },
       user: {
-        name: userName,
-        email: profile.user.email,
-        phone: profile.user.phone || "+91 98765 43210",
-        address: [profile.user.city || "Bengaluru", profile.user.state || "Karnataka", profile.user.country || "India"]
-          .filter(Boolean)
-          .join(", "),
+        name: ownerName,
+        email: user.email,
+        phone: user.phone || "95678 12345",
+        address,
       },
       settings: {
         templateId: effectiveSettings.templateId,
