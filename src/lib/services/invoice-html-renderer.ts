@@ -127,7 +127,9 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
   const renderElement = (id: string, innerHtml: string, extraClasses = "", extraStyle = "") => {
     const el = elements[id];
     if (!el || !el.visible) return "";
-    return `<div id="invoice-el-${id}" class="invoice-element ${extraClasses}" style="transform: ${el.transformCss}; ${el.styleCss} ${extraStyle}">${innerHtml}</div>`;
+    const hasExplicitWidth = Boolean(el.style?.width);
+    const classes = hasExplicitWidth ? extraClasses.replace(/\bw-full\b/g, "").trim() : extraClasses;
+    return `<div id="invoice-el-${id}" class="invoice-element ${classes}" style="transform: ${el.transformCss}; ${el.styleCss} ${extraStyle}">${innerHtml}</div>`;
   };
 
   // Render Table Rows
@@ -150,24 +152,138 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
   }).join("");
 
   const tableHtml = `
-    <table class="w-full text-left border-collapse ${table.outerBorder ? 'border border-slate-200' : ''}" style="page-break-inside: auto;">
-      <thead>
-        <tr style="background-color: ${table.headerFill}; color: ${table.headerTextColor};" class="${table.rowLines ? 'border-b border-slate-200' : ''}">
-          ${table.columns.map((col) => `
-            <th class="py-2 px-3 text-[10px] font-bold uppercase tracking-wider ${table.colLines ? 'border-r border-slate-200' : ''}" style="width: ${col.width}; text-align: ${col.align};">${escapeHtml(col.label)}</th>
-          `).join("")}
-        </tr>
-      </thead>
-      <tbody class="text-xs">
-        ${tableRowsHtml}
-      </tbody>
-    </table>
+    <div class="${table.outerBorder ? 'border border-slate-200' : ''} rounded-lg overflow-hidden" style="page-break-inside: auto; border-color: ${elements.items?.style?.borderColor || '#e2e8f0'};">
+      <table class="w-full text-left border-collapse" style="page-break-inside: auto;">
+        <thead>
+          <tr style="background-color: ${table.headerFill} !important; color: ${table.headerTextColor} !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;" class="${table.rowLines ? 'border-b border-slate-200' : ''}">
+            ${table.columns.map((col) => `
+              <th class="py-2.5 px-3 text-[10px] font-bold uppercase tracking-wider ${table.colLines ? 'border-r border-slate-200' : ''}" style="width: ${col.width}; text-align: ${col.align}; color: ${table.headerTextColor} !important; background-color: ${table.headerFill} !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">${escapeHtml(col.label)}</th>
+            `).join("")}
+          </tr>
+        </thead>
+        <tbody class="text-xs">
+          ${tableRowsHtml}
+        </tbody>
+      </table>
+    </div>
   `;
 
   // Template Body Construction
   let templateBodyHtml = "";
 
-  if (layout.templateId === "compact") {
+  const isCustom = layout.templateId === "custom" || layout.templateId.startsWith("custom") || !["compact", "corporate", "agency", "minimal", "modern"].includes(layout.templateId);
+
+  if (isCustom) {
+    // -------------------------------------------------------------
+    // TEMPLATE: CUSTOM
+    // Mirrors invoice-template-view.tsx Custom Template structure
+    // -------------------------------------------------------------
+    const isCustomElVisible = (id: string) => {
+      const el = elements[id];
+      return el && el.visible;
+    };
+
+    const logoHtml = isCustomElVisible("logo") ? renderElement("logo", renderLogoHtml(elements.logo?.style.accentColor || accentColor), "w-full overflow-visible") : "";
+
+    const titleHtml = isCustomElVisible("title") ? renderElement("title", `
+      <div class="space-y-1">
+        <h2 class="text-2xl font-black tracking-tight" style="${elements.title?.style.fontColor ? `color: ${elements.title.style.fontColor};` : ''}">${escapeHtml(companyName)}</h2>
+        ${data.company.tagline ? `<p class="text-xs text-slate-500 font-medium tracking-wide uppercase mt-1" style="${elements.title?.style.fontColor ? `color: ${elements.title.style.fontColor}b3;` : ''}">${escapeHtml(data.company.tagline)}</p>` : ''}
+      </div>
+    `, "w-full overflow-visible") : "";
+
+    const senderHtml = isCustomElVisible("sender") ? renderElement("sender", `
+      <div class="space-y-0.5 text-xs text-slate-600">
+        <p class="font-semibold text-slate-400 text-[10px] uppercase tracking-wider mb-1">From</p>
+        ${data.user.name ? `<p class="font-bold text-slate-800">${escapeHtml(data.user.name)}</p>` : ''}
+        ${data.company.email ? `<p>${escapeHtml(data.company.email)}</p>` : ''}
+        ${data.company.phone ? `<p>${escapeHtml(data.company.phone)}</p>` : ''}
+        ${data.company.address ? `<p class="max-w-xs">${escapeHtml(data.company.address)}</p>` : ''}
+        ${layout.showTaxNumber && layout.taxNumber ? `<p class="font-mono text-slate-700 text-[11px] mt-1">Tax / GST: ${escapeHtml(layout.taxNumber)}</p>` : ''}
+      </div>
+    `, "w-full overflow-visible") : "";
+
+    const clientHtml = isCustomElVisible("client") ? renderElement("client", `
+      <div class="bg-slate-50/80 rounded-lg p-3.5 border border-slate-100 text-xs">
+        <p class="font-semibold text-slate-400 text-[10px] uppercase tracking-wider mb-1">Billed To</p>
+        <p class="font-bold text-slate-800 text-sm">${escapeHtml(clientName)}</p>
+        ${data.clientCompany ? `<p class="font-medium text-slate-700">${escapeHtml(data.clientCompany)}</p>` : ''}
+        ${data.clientEmail ? `<p class="text-slate-500">${escapeHtml(data.clientEmail)}</p>` : ''}
+        ${data.clientAddress ? `<p class="max-w-xs text-slate-500">${escapeHtml(data.clientAddress)}</p>` : ''}
+      </div>
+    `, "w-full overflow-visible") : "";
+
+    const metaHtml = isCustomElVisible("meta") ? renderElement("meta", `
+      <div class="flex flex-wrap gap-6 text-xs rounded-xl p-3.5 bg-slate-50 border border-slate-100">
+        <div>
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Invoice #</p>
+          <p class="font-bold text-slate-800 font-mono mt-0.5">#${escapeHtml(invoiceNumber)}</p>
+        </div>
+        <div>
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Date</p>
+          <p class="font-medium text-slate-700 mt-0.5">${escapeHtml(invoiceDate)}</p>
+        </div>
+        <div>
+          <p class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Due</p>
+          <p class="font-medium text-slate-700 mt-0.5">${escapeHtml(dueDate)}</p>
+        </div>
+      </div>
+    `, "w-full overflow-visible") : "";
+
+    const itemsHtml = isCustomElVisible("items") ? renderElement("items", tableHtml, "w-full my-4 overflow-visible") : "";
+
+    const totalsInner = `
+      <div class="w-56 space-y-1.5 text-xs text-slate-600">
+        <div class="flex justify-between">
+          <span>Subtotal</span>
+          <span class="font-medium text-slate-900">${formatCurrency(subtotal, currency)}</span>
+        </div>
+        ${data.taxAmount ? `
+          <div class="flex justify-between text-slate-500">
+            <span>GST / Tax</span>
+            <span>${formatCurrency(data.taxAmount, currency)}</span>
+          </div>
+        ` : ''}
+        <div class="flex justify-between font-bold text-sm text-slate-900 border-t border-slate-200 pt-1.5" style="border-color: ${accentColor};">
+          <span>Total Due</span>
+          <span style="color: ${accentColor};">${formatCurrency(totalAmount, currency)}</span>
+        </div>
+      </div>
+    `;
+    const totalsHtml = isCustomElVisible("totals") ? renderElement("totals", totalsInner, "flex flex-col w-full items-end overflow-visible avoid-break") : "";
+
+    const customTextContent = elements.customText?.style?.customContent || "Enter custom notes, terms, bank details, or instructions here...";
+    const customTextInner = `
+      <div class="text-xs whitespace-pre-wrap ${elements.customText?.style?.fillColor || elements.customText?.style?.showBorder ? 'p-3 rounded-lg' : 'py-2'}">
+        <p style="${elements.customText?.style?.fontColor ? `color: ${elements.customText.style.fontColor};` : ''}">${escapeHtml(customTextContent)}</p>
+      </div>
+    `;
+    const customTextHtml = isCustomElVisible("customText") ? renderElement("customText", customTextInner, "w-full overflow-visible avoid-break") : "";
+
+    const notesHtml = (isCustomElVisible("notes") && layout.showNotes && (layout.notes || layout.terms)) ? renderElement("notes", `
+      <div class="pt-4 border-t border-slate-100 text-xs text-slate-500 mt-6 avoid-break">
+        <p class="font-medium text-slate-700">${escapeHtml(layout.notes)}</p>
+        ${layout.terms ? `<p class="text-slate-400 mt-1">${escapeHtml(layout.terms)}</p>` : ''}
+      </div>
+    `, "w-full overflow-visible avoid-break") : "";
+
+    templateBodyHtml = `
+      <div class="flex flex-col w-full h-full justify-between gap-6">
+        <div class="flex flex-col flex-1 w-full gap-5">
+          ${logoHtml}
+          ${titleHtml}
+          ${senderHtml}
+          ${clientHtml}
+          ${metaHtml}
+          ${itemsHtml}
+          ${totalsHtml}
+          ${customTextHtml}
+        </div>
+        ${notesHtml}
+      </div>
+    `;
+
+  } else if (layout.templateId === "compact") {
     // -------------------------------------------------------------
     // TEMPLATE: COMPACT
     // -------------------------------------------------------------
@@ -193,12 +309,12 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
       <div class="grid grid-cols-3 gap-2.5 p-3 bg-slate-50 rounded border border-slate-100 mb-3.5 text-xs">
         ${renderElement("sender", `
           <p class="font-bold text-slate-400 uppercase text-[9px] tracking-wider mb-0.5">From</p>
-          <p class="font-semibold text-slate-800 break-words" style="${elements.sender?.style.fontColor ? `color: ${elements.sender.style.fontColor};` : ''}">${escapeHtml(data.user.name || companyName)}</p>
+          <p class="font-semibold text-slate-800 wrap-break-word" style="${elements.sender?.style.fontColor ? `color: ${elements.sender.style.fontColor};` : ''}">${escapeHtml(data.user.name || companyName)}</p>
           ${layout.showTaxNumber && layout.taxNumber ? `<p class="text-slate-500 text-[11px] mt-0.5">Tax: ${escapeHtml(layout.taxNumber)}</p>` : ''}
         `)}
         ${renderElement("client", `
           <p class="font-bold text-slate-400 uppercase text-[9px] tracking-wider mb-0.5">To</p>
-          <p class="font-semibold text-slate-800 break-words" style="${elements.client?.style.fontColor ? `color: ${elements.client.style.fontColor};` : ''}">${escapeHtml(clientName)}</p>
+          <p class="font-semibold text-slate-800 wrap-break-word" style="${elements.client?.style.fontColor ? `color: ${elements.client.style.fontColor};` : ''}">${escapeHtml(clientName)}</p>
           ${data.clientEmail ? `<p class="text-slate-500 text-[11px] truncate mt-0.5">${escapeHtml(data.clientEmail)}</p>` : ''}
         `)}
         ${renderElement("status", `
@@ -544,6 +660,11 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
           ${renderElement("client", clientInner)}
           ${renderElement("items", tableHtml, "mb-4")}
           ${renderElement("totals", totalsInner, "avoid-break")}
+          ${renderElement("customText", `
+            <div class="text-xs whitespace-pre-wrap ${elements.customText?.style.fillColor || elements.customText?.style.showBorder ? 'p-3 rounded-lg' : 'py-2'}">
+              <p style="${elements.customText?.style.fontColor ? `color: ${elements.customText.style.fontColor};` : ''}">${escapeHtml(elements.customText?.style?.customContent || "Enter custom notes, terms, bank details, or instructions here...")}</p>
+            </div>
+          `, "avoid-break my-3")}
         </div>
         ${layout.showNotes && (layout.notes || layout.terms) ? renderElement("notes", `
           <div class="pt-4 border-t border-slate-100 text-xs text-slate-500 mt-8 avoid-break">

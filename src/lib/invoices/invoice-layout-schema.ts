@@ -67,6 +67,7 @@ export interface InvoiceElementStyle {
   fontWeight?: string;
   fontStyle?: string;
   fontSize?: string;
+  width?: string;
   alignment?: InvoiceAlignment;
   fontColor?: string;
   fillColor?: string;
@@ -237,6 +238,7 @@ export function computeNormalizedInvoiceLayout(input: LayoutInput): NormalizedIn
     if (style.fontSize) styleParts.push(`font-size: ${style.fontSize};`);
     if (style.fontColor) styleParts.push(`color: ${style.fontColor};`);
     if (style.fillColor) styleParts.push(`background-color: ${style.fillColor};`);
+    if (style.width) styleParts.push(`width: ${style.width}; max-width: ${style.width};`);
     if (typeof style.opacity === "number") styleParts.push(`opacity: ${style.opacity};`);
 
     if (style.showBorder) {
@@ -260,9 +262,9 @@ export function computeNormalizedInvoiceLayout(input: LayoutInput): NormalizedIn
 
   // Table configuration normalization
   const itemsStyle = elements.items?.style || {};
-  let defaultHeaderFill = "transparent";
-  let defaultHeaderTextColor = "#475569";
-  let col1Label = "Item & Description";
+  let defaultHeaderFill = itemsStyle.accentColor || accentColor;
+  let defaultHeaderTextColor = "#ffffff";
+  let col1Label = "Description";
   let col4Label = "Amount";
 
   if (templateId === "compact") {
@@ -294,10 +296,10 @@ export function computeNormalizedInvoiceLayout(input: LayoutInput): NormalizedIn
       { key: "unitPrice", label: "Price", width: "18%", align: "right" },
       { key: "total", label: col4Label, width: "20%", align: "right" },
     ],
-    outerBorder: itemsStyle.tableOuterBorder ?? false,
+    outerBorder: itemsStyle.tableOuterBorder ?? itemsStyle.showBorder ?? true,
     rowLines: itemsStyle.tableRowLines ?? true,
     colLines: itemsStyle.tableColLines ?? false,
-    headerFill: itemsStyle.tableHeaderFill || defaultHeaderFill,
+    headerFill: itemsStyle.tableHeaderFill || itemsStyle.fillColor || defaultHeaderFill,
     headerTextColor: itemsStyle.tableHeaderTextColor || defaultHeaderTextColor,
     cellAlignment: itemsStyle.tableCellAlignment || "left",
     fontColor: itemsStyle.fontColor,
