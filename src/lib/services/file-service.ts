@@ -1,3 +1,4 @@
+import { generateUniqueInvoiceNumber } from "./invoice-service";
 import { Readable } from "stream";
 import sharp from "sharp";
 import {
@@ -4345,7 +4346,10 @@ export class FileService {
     const completedAt = project.clientPaymentCompletedAt ?? new Date();
     const paymentReference =
       project.clientPaymentReference ??
-      `INV-${completedAt.getFullYear()}-${project.publicId.slice(0, 8).toUpperCase()}`;
+      (await generateUniqueInvoiceNumber({
+        year: completedAt.getFullYear(),
+        excludeProjectId: project.id,
+      }));
 
     if (project.paymentStatus !== ProjectPaymentStatus.Paid) {
       await this.projectRepository.update(project.id, {

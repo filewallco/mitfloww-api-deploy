@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
+import { eq, not, and } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { invoiceSettings, projects, users } from "@/lib/db/schema";
 import { ne } from "drizzle-orm";
@@ -59,6 +60,113 @@ export const DEFAULT_INVOICE_SETTINGS: Omit<InvoiceSettingsRecord, "id" | "userI
   customElementStyles: null,
   customTemplates: [],
 };
+
+
+export interface GenerateInvoiceNumberOptions {
+  year?: number;
+  prefix?: string;
+  excludeProjectId?: string;
+}
+
+/**
+ * Generates a guaranteed globally unique invoice number in the format:
+ * `INV-YYYY-XXXXXX` (e.g. `INV-2026-A4E91C`)
+ * Checks the database to prevent collisions, retrying with new cryptographically
+ * secure randomness if necessary.
+ */
+export async function generateUniqueInvoiceNumber(
+  options?: GenerateInvoiceNumberOptions,
+): Promise<string> {
+  const year = options?.year ?? new Date().getFullYear();
+  const prefix = (options?.prefix ?? "INV").toUpperCase();
+
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const randomCode = randomBytes(3).toString("hex").toUpperCase();
+    const candidate = `${prefix}-${year}-${randomCode}`;
+
+    const conditions = [eq(projects.clientPaymentReference, candidate)];
+    if (options?.excludeProjectId) {
+      conditions.push(not(eq(projects.id, options.excludeProjectId)));
+    }
+
+    const [existing] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(...conditions))
+      .limit(1);
+
+    if (!existing) {
+      return candidate;
+    }
+  }
+
+  const timestampSuffix = Date.now().toString(36).toUpperCase().slice(-4);
+  const fallbackHex = randomBytes(2).toString("hex").toUpperCase();
+  return `${prefix}-${year}-${timestampSuffix}${fallbackHex}`;
+}
+
+/**
+ * Ensures a project has a valid, globally unique invoice number stored in clientPaymentReference.
+ * If one already exists and doesn't conflict, it is retained.
+ * If none exists or a collision is found, a new unique invoice number is generated and persisted.
+ */
+export async function ensureProjectInvoiceNumber(
+  projectId: string,
+  completedAt?: Date,
+): Promise<string> {
+  const [project] = await db
+    .select({
+      id: projects.id,
+      clientPaymentReference: projects.clientPaymentReference,
+      clientPaymentCompletedAt: projects.clientPaymentCompletedAt,
+    })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+
+  if (!project) {
+    throw new NotFoundAppError("Project not found.");
+  }
+
+  const existingRef = project.clientPaymentReference?.trim();
+  if (existingRef) {
+    const [conflict] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.clientPaymentReference, existingRef),
+          not(eq(projects.id, projectId)),
+        ),
+      )
+      .limit(1);
+
+    if (!conflict) {
+      return existingRef.startsWith("INV-") ? existingRef : `INV-${existingRef}`;
+    }
+  }
+
+  const year = completedAt
+    ? completedAt.getFullYear()
+    : project.clientPaymentCompletedAt
+      ? new Date(project.clientPaymentCompletedAt).getFullYear()
+      : new Date().getFullYear();
+
+  const uniqueInvoiceNumber = await generateUniqueInvoiceNumber({
+    year,
+    excludeProjectId: projectId,
+  });
+
+  await db
+    .update(projects)
+    .set({
+      clientPaymentReference: uniqueInvoiceNumber,
+      updatedAt: new Date(),
+    })
+    .where(eq(projects.id, projectId));
+
+  return uniqueInvoiceNumber;
+}
 
 export class InvoiceService {
   async getInvoiceSettings(userId: string): Promise<InvoiceSettingsRecord> {

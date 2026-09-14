@@ -146,6 +146,7 @@ export const createProjectTables = (fw: PgSchema) => {
       index("projects_updated_at_idx").on(table.updatedAt),
       uniqueIndex("projects_public_id_unique_idx").on(table.publicId),
       uniqueIndex("projects_share_token_unique_idx").on(table.shareToken),
+      uniqueIndex("projects_client_payment_reference_unique_idx").on(table.clientPaymentReference),
       check(
         "projects_status_check",
         sql`${table.status} IN (${buildSqlStringList(PROJECT_STATUSES)})`,
