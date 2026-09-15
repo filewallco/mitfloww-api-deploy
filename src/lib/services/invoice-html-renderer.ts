@@ -23,6 +23,10 @@ export interface InvoiceRenderData {
   currency?: string;
   amount?: number | string;
   subtotal?: number | string;
+  advancePaymentPaid?: number | string;
+  balanceAmount?: number | string;
+  gatewayFee?: number | string;
+  deliverables?: Array<{ name: string; size?: string }>;
   taxRate?: number | string;
   taxAmount?: number | string;
   clientName?: string;
@@ -160,7 +164,32 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
     `;
   }).join("");
 
+  const renderFilesHtml = () => {
+    if (!data.deliverables || data.deliverables.length === 0) return "";
+    return `
+      <div class="invoice-files-container w-full rounded-xl bg-slate-50/80 border border-slate-200/80 p-3.5 mb-3.5 text-left" style="page-break-inside: avoid;">
+        <div class="flex items-center justify-between pb-1.5 border-b border-slate-200/60 mb-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <span>Project Deliverables &amp; Files</span>
+            <span class="inline-flex items-center justify-center rounded-full bg-slate-200 text-slate-700 px-1.5 py-0.2 text-[9px] font-semibold">${data.deliverables.length}</span>
+          </span>
+          <span class="text-[9px] font-medium text-slate-400">Included Content</span>
+        </div>
+        <ul class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-slate-700">
+          ${data.deliverables.map((f) => `
+            <li class="flex items-center gap-2 min-w-0 bg-white rounded-lg px-2.5 py-1.5 border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+              <span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: ${accentColor};"></span>
+              <span class="font-medium text-slate-800 text-xs truncate flex-1" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+              ${f.size ? `<span class="text-[10px] text-slate-400 font-mono shrink-0">${escapeHtml(f.size)}</span>` : ""}
+            </li>
+          `).join("")}
+        </ul>
+      </div>
+    `;
+  };
+
   const tableHtml = `
+    ${renderFilesHtml()}
     <div class="w-full overflow-hidden rounded-lg ${table.outerBorder ? 'border' : 'border-0'}" style="page-break-inside: auto; border-color: ${elements.items?.style?.borderColor || (elements.items?.style?.accentColor ? `${elements.items.style.accentColor}40` : '#e2e8f0')}; background-color: ${elements.items?.style?.fillColor || 'transparent'};">
       <table class="w-full text-xs text-left border-collapse" style="page-break-inside: auto;">
         <thead>
@@ -290,6 +319,18 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
           <span>Subtotal</span>
           <span class="font-medium text-slate-900" style="${totalsColorStyle}">${formatCurrency(subtotal, currency)}</span>
         </div>
+        ${data.advancePaymentPaid && Number(data.advancePaymentPaid) > 0 ? `
+          <div class="flex justify-between text-slate-600" style="${totalsColorStyle}">
+            <span>Advance Received</span>
+            <span class="font-medium text-emerald-600">- ${formatCurrency(data.advancePaymentPaid, currency)}</span>
+          </div>
+        ` : ''}
+        ${data.gatewayFee !== undefined && Number(data.gatewayFee) > 0 ? `
+          <div class="flex justify-between text-slate-500" style="${totalsColorStyle}">
+            <span>Gateway Fee</span>
+            <span>${formatCurrency(data.gatewayFee, currency)}</span>
+          </div>
+        ` : ''}
         ${data.taxAmount ? `
           <div class="flex justify-between text-slate-500" style="${totalsColorStyle}">
             <span>GST / Tax</span>
@@ -297,7 +338,7 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
           </div>
         ` : ''}
         <div class="flex justify-between font-bold text-sm text-slate-900 border-t border-slate-200 pt-1.5" style="border-color: ${totalsAccent}; ${totalsColorStyle}">
-          <span>Total Due</span>
+          <span>${isPaid ? "Total Paid" : "Total Due"}</span>
           <span style="color: ${totalsAccent};">${formatCurrency(totalAmount, currency)}</span>
         </div>
       </div>
@@ -475,6 +516,18 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
             <span>Subtotal</span>
             <span class="font-medium text-slate-800">${formatCurrency(subtotal, currency)}</span>
           </div>
+          ${data.advancePaymentPaid && Number(data.advancePaymentPaid) > 0 ? `
+            <div class="flex justify-between py-1 border-b border-slate-100">
+              <span>Advance Received</span>
+              <span class="font-medium text-emerald-600">- ${formatCurrency(data.advancePaymentPaid, currency)}</span>
+            </div>
+          ` : ''}
+          ${data.gatewayFee !== undefined && Number(data.gatewayFee) > 0 ? `
+            <div class="flex justify-between py-1 border-b border-slate-100">
+              <span>Gateway Fee</span>
+              <span class="font-medium text-slate-800">${formatCurrency(data.gatewayFee, currency)}</span>
+            </div>
+          ` : ''}
           ${data.taxAmount ? `
             <div class="flex justify-between py-1 border-b border-slate-100">
               <span>Tax</span>
@@ -482,7 +535,7 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
             </div>
           ` : ''}
           <div class="flex justify-between py-2 border-t-2 border-slate-800 text-sm font-bold text-slate-900">
-            <span>Total Due</span>
+            <span>${isPaid ? "Total Paid" : "Total Due"}</span>
             <span>${formatCurrency(totalAmount, currency)}</span>
           </div>
         </div>
@@ -559,8 +612,20 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
             <span>Subtotal</span>
             <span class="font-medium text-slate-800">${formatCurrency(subtotal, currency)}</span>
           </div>
+          ${data.advancePaymentPaid && Number(data.advancePaymentPaid) > 0 ? `
+            <div class="flex justify-between py-1 border-b border-slate-100">
+              <span>Advance Received</span>
+              <span class="font-medium text-emerald-600">- ${formatCurrency(data.advancePaymentPaid, currency)}</span>
+            </div>
+          ` : ''}
+          ${data.gatewayFee !== undefined && Number(data.gatewayFee) > 0 ? `
+            <div class="flex justify-between py-1 border-b border-slate-100">
+              <span>Gateway Fee</span>
+              <span>${formatCurrency(data.gatewayFee, currency)}</span>
+            </div>
+          ` : ''}
           <div class="flex justify-between py-2 border-t-2 border-black text-base font-black text-slate-900">
-            <span>Total</span>
+            <span>${isPaid ? "Total Paid" : "Total Due"}</span>
             <span style="color: ${accentColor};">${formatCurrency(totalAmount, currency)}</span>
           </div>
         </div>
@@ -626,8 +691,18 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
       <div class="flex justify-end mt-4">
         <div class="w-64 space-y-1 text-xs text-slate-600">
           <div class="flex justify-between py-1">
-            <span>Total</span>
-            <span class="font-bold text-slate-900 text-sm">${formatCurrency(totalAmount, currency)}</span>
+            <span>Subtotal</span>
+            <span class="text-slate-800">${formatCurrency(subtotal, currency)}</span>
+          </div>
+          ${data.advancePaymentPaid && Number(data.advancePaymentPaid) > 0 ? `
+            <div class="flex justify-between py-1">
+              <span>Advance</span>
+              <span class="text-emerald-600">- ${formatCurrency(data.advancePaymentPaid, currency)}</span>
+            </div>
+          ` : ''}
+          <div class="flex justify-between py-1 pt-1.5 font-bold text-slate-900 text-sm border-t border-slate-200">
+            <span>${isPaid ? "Total Paid" : "Total Due"}</span>
+            <span>${formatCurrency(totalAmount, currency)}</span>
           </div>
         </div>
       </div>
@@ -706,6 +781,18 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
             <span>Subtotal</span>
             <span class="font-medium text-slate-800">${formatCurrency(subtotal, currency)}</span>
           </div>
+          ${data.advancePaymentPaid && Number(data.advancePaymentPaid) > 0 ? `
+            <div class="flex justify-between py-1 border-b border-slate-100">
+              <span>Advance Received</span>
+              <span class="font-medium text-emerald-600">- ${formatCurrency(data.advancePaymentPaid, currency)}</span>
+            </div>
+          ` : ''}
+          ${data.gatewayFee !== undefined && Number(data.gatewayFee) > 0 ? `
+            <div class="flex justify-between py-1 border-b border-slate-100">
+              <span>Gateway Fee</span>
+              <span class="font-medium text-slate-800">${formatCurrency(data.gatewayFee, currency)}</span>
+            </div>
+          ` : ''}
           ${data.taxAmount ? `
             <div class="flex justify-between py-1 border-b border-slate-100">
               <span>Tax / GST</span>
@@ -713,7 +800,7 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
             </div>
           ` : ''}
           <div class="flex justify-between py-2 border-t border-slate-200 text-sm font-bold text-slate-900">
-            <span>Total Due</span>
+            <span>${isPaid ? "Total Paid" : "Total Due"}</span>
             <span style="color: ${accentColor}; font-size: 16px;">${formatCurrency(totalAmount, currency)}</span>
           </div>
         </div>

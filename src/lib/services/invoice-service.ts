@@ -485,22 +485,20 @@ export class InvoiceService {
 
     const balanceAmount = Math.max(0, subtotal - advancePaymentPaid);
 
-    const invoiceFiles = deliveredFiles.length > 0
-      ? deliveredFiles
-      : [{ name: `${project.title || "Project"} Deliverables`, size: 0 }];
-    const fileAmount = baseAmount / invoiceFiles.length;
-    const lineItems = invoiceFiles.map((file, index) => {
-      // Keep the sum exact when the project amount cannot be divided evenly.
-      const amount = index === invoiceFiles.length - 1
-        ? baseAmount - fileAmount * index
-        : fileAmount;
-      return {
-        description: file.name,
+    // Deliverable files are informational, NOT priced line items.
+    // There is ONE project amount, not an amount per file.
+    const projectDescription = project.title
+      ? `${project.title} - Project Deliverables`
+      : "Project Deliverables & Scope";
+
+    const lineItems = [
+      {
+        description: projectDescription,
         qty: 1,
-        rate: amount,
-        amount,
-      };
-    });
+        rate: baseAmount,
+        amount: baseAmount,
+      },
+    ];
 
     if (extraRevisionCount > 0 && extraRevisionAmount > 0) {
       lineItems.push({
@@ -580,6 +578,7 @@ export class InvoiceService {
       subtotal,
       advancePaymentPaid,
       balanceAmount,
+      gatewayFee: 0,
       clientName,
       clientCompany: "",
       clientEmail,
@@ -745,9 +744,17 @@ export class InvoiceService {
       clientPhone: "<client_phone>",
       clientAddress: "<client_address>",
       projectTitle: "<project_name>",
+      deliverables: [
+        { name: "Brand-Identity-Guidelines.pdf", size: "4.2 MB" },
+        { name: "Final-Artwork-Assets.zip", size: "12.8 MB" },
+        { name: "Social-Media-Kit.png", size: "3.1 MB" },
+      ],
+      subtotal: 0,
+      advancePaymentPaid: 0,
+      balanceAmount: 0,
+      gatewayFee: 0,
       lineItems: [
-        { description: "<item_description_1>", qty: 0, rate: 0, amount: 0 },
-        { description: "<item_description_2>", qty: 0, rate: 0, amount: 0 },
+        { description: "<project_name> - Project Deliverables", qty: 1, rate: 0, amount: 0 },
       ],
       company: {
         name: company?.name || ownerName || "DilCo Design Company",

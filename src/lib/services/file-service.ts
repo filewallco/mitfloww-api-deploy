@@ -4733,15 +4733,44 @@ export class FileService {
           projectId: project.id,
         });
 
+        const rawName = (deliverable.name || file.filename || "file").trim();
+        let baseName = rawName.replace(/[\/\\]/g, "_").replace(/[<>:"|?*]/g, "_").trim() || "file";
+        const originalExt = file.filename && file.filename.includes(".") ? file.filename.slice(file.filename.lastIndexOf(".")) : "";
+        if (originalExt && !baseName.toLowerCase().endsWith(originalExt.toLowerCase())) {
+          baseName += originalExt;
+        }
+
         return {
           data: await readStreamToBytes(file.body),
-          filename: file.filename,
+          rawFilename: baseName,
         };
       }),
     );
 
+    const deduplicatedEntries: Array<{ data: Uint8Array; filename: string }> = [];
+    const usedFilenames = new Set<string>();
+
+    for (const entry of entries) {
+      let finalName = entry.rawFilename;
+      if (usedFilenames.has(finalName.toLowerCase())) {
+        const lastDot = finalName.lastIndexOf(".");
+        const prefix = lastDot > 0 ? finalName.slice(0, lastDot) : finalName;
+        const ext = lastDot > 0 ? finalName.slice(lastDot) : "";
+        let counter = 1;
+        while (usedFilenames.has(`${prefix} (${counter})${ext}`.toLowerCase())) {
+          counter++;
+        }
+        finalName = `${prefix} (${counter})${ext}`;
+      }
+      usedFilenames.add(finalName.toLowerCase());
+      deduplicatedEntries.push({
+        data: entry.data,
+        filename: finalName,
+      });
+    }
+
     return {
-      body: createStoredZip(entries),
+      body: createStoredZip(deduplicatedEntries),
       filename: `${project.publicId || project.title}-files.zip`,
     };
   }

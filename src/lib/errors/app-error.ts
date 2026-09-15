@@ -22,6 +22,13 @@ export class ValidationAppError extends AppError {
   }
 }
 
+export class ConflictAppError extends AppError {
+  constructor(message: string, details?: ApiErrorDetails) {
+    super(message, 409, "conflict", details);
+    this.name = "ConflictAppError";
+  }
+}
+
 export class NotFoundAppError extends AppError {
   constructor(message: string, details?: ApiErrorDetails) {
     super(message, 404, "not_found", details);

@@ -11,6 +11,7 @@ export interface InvoicePdfData {
   subtotal?: number;
   advancePaymentPaid?: number;
   balanceAmount?: number;
+  gatewayFee?: number;
   invoiceNumber: string;
   paymentReference?: string | null;
   invoiceDate: string;
@@ -156,6 +157,10 @@ export class InvoicePdfService {
       currency: data.currency,
       amount: data.amount,
       subtotal: data.subtotal,
+      advancePaymentPaid: data.advancePaymentPaid,
+      balanceAmount: data.balanceAmount,
+      gatewayFee: data.gatewayFee ?? 0,
+      deliverables: data.deliverables,
       taxRate: undefined,
       taxAmount: undefined,
       clientName: data.clientName,
