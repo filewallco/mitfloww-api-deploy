@@ -590,6 +590,7 @@
         advanceAmountCents: input.advanceAmountCents,
         amountCents: input.amountCents,
         clientEmail: normalizeClientEmail(input.clientEmail),
+        shareClientEmail: normalizeClientEmail(input.clientEmail),
         clientName,
         currency: normalizeProjectCurrency(input.currency),
         extraRevisionCostCents: input.extraRevisionCostCents,
@@ -597,6 +598,7 @@
         publicId,
         revisionLimit: input.revisionLimit,
         shareClientEmail: null,
+        clientEmail: null,
         shareEmailAdded: false,
         shareExpiresAt: null,
         shareFailedAttempts: 0,
@@ -613,6 +615,7 @@
         clientNameSourceLocale,
         clientPaymentCompletedAt: null,
         clientPaymentReference: null,
+        invoiceId: null,
       });
 
       return this.buildProjectDTO(record, options.viewerLocale);
@@ -728,6 +731,7 @@
         advanceAmountCents: input.advanceAmountCents,
         amountCents: input.amountCents,
         clientEmail: normalizeClientEmail(input.clientEmail),
+        shareClientEmail: normalizeClientEmail(input.clientEmail),
         clientName,
         currency: normalizeProjectCurrency(input.currency),
         extraRevisionCostCents: input.extraRevisionCostCents,
@@ -927,6 +931,7 @@
 
       const record = await this.repository.update(existing.id, {
         shareClientEmail: normalizeRequiredClientEmail(shareClientEmail),
+        clientEmail: normalizeRequiredClientEmail(shareClientEmail),
         shareEmailAdded: true,
         updatedAt: new Date(),
       });
@@ -955,6 +960,7 @@
 
       const record = await this.repository.update(existing.id, {
         shareClientEmail: null,
+        clientEmail: null,
         shareEmailAdded: false,
         updatedAt: new Date(),
       });

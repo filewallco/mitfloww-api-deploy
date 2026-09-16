@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
-import { asyncHandler, sendSuccess } from "@/lib/api/route";
+import { asyncHandler, parseWithSchema, sendSuccess } from "@/lib/api/route";
 import { clientService } from "@/lib/services/client-service";
 
 export const clientMastersRouter = Router();
@@ -9,7 +9,7 @@ export const clientMastersRouter = Router();
 const clientItemSchema = z.object({
   id: z.string().optional(),
   clientName: z.string().min(1, "Client name is required").max(60, "Client name too long"),
-  companyEmail: z.string().email("Invalid email format").nullable().optional().or(z.literal("")),
+  companyEmail: z.string().regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, "Please enter a valid email address").nullable().optional().or(z.literal("")),
   _isNew: z.boolean().optional(),
   _isDeleted: z.boolean().optional(),
 });
@@ -35,12 +35,12 @@ clientMastersRouter.post(
     const actor = await resolveActiveActor(req);
 
     if (Array.isArray(req.body?.clients)) {
-      const parsed = batchSaveSchema.parse(req.body);
+      const parsed = parseWithSchema(batchSaveSchema, req.body);
       const clients = await clientService.batchSaveClientMasters(actor.id, parsed.clients);
       return res.json({ clients });
     }
 
-    const parsed = clientItemSchema.parse(req.body);
+    const parsed = parseWithSchema(clientItemSchema, req.body);
     const created = await clientService.createClientMaster(actor.id, {
       clientName: parsed.clientName,
       companyEmail: parsed.companyEmail || null,
@@ -54,8 +54,8 @@ clientMastersRouter.patch(
   "/:id",
   asyncHandler(async (req, res) => {
     const actor = await resolveActiveActor(req);
-    const parsed = clientItemSchema.partial().parse(req.body);
-    const updated = await clientService.updateClientMaster(actor.id, req.params.id, {
+    const parsed = parseWithSchema(clientItemSchema.partial(), req.body);
+    const updated = await clientService.updateClientMaster(actor.id, (req.params.id as string), {
       clientName: parsed.clientName,
       companyEmail: parsed.companyEmail !== undefined ? (parsed.companyEmail || null) : undefined,
     });
@@ -68,7 +68,7 @@ clientMastersRouter.delete(
   "/:id",
   asyncHandler(async (req, res) => {
     const actor = await resolveActiveActor(req);
-    await clientService.deleteClientMaster(actor.id, req.params.id);
+    await clientService.deleteClientMaster(actor.id, (req.params.id as string));
     return res.json({ success: true });
   })
 );

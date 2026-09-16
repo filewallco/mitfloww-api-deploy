@@ -68,6 +68,7 @@ export interface InvoiceElementStyle {
   fontStyle?: string;
   fontSize?: string;
   width?: string;
+  height?: string;
   alignment?: InvoiceAlignment;
   fontColor?: string;
   fillColor?: string;
@@ -239,6 +240,7 @@ export function computeNormalizedInvoiceLayout(input: LayoutInput): NormalizedIn
     if (style.fontColor) styleParts.push(`color: ${style.fontColor};`);
     if (style.fillColor) styleParts.push(`background-color: ${style.fillColor};`);
     if (style.width) styleParts.push(`width: ${style.width}; max-width: ${style.width};`);
+    if (style.height) styleParts.push(`height: ${style.height};`);
     if (typeof style.opacity === "number") styleParts.push(`opacity: ${style.opacity};`);
 
     if (style.showBorder) {
@@ -265,8 +267,8 @@ export function computeNormalizedInvoiceLayout(input: LayoutInput): NormalizedIn
   let defaultHeaderFill = itemsStyle.accentColor || accentColor;
   let defaultHeaderTextColor = "#ffffff";
   let col1Label = "Description";
-  let col3Label = "Rate";
-  let col4Label = "Amount";
+  let col3Label = "Price";
+  let col4Label = "Total";
 
   if (templateId === "compact") {
     defaultHeaderFill = "#f1f5f9";

@@ -7,6 +7,7 @@ import { DrizzleFileRepository } from "@/lib/repositories/file-repository";
 import type { InvoiceSettingsRecord, NewInvoiceSettingsRecord, CustomInvoiceTemplate } from "@/lib/db/schema";
 import { userService } from "./user-service";
 import { invoicePdfService, type InvoicePdfData } from "./invoice-pdf-service";
+import { transactionService } from "./transaction-service";
 import { r2Storage } from "@/lib/storage/r2";
 import { AppError, NotFoundAppError } from "@/lib/errors/app-error";
 import { creditService } from "./credit-service";
@@ -542,6 +543,11 @@ export class InvoiceService {
         });
 
     const invoiceNumber = await ensureProjectInvoiceNumber(project.id);
+    try {
+      await transactionService.recordProjectTransaction(project.id);
+    } catch (txErr) {
+      console.warn("Could not record transaction on invoice generation:", txErr);
+    }
     const finalAmount = balanceAmount > 0 ? balanceAmount : subtotal;
     const clientName = project.clientName || "Valued Client";
     const clientEmail = project.clientEmail || project.shareClientEmail || "";

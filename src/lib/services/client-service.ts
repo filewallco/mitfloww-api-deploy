@@ -3,7 +3,7 @@ import { db } from "@/lib/db/client";
 import { clientMasters, type ClientMasterRecord, type NewClientMasterRecord } from "@/lib/db/schema";
 import { ConflictAppError, NotFoundAppError, ValidationAppError } from "@/lib/errors/app-error";
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const MAX_CLIENT_NAME_LENGTH = 60;
 const MAX_EMAIL_LENGTH = 255;
 

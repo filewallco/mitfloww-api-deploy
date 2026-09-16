@@ -1,3 +1,6 @@
+import { and, desc, eq, isNotNull, lte, sql } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { storageAccounts, storageAccountMutations } from "@/lib/db/schema";
 import {
   CREDIT_PLANS,
   FEATURE_CREDIT_COSTS,
@@ -110,7 +113,83 @@ export class StorageService {
   /**
    * Returns the current billed storage summary for the active scope.
    */
+  
+  async processExpiredStorageAddOns(accountId: string): Promise<void> {
+    const now = new Date();
+    const expired = await db
+      .select()
+      .from(storageAccountMutations)
+      .where(
+        and(
+          eq(storageAccountMutations.accountId, accountId),
+          eq(storageAccountMutations.operation, "adjustment"),
+          eq(storageAccountMutations.isExpired, false),
+          isNotNull(storageAccountMutations.expiresAt),
+          lte(storageAccountMutations.expiresAt, now),
+        ),
+      );
+
+    for (const mut of expired) {
+      await db.transaction(async (tx: any) => {
+        const [claimed] = await tx
+          .update(storageAccountMutations)
+          .set({ isExpired: true })
+          .where(
+            and(
+              eq(storageAccountMutations.id, mut.id),
+              eq(storageAccountMutations.isExpired, false),
+            ),
+          )
+          .returning({ id: storageAccountMutations.id });
+
+        if (!claimed) return;
+
+        await tx
+          .update(storageAccounts)
+          .set({
+            storageLimitBytes: sql`greatest(${storageAccounts.storageLimitBytes} - ${mut.bytesDelta}, 0)`,
+          })
+          .where(eq(storageAccounts.id, mut.accountId));
+      });
+    }
+  }
+
+  async getStorageHistory(scope?: StorageBillingScope) {
+    const res = await this.getOrCreateStorageAccount(scope);
+    const { account } = res;
+    await this.processExpiredStorageAddOns(account.id);
+
+    const records = await db
+      .select()
+      .from(storageAccountMutations)
+      .where(
+        and(
+          eq(storageAccountMutations.accountId, account.id),
+          eq(storageAccountMutations.operation, "adjustment"),
+          isNotNull(storageAccountMutations.expiresAt),
+        ),
+      )
+      .orderBy(desc(storageAccountMutations.createdAt));
+
+    const now = new Date();
+    return records.map((r) => {
+      const isExpired = r.isExpired || (r.expiresAt ? new Date(r.expiresAt) <= now : false);
+      const gb = Math.round(r.bytesDelta / (1024 * 1024 * 1024));
+      return {
+        id: r.id,
+        bytesDelta: r.bytesDelta,
+        sizeFormatted: `+${gb} GB`,
+        createdAt: r.createdAt.toISOString(),
+        expiresAt: r.expiresAt ? r.expiresAt.toISOString() : null,
+        isExpired,
+        status: isExpired ? "expired" : "active",
+      };
+    });
+  }
+
   async getStorageBalance(scope?: StorageBillingScope): Promise<StorageBalanceDTO> {
+    const pre = await this.getOrCreateStorageAccount(scope);
+    await this.processExpiredStorageAddOns(pre.account.id);
     const res = await this.getOrCreateStorageAccount(scope);
     const { account, scope: resolvedScope } = res;
 

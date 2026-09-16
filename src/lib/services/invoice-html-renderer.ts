@@ -165,27 +165,7 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
   }).join("");
 
   const renderFilesHtml = () => {
-    if (!data.deliverables || data.deliverables.length === 0) return "";
-    return `
-      <div class="invoice-files-container w-full rounded-xl bg-slate-50/80 border border-slate-200/80 p-3.5 mb-3.5 text-left" style="page-break-inside: avoid;">
-        <div class="flex items-center justify-between pb-1.5 border-b border-slate-200/60 mb-2">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-            <span>Project Deliverables &amp; Files</span>
-            <span class="inline-flex items-center justify-center rounded-full bg-slate-200 text-slate-700 px-1.5 py-0.2 text-[9px] font-semibold">${data.deliverables.length}</span>
-          </span>
-          <span class="text-[9px] font-medium text-slate-400">Included Content</span>
-        </div>
-        <ul class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-slate-700">
-          ${data.deliverables.map((f) => `
-            <li class="flex items-center gap-2 min-w-0 bg-white rounded-lg px-2.5 py-1.5 border border-slate-200/60 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-              <span class="h-1.5 w-1.5 rounded-full shrink-0" style="background-color: ${accentColor};"></span>
-              <span class="font-medium text-slate-800 text-xs truncate flex-1" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
-              ${f.size ? `<span class="text-[10px] text-slate-400 font-mono shrink-0">${escapeHtml(f.size)}</span>` : ""}
-            </li>
-          `).join("")}
-        </ul>
-      </div>
-    `;
+    return "";
   };
 
   const tableHtml = `
@@ -747,28 +727,30 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
           `)}
         </div>
         ${renderElement("meta", `
-          <div class="flex flex-col items-end text-right shrink-0 space-y-1.5">
-            <div class="inline-block px-3 py-1 rounded-full font-semibold uppercase tracking-wider text-[11px] mb-1" style="background-color: ${accentColor}18; color: ${accentColor};">
-              ${escapeHtml(statusLabel)}
+          <div class="flex flex-col items-end text-right shrink-0 space-y-1">
+            <div class="inline-block px-3 py-1 rounded-full font-semibold uppercase tracking-wider text-[11px] mb-2" style="background-color: ${elements.meta?.style?.accentColor || accentColor}18; color: ${elements.meta?.style?.accentColor || accentColor}; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
+              INVOICE
             </div>
-            <div class="space-y-0.5">
-              <span class="text-xs text-slate-400 uppercase tracking-wider block">Invoice</span>
-              <span class="text-base font-bold text-slate-900 block" style="${elements.meta?.style?.fontColor ? `color: ${elements.meta.style.fontColor};` : ''}">#${escapeHtml(invoiceNumber)}</span>
-            </div>
-            <div class="text-xs text-slate-500 pt-1">
-              <p><span class="text-slate-400">Date:</span> ${escapeHtml(invoiceDate)}</p>
-              ${dueDate ? `<p><span class="text-slate-400">Due:</span> ${escapeHtml(dueDate)}</p>` : ''}
-            </div>
+            <p class="text-base font-bold text-slate-800" style="${elements.meta?.style?.fontColor ? `color: ${elements.meta.style.fontColor};` : ''}">#${escapeHtml(invoiceNumber)}</p>
+            <p class="text-xs text-slate-500 mt-1" style="${elements.meta?.style?.fontColor ? `color: ${elements.meta.style.fontColor};` : ''}">Date: <span class="font-medium text-slate-700">${escapeHtml(invoiceDate)}</span></p>
+            ${dueDate ? `<p class="text-xs text-slate-500" style="${elements.meta?.style?.fontColor ? `color: ${elements.meta.style.fontColor};` : ''}">Due: <span class="font-medium text-slate-700">${escapeHtml(dueDate)}</span></p>` : ''}
+            ${paymentRef ? `
+              <div class="mt-2 inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded font-medium text-[10px]" style="-webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;">
+                <span>✓</span> Paid: ${escapeHtml(paymentRef)}
+              </div>
+            ` : ''}
           </div>
         `)}
       </div>
     `;
 
+    const hasClientCustomStyle = elements.client?.style?.fillColor || elements.client?.style?.showBorder;
+    const clientBoxClass = hasClientCustomStyle ? "rounded-lg p-2.5 my-2 text-xs" : "py-4 border-b border-slate-100 mb-4 text-xs";
     const clientInner = `
-      <div class="bg-slate-50/80 rounded-lg p-3.5 border border-slate-100 mb-5 text-xs">
-        <p class="font-semibold text-slate-400 text-[10px] uppercase tracking-wider mb-1">Billed To</p>
-        <p class="font-bold text-slate-900 text-sm" style="${elements.client?.style?.fontColor ? `color: ${elements.client.style.fontColor};` : ''}">${escapeHtml(clientName)}</p>
-        ${data.clientCompany ? `<p class="text-slate-700 font-medium" style="${elements.client?.style?.fontColor ? `color: ${elements.client.style.fontColor};` : ''}">${escapeHtml(data.clientCompany)}</p>` : ''}
+      <div class="${clientBoxClass}">
+        <p class="font-semibold text-slate-400 text-[10px] uppercase tracking-wider mb-1" style="${elements.client?.style?.fontColor ? `color: ${elements.client.style.fontColor}99;` : ''}">Billed To</p>
+        <p class="font-bold text-slate-800 text-sm" style="${elements.client?.style?.fontColor ? `color: ${elements.client.style.fontColor};` : ''}">${escapeHtml(clientName)}</p>
+        ${data.clientCompany ? `<p class="text-slate-600 font-medium" style="${elements.client?.style?.fontColor ? `color: ${elements.client.style.fontColor};` : ''}">${escapeHtml(data.clientCompany)}</p>` : ''}
         ${data.clientEmail ? `<p class="text-slate-500" style="${elements.client?.style?.fontColor ? `color: ${elements.client.style.fontColor};` : ''}">${escapeHtml(data.clientEmail)}</p>` : ''}
         ${data.clientAddress ? `<p class="text-slate-500 max-w-xs" style="${elements.client?.style?.fontColor ? `color: ${elements.client.style.fontColor};` : ''}">${escapeHtml(data.clientAddress)}</p>` : ''}
       </div>
@@ -810,7 +792,7 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
     templateBodyHtml = `
       <div class="flex flex-col w-full h-full justify-between">
         <div>
-          <div style="position: absolute; top: 0; left: 0; right: 0; height: 8px; background-color: ${accentColor};"></div>
+          <div style="position: absolute; top: 0; left: 0; right: 0; height: 8px; background-color: ${accentColor}; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;"></div>
           ${headerInner}
           ${renderElement("client", clientInner)}
           ${renderElement("items", tableHtml, "mb-4")}

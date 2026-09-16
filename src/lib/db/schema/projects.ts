@@ -113,6 +113,9 @@ export const createProjectTables = (fw: PgSchema) => {
       clientPaymentReference: varchar("client_payment_reference", {
         length: 64,
       }),
+      invoiceId: varchar("invoice_id", {
+        length: 64,
+      }),
       advancePaymentEnabled: boolean("advance_payment_enabled")
         .notNull()
         .default(false),
@@ -147,6 +150,7 @@ export const createProjectTables = (fw: PgSchema) => {
       uniqueIndex("projects_public_id_unique_idx").on(table.publicId),
       uniqueIndex("projects_share_token_unique_idx").on(table.shareToken),
       uniqueIndex("projects_client_payment_reference_unique_idx").on(table.clientPaymentReference),
+      uniqueIndex("projects_invoice_id_unique_idx").on(table.invoiceId),
       check(
         "projects_status_check",
         sql`${table.status} IN (${buildSqlStringList(PROJECT_STATUSES)})`,

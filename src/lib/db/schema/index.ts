@@ -9,6 +9,7 @@ import { createTestimonialTables } from "./testimonials";
 import { createStorageTables } from "./storage";
 import { createUserTables } from "./users";
 import { createClientTables } from "./clients";
+import { createTransactionTables } from "./transactions";
 
 export const fw = pgSchema("mitfloww");
 
@@ -57,6 +58,7 @@ export const { healthChecks } = createHealthTables(fw);
 export const { users, companies } = createUserTables(fw);
 export const { invoiceSettings } = createInvoiceTables(fw, { users });
 export const { clientMasters } = createClientTables(fw, { users });
+export const { transactions } = createTransactionTables(fw, { users, projects });
 
 export type {
   CreditAccountRecord,
@@ -115,6 +117,10 @@ export type {
   NewUserRecord,
   UserRecord,
 } from "./users";
+export type {
+  TransactionRecord,
+  NewTransactionRecord,
+} from "./transactions";
 export type {
   ClientMasterRecord,
   NewClientMasterRecord,

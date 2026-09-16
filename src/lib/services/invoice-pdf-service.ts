@@ -229,7 +229,7 @@ export class InvoicePdfService {
       });
 
       // Explicitly wait for Google Fonts to be loaded into Chromium's font cache!
-      await page.evaluate(() => (document.fonts ? document.fonts.ready : Promise.resolve()));
+      await page.evaluate(() => { const doc = (globalThis as any).document; return doc?.fonts?.ready ?? Promise.resolve(); });
 
       const pdfBuffer = await page.pdf({
         format: paperConfig.pdfFormat,

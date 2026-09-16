@@ -21,6 +21,11 @@ storageRouter.get("/balance", asyncHandler(async (_req, res) => {
   return sendSuccess(res, data);
 }));
 
+storageRouter.get("/history", asyncHandler(async (_req, res) => {
+  const data = await storageService.getStorageHistory();
+  return sendSuccess(res, { items: data });
+}));
+
 storageRouter.post("/add-ons", asyncHandler(async (req, res) => {
   const input = parseWithSchema(storageAddOnSchema, req.body);
   const data = await storageService.purchaseStorageAddOn(input);

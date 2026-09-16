@@ -51,6 +51,15 @@ invoicesRouter.patch("/settings", asyncHandler(async (req, res) => {
   return res.json({ settings: updated });
 }));
 
+invoicesRouter.get("/project/:projectId/pdf", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const projectId = String(req.params.projectId);
+  const { pdfBuffer, filename } = await invoiceService.generateProjectInvoicePdf(projectId);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  return res.send(pdfBuffer);
+}));
+
 invoicesRouter.get("/sample-pdf", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor(req);
   const overrides: any = {};
