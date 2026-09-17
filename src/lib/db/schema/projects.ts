@@ -240,7 +240,87 @@ export const createProjectTables = (fw: PgSchema) => {
     ],
   );
 
-  return { projectClientReviews, projects };
+  const projectPaymentSnapshots = fw.table(
+    "project_payment_snapshots",
+    {
+      id: uuid("id").defaultRandom().primaryKey(),
+      projectId: uuid("project_id")
+        .notNull()
+        .references(() => projects.id, {
+          onDelete: "cascade",
+          onUpdate: "cascade",
+        }),
+      paymentType: varchar("payment_type", { length: 32 })
+        .notNull()
+        .default("final"),
+      status: varchar("status", { length: 32 })
+        .notNull()
+        .default("pending"),
+      amountCents: integer("amount_cents").notNull(),
+      currency: varchar("currency", { length: 3 })
+        .notNull()
+        .default("INR"),
+      includedVersionIds: text("included_version_ids").notNull(),
+      clientPaymentReference: varchar("client_payment_reference", {
+        length: 64,
+      }),
+      paidAt: timestamp("paid_at", {
+        mode: "date",
+        withTimezone: true,
+      }),
+      createdAt: timestamp("created_at", {
+        mode: "date",
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+      updatedAt: timestamp("updated_at", {
+        mode: "date",
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+    },
+    (table) => [
+      index("project_payment_snapshots_project_id_idx").on(table.projectId),
+      index("project_payment_snapshots_status_idx").on(table.status),
+    ],
+  );
+
+  const projectUnlockedFileVersions = fw.table(
+    "project_unlocked_file_versions",
+    {
+      id: uuid("id").defaultRandom().primaryKey(),
+      projectId: uuid("project_id")
+        .notNull()
+        .references(() => projects.id, {
+          onDelete: "cascade",
+          onUpdate: "cascade",
+        }),
+      fileId: uuid("file_id").notNull(),
+      fileVersionId: uuid("file_version_id").notNull(),
+      paymentSnapshotId: uuid("payment_snapshot_id")
+        .references(() => projectPaymentSnapshots.id, {
+          onDelete: "set null",
+          onUpdate: "cascade",
+        }),
+      unlockedAt: timestamp("unlocked_at", {
+        mode: "date",
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+    },
+    (table) => [
+      uniqueIndex("project_unlocked_file_versions_version_unique_idx").on(
+        table.projectId,
+        table.fileVersionId,
+      ),
+      index("project_unlocked_file_versions_file_id_idx").on(table.fileId),
+    ],
+  );
+
+  return { projectClientReviews, projects, projectPaymentSnapshots, projectUnlockedFileVersions };
 };
 
 export type ProjectRecord = InferSelectModel<
@@ -257,4 +337,20 @@ export type ProjectClientReviewRecord = InferSelectModel<
 
 export type NewProjectClientReviewRecord = InferInsertModel<
   ReturnType<typeof createProjectTables>["projectClientReviews"]
+>;
+
+export type ProjectPaymentSnapshotRecord = InferSelectModel<
+  ReturnType<typeof createProjectTables>["projectPaymentSnapshots"]
+>;
+
+export type NewProjectPaymentSnapshotRecord = InferInsertModel<
+  ReturnType<typeof createProjectTables>["projectPaymentSnapshots"]
+>;
+
+export type ProjectUnlockedFileVersionRecord = InferSelectModel<
+  ReturnType<typeof createProjectTables>["projectUnlockedFileVersions"]
+>;
+
+export type NewProjectUnlockedFileVersionRecord = InferInsertModel<
+  ReturnType<typeof createProjectTables>["projectUnlockedFileVersions"]
 >;

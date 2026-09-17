@@ -27,6 +27,7 @@ import { shareLinksRouter } from "@/routes/share-links";
 import { invoicesRouter } from "@/routes/invoices";
 import { clientMastersRouter } from "@/routes/client-masters";
 import { transactionsRouter } from "@/routes/transactions";
+import { currencyRouter } from "@/routes/currency";
 
 export const app = express();
 
@@ -105,6 +106,7 @@ api.use("/share-links", shareLinksRouter);
 api.use("/invoices", invoicesRouter);
 api.use("/client-masters", clientMastersRouter);
 api.use("/transactions", transactionsRouter);
+api.use("/currency", currencyRouter);
 
 // Redirect client share links opened directly on API host to the frontend web app
 app.get("/s/:token", (req, res) => {

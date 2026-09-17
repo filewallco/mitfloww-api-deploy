@@ -1,3 +1,6 @@
+import { db } from '@/lib/db/client';
+import { and, desc, eq } from 'drizzle-orm';
+import { fileVersions, projectPaymentSnapshots, projectUnlockedFileVersions } from '@/lib/db/schema';
 import { generateUniqueInvoiceNumber } from "./invoice-service";
 import { Readable } from "stream";
 import sharp from "sharp";
@@ -4310,6 +4313,157 @@ export class FileService {
     }
 
     return updatedVersion;
+  }
+
+
+  async isFileVersionUnlocked(projectId: string, fileVersionId: string): Promise<boolean> {
+    const [unlockedRecord] = await db
+      .select()
+      .from(projectUnlockedFileVersions)
+      .where(
+        and(
+          eq(projectUnlockedFileVersions.projectId, projectId),
+          eq(projectUnlockedFileVersions.fileVersionId, fileVersionId),
+        ),
+      )
+      .limit(1);
+
+    if (unlockedRecord) return true;
+
+    // Fallback for legacy paid projects before snapshots table
+    const project = await this.getRequiredProject(projectId);
+    if (project.paymentStatus === ProjectPaymentStatus.Paid) {
+      const [versionRecord] = await db
+        .select()
+        .from(fileVersions)
+        .where(eq(fileVersions.id, fileVersionId))
+        .limit(1);
+      if (
+        versionRecord &&
+        (!project.clientPaymentCompletedAt ||
+          new Date(versionRecord.createdAt) <= new Date(project.clientPaymentCompletedAt))
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  async createOrGetProjectPaymentSnapshot(input: {
+    projectId: string;
+    paymentType?: "final" | "advance";
+  }): Promise<{
+    id: string;
+    projectId: string;
+    paymentType: string;
+    status: string;
+    amountCents: number;
+    currency: string;
+    includedVersionIds: string;
+    clientPaymentReference: string | null;
+    paidAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    const project = await this.getRequiredProject(input.projectId);
+    const paymentType = input.paymentType ?? "final";
+
+    // If there is already an existing pending snapshot for this project and payment type, retrieve it
+    const [existingSnapshot] = await db
+      .select()
+      .from(projectPaymentSnapshots)
+      .where(
+        and(
+          eq(projectPaymentSnapshots.projectId, project.id),
+          eq(projectPaymentSnapshots.paymentType, paymentType),
+          eq(projectPaymentSnapshots.status, "pending"),
+        ),
+      )
+      .orderBy(desc(projectPaymentSnapshots.createdAt))
+      .limit(1);
+
+    // Authoritative backend re-validation of project files
+    const files = await this.repository.findMany({
+      projectId: project.id,
+      page: 1,
+      limit: 500,
+      offset: 0,
+      sort: "createdAt",
+      order: "asc",
+      includeTotal: false,
+    });
+
+    const eligibleVersions: Array<{
+      fileId: string;
+      fileVersionId: string;
+      revisionNumber: number;
+    }> = [];
+
+    for (const record of files.records) {
+      if (record.finalDraftVersionId) {
+        const fileWithVersions = await this.repository.findWithVersionsById(record.id, {
+          includeDeletedVersions: false,
+        });
+        const finalVersion = fileWithVersions?.versions.find(
+          (v) => v.id === record.finalDraftVersionId && !v.deletedAt,
+        );
+        if (finalVersion) {
+          eligibleVersions.push({
+            fileId: record.id,
+            fileVersionId: finalVersion.id,
+            revisionNumber: finalVersion.revisionNumber,
+          });
+        }
+      }
+    }
+
+    const totalRevisionCount = await this.repository.countProjectAddedRevisions(project.id).catch(() => 0);
+    const extraRevisionCount = Math.max(0, totalRevisionCount - (project.revisionLimit ?? 0));
+    const extraRevisionAmountCents = extraRevisionCount * (project.extraRevisionCostCents ?? 0);
+    const totalAmountCents = (project.amountCents ?? 0) + extraRevisionAmountCents;
+
+    const hasPaidAdvance =
+      project.advancePaymentEnabled &&
+      project.advancePaymentStatus === ProjectPaymentStatus.Paid &&
+      (project.advanceAmountCents ?? 0) > 0;
+    const remainingAmountCents = Math.max(0, totalAmountCents - (project.advanceAmountCents ?? 0));
+    const amountCents =
+      paymentType === "advance"
+        ? (project.advanceAmountCents ?? 0)
+        : hasPaidAdvance
+          ? remainingAmountCents
+          : totalAmountCents;
+
+    const includedVersionIds = JSON.stringify(eligibleVersions);
+
+    if (existingSnapshot) {
+      const [updated] = await db
+        .update(projectPaymentSnapshots)
+        .set({
+          amountCents,
+          currency: project.currency || "INR",
+          includedVersionIds,
+          updatedAt: new Date(),
+        })
+        .where(eq(projectPaymentSnapshots.id, existingSnapshot.id))
+        .returning();
+      return updated;
+    }
+
+    const [snapshot] = await db
+      .insert(projectPaymentSnapshots)
+      .values({
+        projectId: project.id,
+        paymentType,
+        status: "pending",
+        amountCents,
+        currency: project.currency || "INR",
+        includedVersionIds,
+      })
+      .returning();
+
+    return snapshot;
   }
 
   async completeClientShareProjectPayment(input: {

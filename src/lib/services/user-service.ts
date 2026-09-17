@@ -150,8 +150,8 @@ export class UserService {
     const reviewCount = reviews.length;
     const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
     // Use actual DB rating if available, or fallback to 4.9 (18) mockup value
-    const averageRating = reviewCount > 0 ? Number((totalRating / reviewCount).toFixed(1)) : 4.9;
-    const finalReviewCount = reviewCount > 0 ? reviewCount : 18;
+    const averageRating = reviewCount > 0 ? Number((totalRating / reviewCount).toFixed(1)) : 0;
+    const finalReviewCount = reviewCount;
 
     const memberSinceDate = user.createdAt || new Date("2024-02-10");
     const memberSince = memberSinceDate.toLocaleDateString("en-US", {

@@ -1132,6 +1132,7 @@ export const hiMessages = {
     fileReviewUploadedBy: "{name} द्वारा अपलोड किया गया",
     fileReviewCurrent: "वर्तमान",
     fileReviewApproved: "स्वीकृत",
+    fileReviewReportedBadge: "रिपोर्ट किया गया",
     fileReviewFinalDraft: "फ़ाइनल ड्राफ्ट",
     fileReviewNoVersions: "अभी कोई वर्ज़न नहीं",
     fileReviewStatusQueued: "क्यू में",

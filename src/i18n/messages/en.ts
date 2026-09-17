@@ -1167,6 +1167,7 @@ export const enMessages: AppMessages = {
     fileReviewUploadedBy: "Uploaded by {name}",
     fileReviewCurrent: "CURRENT",
     fileReviewApproved: "APPROVED",
+    fileReviewReportedBadge: "Reported",
     fileReviewFinalDraft: "FINAL DRAFT",
     fileReviewNoVersions: "No versions yet",
     projectFilesTitle: "Project Files ({count})",

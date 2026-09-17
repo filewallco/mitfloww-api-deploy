@@ -597,8 +597,7 @@
         paymentStatus: input.paymentStatus ?? ProjectPaymentStatus.Pending,
         publicId,
         revisionLimit: input.revisionLimit,
-        shareClientEmail: null,
-        clientEmail: null,
+        
         shareEmailAdded: false,
         shareExpiresAt: null,
         shareFailedAttempts: 0,

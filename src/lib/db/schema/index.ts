@@ -13,7 +13,7 @@ import { createTransactionTables } from "./transactions";
 
 export const fw = pgSchema("mitfloww");
 
-export const { projectClientReviews, projects } = createProjectTables(fw);
+export const { projectClientReviews, projects, projectPaymentSnapshots, projectUnlockedFileVersions } = createProjectTables(fw);
 export const {
   testimonialRevisions,
   testimonialTemplates,
@@ -102,6 +102,10 @@ export type {
   NewProjectRecord,
   ProjectClientReviewRecord,
   ProjectRecord,
+  ProjectPaymentSnapshotRecord,
+  NewProjectPaymentSnapshotRecord,
+  ProjectUnlockedFileVersionRecord,
+  NewProjectUnlockedFileVersionRecord,
 } from "./projects";
 export type {
   NewTestimonialRecord,
@@ -160,3 +164,5 @@ export {
   type FileVersionReportStatus as FileVersionReportStatusType,
   type RevisionCommentMarkerType as RevisionCommentMarkerTypeType,
 } from "./files";
+
+export { auditColumns, type BaseAuditEntity } from "./audit";
