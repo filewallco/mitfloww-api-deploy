@@ -1,5 +1,6 @@
 import {
   aliasedTable,
+  ne,
   and,
   asc,
   count,
@@ -315,18 +316,40 @@ export class DrizzleProjectRepository implements ProjectRepository {
     }
 
     if (params.paymentStatus !== undefined) {
-      if ((params.paymentStatus as string) === "active") {
+      const pStatus = String(params.paymentStatus).toLowerCase().trim();
+      if (pStatus === "active") {
         conditions.push(
-          eq(projects.paymentStatus, ProjectPaymentStatus.Pending),
-          sql`coalesce(${projectFileMetrics.isPendingPayment}, false) = false`,
+          and(
+            eq(projects.status, ProjectStatus.Active),
+            ne(projects.paymentStatus, ProjectPaymentStatus.Paid),
+            sql`coalesce(${projectFileMetrics.isPendingPayment}, false) = false`,
+            or(
+              eq(projects.advancePaymentEnabled, false),
+              isNull(projects.advancePaymentEnabled),
+              eq(projects.advancePaymentStatus, ProjectPaymentStatus.Paid),
+            ),
+          )!,
         );
-      } else if (params.paymentStatus === ProjectPaymentStatus.Pending) {
+      } else if (pStatus === "pending") {
         conditions.push(
-          eq(projects.paymentStatus, ProjectPaymentStatus.Pending),
-          sql`coalesce(${projectFileMetrics.isPendingPayment}, false) = true`,
+          and(
+            ne(projects.paymentStatus, ProjectPaymentStatus.Paid),
+            or(
+              sql`coalesce(${projectFileMetrics.isPendingPayment}, false) = true`,
+              and(
+                eq(projects.advancePaymentEnabled, true),
+                eq(projects.advancePaymentStatus, ProjectPaymentStatus.Pending),
+              ),
+            ),
+          )!,
         );
-      } else if (params.paymentStatus === ProjectPaymentStatus.Paid) {
-        conditions.push(eq(projects.paymentStatus, ProjectPaymentStatus.Paid));
+      } else if (pStatus === "paid") {
+        conditions.push(
+          or(
+            eq(projects.paymentStatus, ProjectPaymentStatus.Paid),
+            eq(projects.status, ProjectStatus.Completed),
+          )!,
+        );
       }
     }
 

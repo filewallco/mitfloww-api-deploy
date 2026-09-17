@@ -386,7 +386,7 @@ export const projectListQueryParamsSchema = z
         .min(1, "page must be at least 1."),
     ),
     paymentStatus: z.preprocess(
-      emptyStringToUndefined,
+      (val) => (typeof val === "string" ? val.toLowerCase().trim() || undefined : val),
       z.enum(["active", ...PROJECT_PAYMENT_STATUSES], {
         errorMap: () => ({ message: "projectPaymentStatusInvalid" }),
       }).optional(),
