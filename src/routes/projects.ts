@@ -24,7 +24,8 @@ import {
   fileVersionReportBodySchema,
 } from "@/lib/validation/file-review";
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
-import { NotFoundAppError } from "@/lib/errors/app-error";
+import { NotFoundAppError, AppError } from "@/lib/errors/app-error";
+import { ProjectPaymentStatus } from "@/lib/dto/projects";
 
 export const projectsRouter = Router();
 
@@ -283,6 +284,52 @@ projectsRouter.patch("/:id/share", asyncHandler(async (req, res) => {
     actor.id,
   );
   return sendSuccess(res, data);
+}));
+
+projectsRouter.post("/:id/request-testimonial-email", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const viewerLocale = getRequestLocale(req);
+  const params = parseWithSchema(projectIdParamsSchema, req.params);
+  const baseUrl = getClientAppBaseUrl(req);
+
+  const project = await projectService.getProjectById(params.id, viewerLocale, actor.id);
+  if (project.paymentStatus !== ProjectPaymentStatus.Paid) {
+    throw new AppError("Testimonials can only be requested for paid projects.", 400, "project_not_paid");
+  }
+
+  const clientEmail = (req.body?.clientEmail || project.clientEmail || project.shareClientEmail || "").trim();
+  if (!clientEmail) {
+    throw new AppError("Client email is required to send testimonial request.", 400, "client_email_required");
+  }
+
+  const shareComposer = await projectService.getProjectShareComposer(params.id, {
+    baseUrl,
+    expiryDays: actor.clientShareLinkExpiryDays,
+    userId: actor.id,
+    viewerLocale,
+  });
+
+  const reviewUrl = `${baseUrl || "http://localhost:3000"}/s/${encodeURIComponent(shareComposer.shareDraft.shareToken)}/review`;
+
+  console.log("\n======================================================");
+  console.log("[Email Service] Testimonial Request Email (MOCK)");
+  console.log(`To: ${clientEmail}`);
+  console.log(`From: ${actor.name || actor.email || "Freelancer"}`);
+  console.log(`Subject: How was your experience working on "${project.title}"?`);
+  console.log("Message:");
+  console.log(`Hi ${project.clientName || "there"},`);
+  console.log(`Thank you for completing payment for "${project.title}". We would love to get your feedback on working together.`);
+  console.log("Please share your review using this link:");
+  console.log(reviewUrl);
+  console.log(`(Link expires in ${actor.clientShareLinkExpiryDays} days)`);
+  console.log("======================================================\n");
+
+  return sendSuccess(res, {
+    clientEmail,
+    message: "Testimonial request email sent successfully.",
+    reviewUrl,
+    success: true,
+  });
 }));
 
 projectsRouter.delete("/:id/share", asyncHandler(async (req, res) => {
