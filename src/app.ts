@@ -28,6 +28,7 @@ import { invoicesRouter } from "@/routes/invoices";
 import { clientMastersRouter } from "@/routes/client-masters";
 import { transactionsRouter } from "@/routes/transactions";
 import { currencyRouter } from "@/routes/currency";
+import { assetSharesRouter } from "@/routes/asset-shares";
 
 export const app = express();
 
@@ -107,8 +108,15 @@ api.use("/invoices", invoicesRouter);
 api.use("/client-masters", clientMastersRouter);
 api.use("/transactions", transactionsRouter);
 api.use("/currency", currencyRouter);
+api.use("/asset-shares", assetSharesRouter);
 
 // Redirect client share links opened directly on API host to the frontend web app
+app.get("/a/:token", (req, res) => {
+  const origin = req.get("origin") || req.get("referer");
+  const webBaseUrl = resolvePublicAppBaseUrl(origin);
+  return res.redirect(302, `${webBaseUrl}/a/${encodeURIComponent(req.params.token)}`);
+});
+
 app.get("/s/:token", (req, res) => {
   const origin = req.get("origin") || req.get("referer");
   const webBaseUrl = resolvePublicAppBaseUrl(origin);

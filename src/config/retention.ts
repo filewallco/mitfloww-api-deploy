@@ -1,0 +1,4 @@
+export const DELETED_RESOURCE_RETENTION_DAYS = parseInt(
+  process.env.DELETED_RESOURCE_RETENTION_DAYS || "1",
+  10
+);

@@ -10,6 +10,7 @@ import { createStorageTables } from "./storage";
 import { createUserTables } from "./users";
 import { createClientTables } from "./clients";
 import { createTransactionTables } from "./transactions";
+import { createAssetShareTables } from "./asset-shares";
 
 export const fw = pgSchema("mitfloww");
 
@@ -59,6 +60,12 @@ export const { users, companies } = createUserTables(fw);
 export const { invoiceSettings } = createInvoiceTables(fw, { users });
 export const { clientMasters } = createClientTables(fw, { users });
 export const { transactions } = createTransactionTables(fw, { users, projects });
+export const {
+  assetShares,
+  assetSharePreviewFiles,
+  assetShareFiles,
+  assetSharePurchases,
+} = createAssetShareTables(fw);
 
 export type {
   CreditAccountRecord,
@@ -134,6 +141,18 @@ export type {
   NewInvoiceSettingsRecord,
   CustomInvoiceTemplate,
 } from "./invoices";
+export type {
+  AssetShareRecord,
+  NewAssetShareRecord,
+  AssetSharePreviewFileRecord,
+  NewAssetSharePreviewFileRecord,
+  AssetShareFileRecord,
+  NewAssetShareFileRecord,
+  AssetSharePurchaseRecord,
+  NewAssetSharePurchaseRecord,
+  AssetShareStatus,
+  AssetShareTemplateKey,
+} from "./asset-shares";
 
 export {
   FILE_APPROVAL_STATUSES,
@@ -166,3 +185,7 @@ export {
 } from "./files";
 
 export { auditColumns, type BaseAuditEntity } from "./audit";
+export {
+  ASSET_SHARE_STATUSES,
+  ASSET_SHARE_TEMPLATES,
+} from "./asset-shares";

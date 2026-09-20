@@ -1,3 +1,6 @@
+import { DELETED_RESOURCE_RETENTION_DAYS } from "@/config/retention";
+import { assetShares } from "@/lib/db/schema";
+import { r2Storage } from "@/lib/storage/r2";
 import { Router } from "express";
 import { db } from "@/lib/db/client";
 import {
@@ -165,5 +168,67 @@ cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
     processedStorage: expiredStorage.length,
     processedCredits: expiredCredits.length,
     refreshedAccounts: refreshCount,
+  });
+}));
+
+cronRouter.get("/cleanup-deleted-resources", asyncHandler(async (_req, res) => {
+  const retentionDays = DELETED_RESOURCE_RETENTION_DAYS;
+  const expiryThreshold = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+
+  // 1. Purge R2 files for soft-deleted projects older than retention threshold
+  const expiredProjects = await db
+    .select({ id: projects.id, userId: projects.userId })
+    .from(projects)
+    .where(
+      and(
+        isNotNull(projects.deletedAt),
+        lte(projects.deletedAt, expiryThreshold)
+      )
+    );
+
+  let cleanedProjectsCount = 0;
+  for (const proj of expiredProjects) {
+    try {
+      const filePrefix = `users/${proj.userId}/projects/${proj.id}/`;
+      const r2Files = await r2Storage.listFiles({ prefix: filePrefix });
+      for (const item of r2Files.objects) {
+        await r2Storage.deleteFile({ key: item.key });
+      }
+      cleanedProjectsCount++;
+    } catch (err) {
+      console.error(`Failed to clean R2 files for expired project ${proj.id}:`, err);
+    }
+  }
+
+  // 2. Purge R2 files for soft-deleted asset shares older than retention threshold
+  const expiredAssetShares = await db
+    .select({ id: assetShares.id, userId: assetShares.userId })
+    .from(assetShares)
+    .where(
+      and(
+        isNotNull(assetShares.deletedAt),
+        lte(assetShares.deletedAt, expiryThreshold)
+      )
+    );
+
+  let cleanedAssetSharesCount = 0;
+  for (const asset of expiredAssetShares) {
+    try {
+      const assetPrefix = `users/${asset.userId}/asset-shares/${asset.id}/`;
+      const r2Files = await r2Storage.listFiles({ prefix: assetPrefix });
+      for (const item of r2Files.objects) {
+        await r2Storage.deleteFile({ key: item.key });
+      }
+      cleanedAssetSharesCount++;
+    } catch (err) {
+      console.error(`Failed to clean R2 files for expired asset share ${asset.id}:`, err);
+    }
+  }
+
+  return res.json({
+    success: true,
+    retentionDays,
+    cleanedProjects: cleanedProjectsCount,
+    cleanedAssetShares: cleanedAssetSharesCount,
   });
 }));
