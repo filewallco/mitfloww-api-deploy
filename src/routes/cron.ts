@@ -1,5 +1,5 @@
-import { DELETED_RESOURCE_RETENTION_DAYS } from "@/config/retention";
-import { assetShares } from "@/lib/db/schema";
+﻿import { DELETED_RESOURCE_RETENTION_DAYS } from "@/config/retention";
+import { assets } from "@/lib/db/schema";
 import { r2Storage } from "@/lib/storage/r2";
 import { Router } from "express";
 import { db } from "@/lib/db/client";
@@ -200,28 +200,28 @@ cronRouter.get("/cleanup-deleted-resources", asyncHandler(async (_req, res) => {
     }
   }
 
-  // 2. Purge R2 files for soft-deleted asset shares older than retention threshold
-  const expiredAssetShares = await db
-    .select({ id: assetShares.id, userId: assetShares.userId })
-    .from(assetShares)
+  // 2. Purge R2 files for soft-deleted assets older than retention threshold
+  const expiredAssets = await db
+    .select({ id: assets.id, userId: assets.userId })
+    .from(assets)
     .where(
       and(
-        isNotNull(assetShares.deletedAt),
-        lte(assetShares.deletedAt, expiryThreshold)
+        isNotNull(assets.deletedAt),
+        lte(assets.deletedAt, expiryThreshold)
       )
     );
 
-  let cleanedAssetSharesCount = 0;
-  for (const asset of expiredAssetShares) {
+  let cleanedAssetsCount = 0;
+  for (const asset of expiredAssets) {
     try {
-      const assetPrefix = `users/${asset.userId}/asset-shares/${asset.id}/`;
+      const assetPrefix = `users/${asset.userId}/assets/${asset.id}/`;
       const r2Files = await r2Storage.listFiles({ prefix: assetPrefix });
       for (const item of r2Files.objects) {
         await r2Storage.deleteFile({ key: item.key });
       }
-      cleanedAssetSharesCount++;
+      cleanedAssetsCount++;
     } catch (err) {
-      console.error(`Failed to clean R2 files for expired asset share ${asset.id}:`, err);
+      console.error(`Failed to clean R2 files for expired asset ${asset.id}:`, err);
     }
   }
 
@@ -229,6 +229,6 @@ cronRouter.get("/cleanup-deleted-resources", asyncHandler(async (_req, res) => {
     success: true,
     retentionDays,
     cleanedProjects: cleanedProjectsCount,
-    cleanedAssetShares: cleanedAssetSharesCount,
+    cleanedAssets: cleanedAssetsCount,
   });
 }));

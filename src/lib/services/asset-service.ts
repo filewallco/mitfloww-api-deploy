@@ -1,35 +1,84 @@
-import { storageService } from "@/lib/services/storage-service";
+﻿import { storageService } from "@/lib/services/storage-service";
 import crypto from "node:crypto";
+import { Readable } from "node:stream";
 import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
-  assetShares,
-  assetSharePreviewFiles,
-  assetShareFiles,
-  assetSharePurchases,
-  transactions,
+  assets,
+  assetPreviewFiles,
+  assetFiles,
+  assetPurchases,
   users,
-  type AssetShareRecord,
-  type AssetSharePreviewFileRecord,
-  type AssetShareFileRecord,
-  type AssetSharePurchaseRecord,
+  type AssetRecord,
+  type AssetPreviewFileRecord,
+  type AssetFileRecord,
+  type AssetPurchaseRecord,
 } from "@/lib/db/schema";
 import { creditService } from "@/lib/services/credit-service";
 import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
-import { AppError, NotFoundAppError, ValidationAppError, ForbiddenAppError } from "@/lib/errors/app-error";
+import { AppError, NotFoundAppError, ValidationAppError } from "@/lib/errors/app-error";
 import { r2Storage } from "@/lib/storage/r2";
+import { createStoredZip } from "@/lib/utils/zip";
 
-
-function computeAssetMediaUrl(storageKey?: string | null, storedUrl?: string | null): string | null {
-  if (storedUrl) return storedUrl;
-  if (!storageKey) return null;
-  const publicBase = process.env.R2_PUBLIC_BASE_URL;
-  return publicBase
-    ? `${publicBase.replace(/\/+$/, "")}/${storageKey}`
-    : `/api/profile/media?key=${encodeURIComponent(storageKey)}`;
+async function readBodyToBytes(body: any): Promise<Uint8Array> {
+  if (body == null) return new Uint8Array();
+  if (body instanceof Uint8Array) return body;
+  if (Buffer.isBuffer(body)) return new Uint8Array(body);
+  if (typeof body === "object" && "transformToByteArray" in body && typeof body.transformToByteArray === "function") {
+    const bytes = await body.transformToByteArray();
+    return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  }
+  if (body instanceof Readable) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body) {
+      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    }
+    return new Uint8Array(Buffer.concat(chunks));
+  }
+  if (typeof (body as any)?.getReader === "function") {
+    const reader = (body as any).getReader();
+    const chunks: Uint8Array[] = [];
+    let totalLength = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        totalLength += value.length;
+      }
+    }
+    const combined = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return combined;
+  }
+  return new Uint8Array();
 }
 
-export interface CreateAssetShareInput {
+function computeAssetMediaUrl(storageKey?: string | null, storedUrl?: string | null): string | null {
+  if (storageKey) {
+    const publicBase = process.env.R2_PUBLIC_BASE_URL;
+    if (publicBase) {
+      return `${publicBase.replace(/\/+$/, "")}/${storageKey}`;
+    }
+    return `/api/profile/media?key=${encodeURIComponent(storageKey)}`;
+  }
+  if (storedUrl) {
+    if (storedUrl.includes("/api/profile/media?key=")) {
+      const keyPart = storedUrl.split("/api/profile/media?key=")[1];
+      if (keyPart) {
+        return `/api/profile/media?key=${keyPart}`;
+      }
+    }
+    return storedUrl;
+  }
+  return null;
+}
+
+export interface CreateAssetInput {
   title: string;
   description?: string | null;
   amountCents: number;
@@ -44,7 +93,7 @@ export interface CreateAssetShareInput {
   }>;
 }
 
-export interface UpdateAssetShareInput {
+export interface UpdateAssetInput {
   title?: string;
   description?: string | null;
   amountCents?: number;
@@ -59,45 +108,45 @@ export interface UpdateAssetShareInput {
   }>;
 }
 
-export interface ListAssetSharesQuery {
+export interface ListAssetsQuery {
   status?: "all" | "active" | "deactivated";
   search?: string;
   sort?: "newest" | "oldest" | "title-asc" | "amount-desc";
 }
 
-export class AssetShareService {
-  async listUserAssetShares(userId: string, query?: ListAssetSharesQuery) {
+export class AssetService {
+  async listUserAssets(userId: string, query?: ListAssetsQuery) {
     const conditions = [
-      eq(assetShares.userId, userId),
-      isNull(assetShares.deletedAt),
+      eq(assets.userId, userId),
+      isNull(assets.deletedAt),
     ];
 
     if (query?.status && query.status !== "all") {
-      conditions.push(eq(assetShares.status, query.status));
+      conditions.push(eq(assets.status, query.status));
     }
 
     if (query?.search && query.search.trim()) {
       const term = `%${query.search.trim()}%`;
       conditions.push(
         or(
-          ilike(assetShares.title, term),
-          ilike(assetShares.description, term)
+          ilike(assets.title, term),
+          ilike(assets.description, term)
         )!
       );
     }
 
-    let orderBy = desc(assetShares.createdAt);
+    let orderBy = desc(assets.createdAt);
     if (query?.sort === "oldest") {
-      orderBy = asc(assetShares.createdAt);
+      orderBy = asc(assets.createdAt);
     } else if (query?.sort === "title-asc") {
-      orderBy = asc(assetShares.title);
+      orderBy = asc(assets.title);
     } else if (query?.sort === "amount-desc") {
-      orderBy = desc(assetShares.amountCents);
+      orderBy = desc(assets.amountCents);
     }
 
     const items = await db
       .select()
-      .from(assetShares)
+      .from(assets)
       .where(and(...conditions))
       .orderBy(orderBy);
 
@@ -110,63 +159,63 @@ export class AssetShareService {
     // Fetch previews
     const previews = await db
       .select()
-      .from(assetSharePreviewFiles)
+      .from(assetPreviewFiles)
       .where(
         and(
-          sql`${assetSharePreviewFiles.assetShareId} IN ${itemIds}`,
-          isNull(assetSharePreviewFiles.deletedAt)
+          sql`${assetPreviewFiles.assetId} IN ${itemIds}`,
+          isNull(assetPreviewFiles.deletedAt)
         )
       )
-      .orderBy(asc(assetSharePreviewFiles.sortOrder));
+      .orderBy(asc(assetPreviewFiles.sortOrder));
 
     // Fetch file counts & total storage
     const fileStats = await db
       .select({
-        assetShareId: assetShareFiles.assetShareId,
+        assetId: assetFiles.assetId,
         count: sql<number>`count(*)::int`,
-        totalBytes: sql<number>`coalesce(sum(${assetShareFiles.sizeBytes}), 0)::bigint`,
+        totalBytes: sql<number>`coalesce(sum(${assetFiles.sizeBytes}), 0)::bigint`,
       })
-      .from(assetShareFiles)
+      .from(assetFiles)
       .where(
         and(
-          sql`${assetShareFiles.assetShareId} IN ${itemIds}`,
-          isNull(assetShareFiles.deletedAt)
+          sql`${assetFiles.assetId} IN ${itemIds}`,
+          isNull(assetFiles.deletedAt)
         )
       )
-      .groupBy(assetShareFiles.assetShareId);
+      .groupBy(assetFiles.assetId);
 
     // Fetch purchases count & total revenue
     const purchaseStats = await db
       .select({
-        assetShareId: assetSharePurchases.assetShareId,
+        assetId: assetPurchases.assetId,
         count: sql<number>`count(*)::int`,
-        totalRevenue: sql<number>`coalesce(sum(${assetSharePurchases.amountCents}), 0)::int`,
-        latestPaidAt: sql<Date | null>`max(${assetSharePurchases.paidAt})`,
+        totalRevenue: sql<number>`coalesce(sum(${assetPurchases.amountCents}), 0)::int`,
+        latestPaidAt: sql<Date | null>`max(${assetPurchases.paidAt})`,
       })
-      .from(assetSharePurchases)
-      .where(sql`${assetSharePurchases.assetShareId} IN ${itemIds}`)
-      .groupBy(assetSharePurchases.assetShareId);
+      .from(assetPurchases)
+      .where(sql`${assetPurchases.assetId} IN ${itemIds}`)
+      .groupBy(assetPurchases.assetId);
 
-    const previewsByShareId = new Map<string, AssetSharePreviewFileRecord[]>();
+    const previewsByAssetId = new Map<string, AssetPreviewFileRecord[]>();
     for (const preview of previews) {
-      const list = previewsByShareId.get(preview.assetShareId) || [];
+      const list = previewsByAssetId.get(preview.assetId) || [];
       list.push(preview);
-      previewsByShareId.set(preview.assetShareId, list);
+      previewsByAssetId.set(preview.assetId, list);
     }
 
     const fileStatsMap = new Map<string, { count: number; totalBytes: number }>();
     for (const row of fileStats) {
-      fileStatsMap.set(row.assetShareId, { count: row.count, totalBytes: Number(row.totalBytes || 0) });
+      fileStatsMap.set(row.assetId, { count: row.count, totalBytes: Number(row.totalBytes || 0) });
     }
 
     const purchaseStatsMap = new Map<string, { count: number; totalRevenue: number; latestPaidAt: Date | null }>();
     for (const row of purchaseStats) {
-      purchaseStatsMap.set(row.assetShareId, { count: row.count, totalRevenue: Number(row.totalRevenue || 0), latestPaidAt: row.latestPaidAt });
+      purchaseStatsMap.set(row.assetId, { count: row.count, totalRevenue: Number(row.totalRevenue || 0), latestPaidAt: row.latestPaidAt });
     }
 
     return items.map((item) => ({
       ...item,
-      previewFiles: (previewsByShareId.get(item.id) || []).map((p) => ({
+      previewFiles: (previewsByAssetId.get(item.id) || []).map((p) => ({
         ...p,
         previewUrl: computeAssetMediaUrl(p.storageKey, p.previewUrl),
       })),
@@ -178,44 +227,44 @@ export class AssetShareService {
     }));
   }
 
-  async getAssetShareById(id: string, userId: string) {
+  async getAssetById(id: string, userId: string) {
     const [record] = await db
       .select()
-      .from(assetShares)
+      .from(assets)
       .where(
         and(
-          eq(assetShares.id, id),
-          eq(assetShares.userId, userId),
-          isNull(assetShares.deletedAt)
+          eq(assets.id, id),
+          eq(assets.userId, userId),
+          isNull(assets.deletedAt)
         )
       )
       .limit(1);
 
     if (!record) {
-      throw new NotFoundAppError("Asset Share not found.");
+      throw new NotFoundAppError("Asset not found.");
     }
 
     const previews = await db
       .select()
-      .from(assetSharePreviewFiles)
+      .from(assetPreviewFiles)
       .where(
         and(
-          eq(assetSharePreviewFiles.assetShareId, id),
-          isNull(assetSharePreviewFiles.deletedAt)
+          eq(assetPreviewFiles.assetId, id),
+          isNull(assetPreviewFiles.deletedAt)
         )
       )
-      .orderBy(asc(assetSharePreviewFiles.sortOrder));
+      .orderBy(asc(assetPreviewFiles.sortOrder));
 
     const files = await db
       .select()
-      .from(assetShareFiles)
+      .from(assetFiles)
       .where(
         and(
-          eq(assetShareFiles.assetShareId, id),
-          isNull(assetShareFiles.deletedAt)
+          eq(assetFiles.assetId, id),
+          isNull(assetFiles.deletedAt)
         )
       )
-      .orderBy(desc(assetShareFiles.createdAt));
+      .orderBy(desc(assetFiles.createdAt));
 
     const enrichedPreviews = previews.map((p) => ({
       ...p,
@@ -232,11 +281,11 @@ export class AssetShareService {
     const [purchaseStat] = await db
       .select({
         count: sql<number>`count(*)::int`,
-        totalRevenue: sql<number>`coalesce(sum(${assetSharePurchases.amountCents}), 0)::int`,
-        latestPaidAt: sql<Date | null>`max(${assetSharePurchases.paidAt})`,
+        totalRevenue: sql<number>`coalesce(sum(${assetPurchases.amountCents}), 0)::int`,
+        latestPaidAt: sql<Date | null>`max(${assetPurchases.paidAt})`,
       })
-      .from(assetSharePurchases)
-      .where(eq(assetSharePurchases.assetShareId, id));
+      .from(assetPurchases)
+      .where(eq(assetPurchases.assetId, id));
 
     return {
       ...record,
@@ -250,7 +299,7 @@ export class AssetShareService {
     };
   }
 
-  async createAssetShare(userId: string, input: CreateAssetShareInput) {
+  async createAsset(userId: string, input: CreateAssetInput) {
     const templateKey = input.templateKey || "minimal-modern";
     const isPremiumTemplate = templateKey !== "minimal-modern";
 
@@ -258,7 +307,7 @@ export class AssetShareService {
     if (isPremiumTemplate) {
       const { scope } = await creditService.getOrCreateCreditAccountForScope();
       await creditService.calculateAndDeductFeatureCredits({
-        idempotencyKey: `asset-share-create-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        idempotencyKey: `asset-create-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         featureParams: {
           currency: DEFAULT_PROJECT_CURRENCY,
           featureKey: "testimonial_create",
@@ -276,7 +325,7 @@ export class AssetShareService {
     const shareExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 1 day
 
     const [created] = await db
-      .insert(assetShares)
+      .insert(assets)
       .values({
         userId,
         title: input.title.trim(),
@@ -292,7 +341,7 @@ export class AssetShareService {
 
     if (input.previewFiles && input.previewFiles.length > 0) {
       const previewRows = input.previewFiles.slice(0, 3).map((f, idx) => ({
-        assetShareId: created.id,
+        assetId: created.id,
         name: f.name,
         mimeType: f.mimeType,
         sizeBytes: f.sizeBytes,
@@ -301,19 +350,19 @@ export class AssetShareService {
         sortOrder: idx,
       }));
 
-      await db.insert(assetSharePreviewFiles).values(previewRows);
+      await db.insert(assetPreviewFiles).values(previewRows);
     }
 
-    return this.getAssetShareById(created.id, userId);
+    return this.getAssetById(created.id, userId);
   }
 
-  async updateAssetShare(id: string, userId: string, input: UpdateAssetShareInput) {
-    const existing = await this.getAssetShareById(id, userId);
+  async updateAsset(id: string, userId: string, input: UpdateAssetInput) {
+    const existing = await this.getAssetById(id, userId);
     if (!existing) {
-      throw new NotFoundAppError("Asset Share not found.");
+      throw new NotFoundAppError("Asset not found.");
     }
 
-    const updates: Partial<typeof assetShares.$inferInsert> = {
+    const updates: Partial<typeof assets.$inferInsert> = {
       updatedAt: new Date(),
     };
 
@@ -334,21 +383,21 @@ export class AssetShareService {
     }
 
     const [updated] = await db
-      .update(assetShares)
+      .update(assets)
       .set(updates)
-      .where(and(eq(assetShares.id, id), eq(assetShares.userId, userId)))
+      .where(and(eq(assets.id, id), eq(assets.userId, userId)))
       .returning();
 
     if (input.previewFiles !== undefined) {
       // Soft-delete removed preview files
       await db
-        .update(assetSharePreviewFiles)
+        .update(assetPreviewFiles)
         .set({ deletedAt: new Date() })
-        .where(eq(assetSharePreviewFiles.assetShareId, id));
+        .where(eq(assetPreviewFiles.assetId, id));
 
       if (input.previewFiles.length > 0) {
         const previewRows = input.previewFiles.slice(0, 3).map((f, idx) => ({
-          assetShareId: id,
+          assetId: id,
           name: f.name,
           mimeType: f.mimeType,
           sizeBytes: f.sizeBytes,
@@ -356,35 +405,35 @@ export class AssetShareService {
           previewUrl: f.previewUrl || null,
           sortOrder: idx,
         }));
-        await db.insert(assetSharePreviewFiles).values(previewRows);
+        await db.insert(assetPreviewFiles).values(previewRows);
       }
     }
 
-    return this.getAssetShareById(updated.id, userId);
+    return this.getAssetById(updated.id, userId);
   }
 
-  async deleteAssetShare(id: string, userId: string) {
-    const existing = await this.getAssetShareById(id, userId);
+  async deleteAsset(id: string, userId: string) {
+    const existing = await this.getAssetById(id, userId);
     if (!existing) {
-      throw new NotFoundAppError("Asset Share not found.");
+      throw new NotFoundAppError("Asset not found.");
     }
 
     const now = new Date();
 
     await db
-      .update(assetShares)
+      .update(assets)
       .set({ deletedAt: now, updatedAt: now })
-      .where(and(eq(assetShares.id, id), eq(assetShares.userId, userId)));
+      .where(and(eq(assets.id, id), eq(assets.userId, userId)));
 
     await db
-      .update(assetShareFiles)
+      .update(assetFiles)
       .set({ deletedAt: now, updatedAt: now })
-      .where(eq(assetShareFiles.assetShareId, id));
+      .where(eq(assetFiles.assetId, id));
 
     await db
-      .update(assetSharePreviewFiles)
+      .update(assetPreviewFiles)
       .set({ deletedAt: now })
-      .where(eq(assetSharePreviewFiles.assetShareId, id));
+      .where(eq(assetPreviewFiles.assetId, id));
 
     return { success: true, id };
   }
@@ -396,9 +445,9 @@ export class AssetShareService {
     buffer: Buffer,
     mimeType?: string
   ) {
-    const existing = await this.getAssetShareById(id, userId);
+    const existing = await this.getAssetById(id, userId);
     if (!existing) {
-      throw new NotFoundAppError("Asset Share not found.");
+      throw new NotFoundAppError("Asset not found.");
     }
 
     const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -408,7 +457,7 @@ export class AssetShareService {
 
     const fileId = crypto.randomUUID();
     const sanitizedName = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const storageKey = `users/${userId}/asset-shares/${id}/files/${fileId}-${sanitizedName}`;
+    const storageKey = `users/${userId}/assets/${id}/files/${fileId}-${sanitizedName}`;
     const contentType = (mimeType || "application/octet-stream").toLowerCase();
 
     await r2Storage.uploadFile({
@@ -429,9 +478,9 @@ export class AssetShareService {
   }
 
   async cleanupStagedDownloadableFile(id: string, userId: string, storageKey: string) {
-    await this.getAssetShareById(id, userId);
+    await this.getAssetById(id, userId);
 
-    const prefix = `users/${userId}/asset-shares/${id}/files/`;
+    const prefix = `users/${userId}/assets/${id}/files/`;
     if (!storageKey || !storageKey.startsWith(prefix)) {
       throw new ValidationAppError("Invalid storage key for staged file cleanup.");
     }
@@ -452,9 +501,9 @@ export class AssetShareService {
     buffer: Buffer,
     mimeType?: string
   ) {
-    const existing = await this.getAssetShareById(id, userId);
+    const existing = await this.getAssetById(id, userId);
     if (!existing) {
-      throw new NotFoundAppError("Asset Share not found.");
+      throw new NotFoundAppError("Asset not found.");
     }
 
     const ext = filename.split(".").pop()?.toLowerCase() || "";
@@ -464,7 +513,7 @@ export class AssetShareService {
 
     const fileId = crypto.randomUUID();
     const sanitizedName = filename.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const storageKey = `users/${userId}/asset-shares/${id}/files/${fileId}-${sanitizedName}`;
+    const storageKey = `users/${userId}/assets/${id}/files/${fileId}-${sanitizedName}`;
     const contentType = (mimeType || "application/octet-stream").toLowerCase();
 
     await r2Storage.uploadFile({
@@ -474,10 +523,10 @@ export class AssetShareService {
     });
 
     const [inserted] = await db
-      .insert(assetShareFiles)
+      .insert(assetFiles)
       .values({
         id: fileId,
-        assetShareId: id,
+        assetId: id,
         name: filename.trim(),
         originalName: filename,
         mimeType: contentType,
@@ -502,9 +551,9 @@ export class AssetShareService {
       storageKey: string;
     }>
   ) {
-    const existing = await this.getAssetShareById(id, userId);
+    const existing = await this.getAssetById(id, userId);
     if (!existing) {
-      throw new NotFoundAppError("Asset Share not found.");
+      throw new NotFoundAppError("Asset not found.");
     }
 
     const totalBytes = filesList.reduce((sum, f) => sum + f.sizeBytes, 0);
@@ -517,7 +566,7 @@ export class AssetShareService {
     }
 
     const rows = filesList.map((f) => ({
-      assetShareId: id,
+      assetId: id,
       name: f.name.trim(),
       originalName: f.originalName,
       mimeType: f.mimeType,
@@ -526,7 +575,7 @@ export class AssetShareService {
       storageKey: f.storageKey,
     }));
 
-    const inserted = await db.insert(assetShareFiles).values(rows).returning();
+    const inserted = await db.insert(assetFiles).values(rows).returning();
 
     // Commit storage accounting for each file
     for (const file of inserted) {
@@ -535,14 +584,14 @@ export class AssetShareService {
           await storageService.commitStorageUsage({
             bytes: file.sizeBytes,
             fileId: file.id,
-            idempotencyKey: `asset-share-file:${id}:${file.id}:commit`,
+            idempotencyKey: `asset-file:${id}:${file.id}:commit`,
             scope: { scopeType: "personal", scopeId: userId, actorUserId: userId },
             metadata: {
-              featureReason: "asset_share_file_upload",
+              featureReason: "asset_file_upload",
             },
           });
         } catch (err) {
-          console.warn("Failed to commit storage for asset share file:", err);
+          console.warn("Failed to commit storage for asset file:", err);
         }
       }
     }
@@ -551,12 +600,12 @@ export class AssetShareService {
   }
 
   async deleteDownloadableFile(id: string, fileId: string, userId: string) {
-    await this.getAssetShareById(id, userId);
+    await this.getAssetById(id, userId);
 
     const [file] = await db
       .select()
-      .from(assetShareFiles)
-      .where(and(eq(assetShareFiles.id, fileId), eq(assetShareFiles.assetShareId, id)))
+      .from(assetFiles)
+      .where(and(eq(assetFiles.id, fileId), eq(assetFiles.assetId, id)))
       .limit(1);
 
     if (!file) {
@@ -565,9 +614,9 @@ export class AssetShareService {
 
     const now = new Date();
     await db
-      .update(assetShareFiles)
+      .update(assetFiles)
       .set({ deletedAt: now, updatedAt: now })
-      .where(eq(assetShareFiles.id, fileId));
+      .where(eq(assetFiles.id, fileId));
 
     // Release storage accounting
     if (file.sizeBytes > 0) {
@@ -575,14 +624,14 @@ export class AssetShareService {
         await storageService.releaseStorageUsage({
           bytes: file.sizeBytes,
           fileId: file.id,
-          idempotencyKey: `asset-share-file:${id}:${file.id}:release`,
+          idempotencyKey: `asset-file:${id}:${file.id}:release`,
           scope: { scopeType: "personal", scopeId: userId, actorUserId: userId },
           metadata: {
-            featureReason: "asset_share_file_delete",
+            featureReason: "asset_file_delete",
           },
         });
       } catch (err) {
-        console.warn("Failed to release storage for asset share file:", err);
+        console.warn("Failed to release storage for asset file:", err);
       }
     }
 
@@ -597,15 +646,15 @@ export class AssetShareService {
     return { success: true, fileId };
   }
 
-  async getPublicAssetShareState(shareToken: string, buyerEmail?: string | null) {
+  async getPublicAssetState(shareToken: string, buyerEmail?: string | null) {
     const [asset] = await db
       .select()
-      .from(assetShares)
-      .where(eq(assetShares.shareToken, shareToken))
+      .from(assets)
+      .where(eq(assets.shareToken, shareToken))
       .limit(1);
 
     if (!asset) {
-      throw new NotFoundAppError("Asset Share link not found.");
+      throw new NotFoundAppError("Asset link not found.");
     }
 
     // Check creator info
@@ -627,20 +676,20 @@ export class AssetShareService {
       "MitFloww Creator";
 
     // Check if buyer has an active purchase within 24h
-    let activePurchase: AssetSharePurchaseRecord | null = null;
+    let activePurchase: AssetPurchaseRecord | null = null;
     if (buyerEmail && buyerEmail.trim()) {
       const normalizedEmail = buyerEmail.trim().toLowerCase();
       const [purchase] = await db
         .select()
-        .from(assetSharePurchases)
+        .from(assetPurchases)
         .where(
           and(
-            eq(assetSharePurchases.assetShareId, asset.id),
-            eq(assetSharePurchases.buyerEmail, normalizedEmail),
-            sql`${assetSharePurchases.expiresAt} > NOW()`
+            eq(assetPurchases.assetId, asset.id),
+            eq(assetPurchases.buyerEmail, normalizedEmail),
+            sql`${assetPurchases.expiresAt} > NOW()`
           )
         )
-        .orderBy(desc(assetSharePurchases.paidAt))
+        .orderBy(desc(assetPurchases.paidAt))
         .limit(1);
 
       if (purchase) {
@@ -652,18 +701,18 @@ export class AssetShareService {
     if (activePurchase) {
       const files = await db
         .select()
-        .from(assetShareFiles)
+        .from(assetFiles)
         .where(
           and(
-            eq(assetShareFiles.assetShareId, asset.id),
-            isNull(assetShareFiles.deletedAt)
+            eq(assetFiles.assetId, asset.id),
+            isNull(assetFiles.deletedAt)
           )
         )
-        .orderBy(asc(assetShareFiles.name));
+        .orderBy(asc(assetFiles.name));
 
       return {
         accessState: "purchased",
-        assetShare: {
+        asset: {
           id: asset.id,
           title: asset.title,
           description: asset.description,
@@ -684,13 +733,13 @@ export class AssetShareService {
 
     // If not purchased: check if link was soft-deleted or deactivated or expired
     if (asset.deletedAt) {
-      throw new NotFoundAppError("This Asset Share is no longer available.");
+      throw new NotFoundAppError("This Asset is no longer available.");
     }
 
     if (asset.status === "deactivated") {
       return {
         accessState: "deactivated",
-        assetShare: {
+        asset: {
           id: asset.id,
           title: asset.title,
           creatorName,
@@ -701,23 +750,23 @@ export class AssetShareService {
     // Fetch previews
     const previews = await db
       .select()
-      .from(assetSharePreviewFiles)
+      .from(assetPreviewFiles)
       .where(
         and(
-          eq(assetSharePreviewFiles.assetShareId, asset.id),
-          isNull(assetSharePreviewFiles.deletedAt)
+          eq(assetPreviewFiles.assetId, asset.id),
+          isNull(assetPreviewFiles.deletedAt)
         )
       )
-      .orderBy(asc(assetSharePreviewFiles.sortOrder));
+      .orderBy(asc(assetPreviewFiles.sortOrder));
 
     // File count summary
     const [fileCountResult] = await db
       .select({ count: sql<number>`count(*)::int` })
-      .from(assetShareFiles)
+      .from(assetFiles)
       .where(
         and(
-          eq(assetShareFiles.assetShareId, asset.id),
-          isNull(assetShareFiles.deletedAt)
+          eq(assetFiles.assetId, asset.id),
+          isNull(assetFiles.deletedAt)
         )
       );
 
@@ -728,7 +777,7 @@ export class AssetShareService {
 
     return {
       accessState: "public",
-      assetShare: {
+      asset: {
         id: asset.id,
         title: asset.title,
         description: asset.description,
@@ -747,18 +796,18 @@ export class AssetShareService {
 
     const [asset] = await db
       .select()
-      .from(assetShares)
+      .from(assets)
       .where(
         and(
-          eq(assetShares.shareToken, shareToken),
-          isNull(assetShares.deletedAt),
-          eq(assetShares.status, "active")
+          eq(assets.shareToken, shareToken),
+          isNull(assets.deletedAt),
+          eq(assets.status, "active")
         )
       )
       .limit(1);
 
     if (!asset) {
-      throw new NotFoundAppError("Asset Share is not active or available for purchase.");
+      throw new NotFoundAppError("Asset is not active or available for purchase.");
     }
 
     // 10% platform fee commission
@@ -771,9 +820,9 @@ export class AssetShareService {
 
     // Insert purchase record
     const [purchase] = await db
-      .insert(assetSharePurchases)
+      .insert(assetPurchases)
       .values({
-        assetShareId: asset.id,
+        assetId: asset.id,
         buyerEmail: normalizedEmail,
         amountCents: asset.amountCents,
         currency: asset.currency,
@@ -789,14 +838,14 @@ export class AssetShareService {
     // Fetch downloadable files
     const files = await db
       .select()
-      .from(assetShareFiles)
+      .from(assetFiles)
       .where(
         and(
-          eq(assetShareFiles.assetShareId, asset.id),
-          isNull(assetShareFiles.deletedAt)
+          eq(assetFiles.assetId, asset.id),
+          isNull(assetFiles.deletedAt)
         )
       )
-      .orderBy(asc(assetShareFiles.name));
+      .orderBy(asc(assetFiles.name));
 
     return {
       success: true,
@@ -808,6 +857,160 @@ export class AssetShareService {
       files,
     };
   }
+  async getPublicAssetDownloadFile(token: string, fileId: string, buyerEmail?: string | null) {
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.shareToken, token))
+      .limit(1);
+
+    if (!asset) {
+      throw new NotFoundAppError("Asset link not found.");
+    }
+
+    if (buyerEmail && buyerEmail.trim()) {
+      const normalizedEmail = buyerEmail.trim().toLowerCase();
+      const [purchase] = await db
+        .select()
+        .from(assetPurchases)
+        .where(
+          and(
+            eq(assetPurchases.assetId, asset.id),
+            eq(assetPurchases.buyerEmail, normalizedEmail),
+            sql`${assetPurchases.expiresAt} > NOW()`
+          )
+        )
+        .limit(1);
+
+      if (!purchase) {
+        throw new AppError("Purchase required to download asset files.", 403, "purchase_required");
+      }
+    }
+
+    const [file] = await db
+      .select()
+      .from(assetFiles)
+      .where(
+        and(
+          eq(assetFiles.id, fileId),
+          eq(assetFiles.assetId, asset.id),
+          isNull(assetFiles.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (!file) {
+      throw new NotFoundAppError("File not found.");
+    }
+
+    const storageResult = await r2Storage.getFile({ key: file.storageKey });
+    return {
+      body: storageResult.body,
+      filename: file.originalName || file.name || "file",
+      mimeType: file.mimeType || "application/octet-stream",
+      contentLength: storageResult.contentLength,
+      storageKey: file.storageKey,
+    };
+  }
+
+  async getPublicAssetZipArchive(token: string, buyerEmail?: string | null, fileIds?: string[]) {
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.shareToken, token))
+      .limit(1);
+
+    if (!asset) {
+      throw new NotFoundAppError("Asset link not found.");
+    }
+
+    if (buyerEmail && buyerEmail.trim()) {
+      const normalizedEmail = buyerEmail.trim().toLowerCase();
+      const [purchase] = await db
+        .select()
+        .from(assetPurchases)
+        .where(
+          and(
+            eq(assetPurchases.assetId, asset.id),
+            eq(assetPurchases.buyerEmail, normalizedEmail),
+            sql`${assetPurchases.expiresAt} > NOW()`
+          )
+        )
+        .limit(1);
+
+      if (!purchase) {
+        throw new AppError("Purchase required to download asset files.", 403, "purchase_required");
+      }
+    }
+
+    let filesList = await db
+      .select()
+      .from(assetFiles)
+      .where(
+        and(
+          eq(assetFiles.assetId, asset.id),
+          isNull(assetFiles.deletedAt)
+        )
+      )
+      .orderBy(asc(assetFiles.name));
+
+    if (fileIds && fileIds.length > 0) {
+      const requestedSet = new Set(fileIds);
+      filesList = filesList.filter((f) => requestedSet.has(f.id));
+    }
+
+    if (filesList.length === 0) {
+      throw new NotFoundAppError("No files found to bundle.");
+    }
+
+    const entries = await Promise.all(
+      filesList.map(async (f) => {
+        const fileData = await r2Storage.getFile({ key: f.storageKey });
+        const bytes = await readBodyToBytes(fileData.body);
+        const rawName = (f.originalName || f.name || "file").trim();
+        let baseName = rawName.replace(/[\/\\]/g, "_").replace(/[<>:"|?*]/g, "_").trim() || "file";
+        const ext = f.extension ? `.${f.extension.replace(/^\./, "")}` : "";
+        if (ext && !baseName.toLowerCase().endsWith(ext.toLowerCase())) {
+          baseName += ext;
+        }
+
+        return {
+          data: bytes,
+          rawFilename: baseName,
+        };
+      })
+    );
+
+    const deduplicatedEntries: Array<{ data: Uint8Array; filename: string }> = [];
+    const usedFilenames = new Set<string>();
+
+    for (const entry of entries) {
+      let finalName = entry.rawFilename;
+      if (usedFilenames.has(finalName.toLowerCase())) {
+        const lastDot = finalName.lastIndexOf(".");
+        const prefix = lastDot > 0 ? finalName.slice(0, lastDot) : finalName;
+        const ext = lastDot > 0 ? finalName.slice(lastDot) : "";
+        let counter = 1;
+        while (usedFilenames.has(`${prefix} (${counter})${ext}`.toLowerCase())) {
+          counter++;
+        }
+        finalName = `${prefix} (${counter})${ext}`;
+      }
+      usedFilenames.add(finalName.toLowerCase());
+      deduplicatedEntries.push({
+        data: entry.data,
+        filename: finalName,
+      });
+    }
+
+    const zipBytes = createStoredZip(deduplicatedEntries);
+    const sanitizedTitle = (asset.title || "asset").replace(/[^a-zA-Z0-9_-]/g, "_");
+    return {
+      body: zipBytes,
+      filename: `${sanitizedTitle}-files.zip`,
+      totalFiles: deduplicatedEntries.length,
+    };
+  }
 }
 
-export const assetShareService = new AssetShareService();
+export const assetService = new AssetService();

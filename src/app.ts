@@ -1,4 +1,4 @@
-import { resolvePublicAppBaseUrl } from "@/lib/services/project-service";
+﻿import { resolvePublicAppBaseUrl } from "@/lib/services/project-service";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -28,7 +28,7 @@ import { invoicesRouter } from "@/routes/invoices";
 import { clientMastersRouter } from "@/routes/client-masters";
 import { transactionsRouter } from "@/routes/transactions";
 import { currencyRouter } from "@/routes/currency";
-import { assetSharesRouter } from "@/routes/asset-shares";
+import { assetsRouter } from "@/routes/assets";
 
 export const app = express();
 
@@ -108,7 +108,8 @@ api.use("/invoices", invoicesRouter);
 api.use("/client-masters", clientMastersRouter);
 api.use("/transactions", transactionsRouter);
 api.use("/currency", currencyRouter);
-api.use("/asset-shares", assetSharesRouter);
+api.use("/assets", assetsRouter);
+api.use("/asset-shares", assetsRouter);
 
 // Redirect client share links opened directly on API host to the frontend web app
 app.get("/a/:token", (req, res) => {

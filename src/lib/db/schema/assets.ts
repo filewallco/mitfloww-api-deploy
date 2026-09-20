@@ -1,12 +1,10 @@
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+﻿import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
   bigint,
-  boolean,
   check,
   index,
   integer,
-  jsonb,
   text,
   timestamp,
   uniqueIndex,
@@ -16,24 +14,24 @@ import {
 } from "drizzle-orm/pg-core";
 import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
 
-export const ASSET_SHARE_STATUSES = ["active", "deactivated"] as const;
-export type AssetShareStatus = (typeof ASSET_SHARE_STATUSES)[number];
+export const ASSET_STATUSES = ["active", "deactivated"] as const;
+export type AssetStatus = (typeof ASSET_STATUSES)[number];
 
-export const ASSET_SHARE_TEMPLATES = [
+export const ASSET_TEMPLATES = [
   "minimal-modern",
   "neon-cyber",
   "clean-studio",
   "bold-editorial",
 ] as const;
-export type AssetShareTemplateKey = (typeof ASSET_SHARE_TEMPLATES)[number];
+export type AssetTemplateKey = (typeof ASSET_TEMPLATES)[number];
 
 function buildSqlStringList(values: readonly string[]) {
   return sql.raw(values.map((value) => `'${value}'`).join(","));
 }
 
-export const createAssetShareTables = (fw: PgSchema) => {
-  const assetShares = fw.table(
-    "asset_shares",
+export const createAssetTables = (fw: PgSchema) => {
+  const assets = fw.table(
+    "assets",
     {
       id: uuid("id").defaultRandom().primaryKey(),
       userId: varchar("user_id", { length: 255 }).notNull(),
@@ -44,11 +42,11 @@ export const createAssetShareTables = (fw: PgSchema) => {
         .notNull()
         .default(DEFAULT_PROJECT_CURRENCY),
       templateKey: varchar("template_key", { length: 64 })
-        .$type<AssetShareTemplateKey>()
+        .$type<AssetTemplateKey>()
         .notNull()
         .default("minimal-modern"),
       status: varchar("status", { length: 32 })
-        .$type<AssetShareStatus>()
+        .$type<AssetStatus>()
         .notNull()
         .default("active"),
       shareToken: varchar("share_token", { length: 255 }).notNull(),
@@ -65,26 +63,26 @@ export const createAssetShareTables = (fw: PgSchema) => {
         .defaultNow(),
     },
     (table) => [
-      uniqueIndex("asset_shares_share_token_unique_idx").on(table.shareToken),
-      index("asset_shares_user_id_idx").on(table.userId),
-      index("asset_shares_status_idx").on(table.status),
-      index("asset_shares_deleted_at_idx").on(table.deletedAt),
-      index("asset_shares_updated_at_idx").on(table.updatedAt),
+      uniqueIndex("assets_share_token_unique_idx").on(table.shareToken),
+      index("assets_user_id_idx").on(table.userId),
+      index("assets_status_idx").on(table.status),
+      index("assets_deleted_at_idx").on(table.deletedAt),
+      index("assets_updated_at_idx").on(table.updatedAt),
       check(
-        "asset_shares_status_check",
-        sql`${table.status} IN (${buildSqlStringList(ASSET_SHARE_STATUSES)})`,
+        "assets_status_check",
+        sql`${table.status} IN (${buildSqlStringList(ASSET_STATUSES)})`,
       ),
-      check("asset_shares_amount_cents_check", sql`${table.amountCents} > 0`),
+      check("assets_amount_cents_check", sql`${table.amountCents} > 0`),
     ],
   );
 
-  const assetSharePreviewFiles = fw.table(
-    "asset_share_preview_files",
+  const assetPreviewFiles = fw.table(
+    "asset_preview_files",
     {
       id: uuid("id").defaultRandom().primaryKey(),
-      assetShareId: uuid("asset_share_id")
+      assetId: uuid("asset_id")
         .notNull()
-        .references(() => assetShares.id, { onDelete: "cascade" }),
+        .references(() => assets.id, { onDelete: "cascade" }),
       name: varchar("name", { length: 255 }).notNull(),
       mimeType: varchar("mime_type", { length: 120 }).notNull(),
       sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
@@ -97,18 +95,18 @@ export const createAssetShareTables = (fw: PgSchema) => {
         .defaultNow(),
     },
     (table) => [
-      index("asset_share_preview_files_asset_share_id_idx").on(table.assetShareId),
-      index("asset_share_preview_files_deleted_at_idx").on(table.deletedAt),
+      index("asset_preview_files_asset_id_idx").on(table.assetId),
+      index("asset_preview_files_deleted_at_idx").on(table.deletedAt),
     ],
   );
 
-  const assetShareFiles = fw.table(
-    "asset_share_files",
+  const assetFiles = fw.table(
+    "asset_files",
     {
       id: uuid("id").defaultRandom().primaryKey(),
-      assetShareId: uuid("asset_share_id")
+      assetId: uuid("asset_id")
         .notNull()
-        .references(() => assetShares.id, { onDelete: "cascade" }),
+        .references(() => assets.id, { onDelete: "cascade" }),
       name: varchar("name", { length: 255 }).notNull(),
       originalName: varchar("original_name", { length: 255 }).notNull(),
       mimeType: varchar("mime_type", { length: 120 }).notNull(),
@@ -124,19 +122,19 @@ export const createAssetShareTables = (fw: PgSchema) => {
         .defaultNow(),
     },
     (table) => [
-      index("asset_share_files_asset_share_id_idx").on(table.assetShareId),
-      index("asset_share_files_deleted_at_idx").on(table.deletedAt),
-      index("asset_share_files_updated_at_idx").on(table.updatedAt),
+      index("asset_files_asset_id_idx").on(table.assetId),
+      index("asset_files_deleted_at_idx").on(table.deletedAt),
+      index("asset_files_updated_at_idx").on(table.updatedAt),
     ],
   );
 
-  const assetSharePurchases = fw.table(
-    "asset_share_purchases",
+  const assetPurchases = fw.table(
+    "asset_purchases",
     {
       id: uuid("id").defaultRandom().primaryKey(),
-      assetShareId: uuid("asset_share_id")
+      assetId: uuid("asset_id")
         .notNull()
-        .references(() => assetShares.id, { onDelete: "cascade" }),
+        .references(() => assets.id, { onDelete: "cascade" }),
       buyerEmail: varchar("buyer_email", { length: 255 }).notNull(),
       amountCents: integer("amount_cents").notNull(),
       currency: varchar("currency", { length: 3 }).notNull(),
@@ -153,46 +151,46 @@ export const createAssetShareTables = (fw: PgSchema) => {
         .defaultNow(),
     },
     (table) => [
-      uniqueIndex("asset_share_purchases_access_token_unique_idx").on(table.accessToken),
-      uniqueIndex("asset_share_purchases_invoice_number_unique_idx").on(table.invoiceNumber),
-      index("asset_share_purchases_asset_share_buyer_idx").on(table.assetShareId, table.buyerEmail),
-      index("asset_share_purchases_buyer_email_idx").on(table.buyerEmail),
-      index("asset_share_purchases_expires_at_idx").on(table.expiresAt),
+      uniqueIndex("asset_purchases_access_token_unique_idx").on(table.accessToken),
+      uniqueIndex("asset_purchases_invoice_number_unique_idx").on(table.invoiceNumber),
+      index("asset_purchases_asset_buyer_idx").on(table.assetId, table.buyerEmail),
+      index("asset_purchases_buyer_email_idx").on(table.buyerEmail),
+      index("asset_purchases_expires_at_idx").on(table.expiresAt),
     ],
   );
 
   return {
-    assetShares,
-    assetSharePreviewFiles,
-    assetShareFiles,
-    assetSharePurchases,
+    assets,
+    assetPreviewFiles,
+    assetFiles,
+    assetPurchases,
   };
 };
 
-export type AssetShareRecord = InferSelectModel<
-  ReturnType<typeof createAssetShareTables>["assetShares"]
+export type AssetRecord = InferSelectModel<
+  ReturnType<typeof createAssetTables>["assets"]
 >;
-export type NewAssetShareRecord = InferInsertModel<
-  ReturnType<typeof createAssetShareTables>["assetShares"]
->;
-
-export type AssetSharePreviewFileRecord = InferSelectModel<
-  ReturnType<typeof createAssetShareTables>["assetSharePreviewFiles"]
->;
-export type NewAssetSharePreviewFileRecord = InferInsertModel<
-  ReturnType<typeof createAssetShareTables>["assetSharePreviewFiles"]
+export type NewAssetRecord = InferInsertModel<
+  ReturnType<typeof createAssetTables>["assets"]
 >;
 
-export type AssetShareFileRecord = InferSelectModel<
-  ReturnType<typeof createAssetShareTables>["assetShareFiles"]
+export type AssetPreviewFileRecord = InferSelectModel<
+  ReturnType<typeof createAssetTables>["assetPreviewFiles"]
 >;
-export type NewAssetShareFileRecord = InferInsertModel<
-  ReturnType<typeof createAssetShareTables>["assetShareFiles"]
+export type NewAssetPreviewFileRecord = InferInsertModel<
+  ReturnType<typeof createAssetTables>["assetPreviewFiles"]
 >;
 
-export type AssetSharePurchaseRecord = InferSelectModel<
-  ReturnType<typeof createAssetShareTables>["assetSharePurchases"]
+export type AssetFileRecord = InferSelectModel<
+  ReturnType<typeof createAssetTables>["assetFiles"]
 >;
-export type NewAssetSharePurchaseRecord = InferInsertModel<
-  ReturnType<typeof createAssetShareTables>["assetSharePurchases"]
+export type NewAssetFileRecord = InferInsertModel<
+  ReturnType<typeof createAssetTables>["assetFiles"]
+>;
+
+export type AssetPurchaseRecord = InferSelectModel<
+  ReturnType<typeof createAssetTables>["assetPurchases"]
+>;
+export type NewAssetPurchaseRecord = InferInsertModel<
+  ReturnType<typeof createAssetTables>["assetPurchases"]
 >;

@@ -1,4 +1,4 @@
-import { pgSchema } from "drizzle-orm/pg-core";
+﻿import { pgSchema } from "drizzle-orm/pg-core";
 import { createCreditTables } from "./credits";
 import { createFileTables } from "./files";
 import { createHealthTables } from "./health";
@@ -10,7 +10,7 @@ import { createStorageTables } from "./storage";
 import { createUserTables } from "./users";
 import { createClientTables } from "./clients";
 import { createTransactionTables } from "./transactions";
-import { createAssetShareTables } from "./asset-shares";
+import { createAssetTables } from "./assets";
 
 export const fw = pgSchema("mitfloww");
 
@@ -61,11 +61,11 @@ export const { invoiceSettings } = createInvoiceTables(fw, { users });
 export const { clientMasters } = createClientTables(fw, { users });
 export const { transactions } = createTransactionTables(fw, { users, projects });
 export const {
-  assetShares,
-  assetSharePreviewFiles,
-  assetShareFiles,
-  assetSharePurchases,
-} = createAssetShareTables(fw);
+  assets,
+  assetPreviewFiles,
+  assetFiles,
+  assetPurchases,
+} = createAssetTables(fw);
 
 export type {
   CreditAccountRecord,
@@ -142,17 +142,17 @@ export type {
   CustomInvoiceTemplate,
 } from "./invoices";
 export type {
-  AssetShareRecord,
-  NewAssetShareRecord,
-  AssetSharePreviewFileRecord,
-  NewAssetSharePreviewFileRecord,
-  AssetShareFileRecord,
-  NewAssetShareFileRecord,
-  AssetSharePurchaseRecord,
-  NewAssetSharePurchaseRecord,
-  AssetShareStatus,
-  AssetShareTemplateKey,
-} from "./asset-shares";
+  AssetRecord,
+  NewAssetRecord,
+  AssetPreviewFileRecord,
+  NewAssetPreviewFileRecord,
+  AssetFileRecord,
+  NewAssetFileRecord,
+  AssetPurchaseRecord,
+  NewAssetPurchaseRecord,
+  AssetStatus,
+  AssetTemplateKey,
+} from "./assets";
 
 export {
   FILE_APPROVAL_STATUSES,
@@ -186,6 +186,6 @@ export {
 
 export { auditColumns, type BaseAuditEntity } from "./audit";
 export {
-  ASSET_SHARE_STATUSES,
-  ASSET_SHARE_TEMPLATES,
-} from "./asset-shares";
+  ASSET_STATUSES,
+  ASSET_TEMPLATES,
+} from "./assets";
