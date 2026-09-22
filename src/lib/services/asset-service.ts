@@ -1,4 +1,4 @@
-﻿import { storageService } from "@/lib/services/storage-service";
+import { storageService } from "@/lib/services/storage-service";
 import crypto from "node:crypto";
 import { Readable } from "node:stream";
 import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
@@ -327,6 +327,7 @@ export class AssetService {
     const [created] = await db
       .insert(assets)
       .values({
+        ...(input.id ? { id: input.id } : {}),
         userId,
         title: input.title.trim(),
         description: input.description?.trim() || null,
@@ -410,6 +411,27 @@ export class AssetService {
     }
 
     return this.getAssetById(updated.id, userId);
+  }
+
+  async regenerateShareToken(id: string, userId: string) {
+    const existing = await this.getAssetById(id, userId);
+    if (!existing) {
+      throw new NotFoundAppError("Asset not found.");
+    }
+
+    const shareToken = crypto.randomUUID().replace(/-/g, "");
+    const shareExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 1 day
+
+    await db
+      .update(assets)
+      .set({
+        shareToken,
+        shareExpiresAt,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(assets.id, id), eq(assets.userId, userId)));
+
+    return this.getAssetById(id, userId);
   }
 
   async deleteAsset(id: string, userId: string) {
@@ -710,16 +732,23 @@ export class AssetService {
         )
         .orderBy(asc(assetFiles.name));
 
+      const purchasedAssetData = {
+        id: asset.id,
+        title: asset.title,
+        description: asset.description,
+        amountCents: asset.amountCents,
+        currency: asset.currency,
+        templateKey: asset.templateKey,
+        creatorName,
+      };
+
       return {
         accessState: "purchased",
-        asset: {
-          id: asset.id,
-          title: asset.title,
-          description: asset.description,
-          amountCents: asset.amountCents,
-          currency: asset.currency,
-          templateKey: asset.templateKey,
-          creatorName,
+        asset: purchasedAssetData,
+        assetShare: purchasedAssetData,
+        creator: {
+          id: asset.userId,
+          displayName: creatorName,
         },
         purchase: {
           invoiceNumber: activePurchase.invoiceNumber,
@@ -737,12 +766,19 @@ export class AssetService {
     }
 
     if (asset.status === "deactivated") {
+      const deactivatedAssetData = {
+        id: asset.id,
+        title: asset.title,
+        creatorName,
+      };
+
       return {
         accessState: "deactivated",
-        asset: {
-          id: asset.id,
-          title: asset.title,
-          creatorName,
+        asset: deactivatedAssetData,
+        assetShare: deactivatedAssetData,
+        creator: {
+          id: asset.userId,
+          displayName: creatorName,
         },
       };
     }
@@ -775,17 +811,24 @@ export class AssetService {
       previewUrl: computeAssetMediaUrl(p.storageKey, p.previewUrl),
     }));
 
+    const publicAssetData = {
+      id: asset.id,
+      title: asset.title,
+      description: asset.description,
+      amountCents: asset.amountCents,
+      currency: asset.currency,
+      templateKey: asset.templateKey,
+      creatorName,
+      filesCount: fileCountResult?.count || 0,
+    };
+
     return {
       accessState: "public",
-      asset: {
-        id: asset.id,
-        title: asset.title,
-        description: asset.description,
-        amountCents: asset.amountCents,
-        currency: asset.currency,
-        templateKey: asset.templateKey,
-        creatorName,
-        filesCount: fileCountResult?.count || 0,
+      asset: publicAssetData,
+      assetShare: publicAssetData,
+      creator: {
+        id: asset.userId,
+        displayName: creatorName,
       },
       previewFiles: enrichedPreviews,
     };

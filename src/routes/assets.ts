@@ -1,4 +1,4 @@
-﻿import { Router } from "express";
+import { Router } from "express";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { asyncHandler, parseWithSchema, sendSuccess } from "@/lib/api/route";
 import { assetService } from "@/lib/services/asset-service";
@@ -118,6 +118,17 @@ assetsRouter.patch(
     const id = req.params.id as string;
     const parsed = parseWithSchema(updateAssetSchema, req.body);
     const updated = await assetService.updateAsset(id, actor.id, parsed);
+    return sendSuccess(res, updated);
+  })
+);
+
+// POST /api/assets/:id/regenerate - Regenerate share token/link
+assetsRouter.post(
+  "/:id/regenerate",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const id = req.params.id as string;
+    const updated = await assetService.regenerateShareToken(id, actor.id);
     return sendSuccess(res, updated);
   })
 );

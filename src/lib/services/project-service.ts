@@ -833,15 +833,27 @@
       });
 
       if (isShareAccessLockedAfterPayment(record)) {
-        if (!hasPersistedProjectShareAccess(record)) {
-          throw new AppError(
-            "Share access is locked after payment.",
-            409,
-            "share_access_locked_after_payment",
-          );
+        if (input.action === ProjectShareMutationAction.Regenerate) {
+          const regeneratedRecord = await this.saveProjectShareRecord(record, input, {
+            baseUrl: options?.baseUrl,
+            regenerate: true,
+            expiryDays: options?.expiryDays,
+          });
+
+          return {
+            project: await this.buildProjectDTO(
+              regeneratedRecord,
+              options?.viewerLocale ?? "en",
+              {
+                baseUrl: options?.baseUrl,
+                includeSharePassword: true,
+              },
+            ),
+            shareDraft: toProjectShareDraft(regeneratedRecord, options?.baseUrl),
+          };
         }
 
-        if (input.action === ProjectShareMutationAction.Regenerate) {
+        if (!hasPersistedProjectShareAccess(record)) {
           throw new AppError(
             "Share access is locked after payment.",
             409,
