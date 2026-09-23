@@ -79,6 +79,7 @@ function computeAssetMediaUrl(storageKey?: string | null, storedUrl?: string | n
 }
 
 export interface CreateAssetInput {
+  id?: string;
   title: string;
   description?: string | null;
   amountCents: number;

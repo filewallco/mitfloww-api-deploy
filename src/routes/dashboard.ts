@@ -38,7 +38,14 @@ dashboardRouter.get(
       }),
       projectService
         .listProjects(
-          { userId: actor.id, limit: 100, order: "desc", sort: "updatedAt" },
+          {
+            userId: actor.id,
+            limit: 100,
+            page: 1,
+            includeTotal: false,
+            order: "desc",
+            sort: "updatedAt",
+          },
           viewerLocale
         )
         .catch((err) => {
@@ -66,7 +73,11 @@ dashboardRouter.get(
         return null;
       }),
       notificationService
-        .listNotifications({ limit: 20 }, viewerLocale, actor.id)
+        .listNotifications(
+          { limit: 20, page: 1, includeTotal: false },
+          viewerLocale,
+          actor.id
+        )
         .catch((err) => {
           console.warn("Dashboard notifications error:", err);
           return { items: [] };
