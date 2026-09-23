@@ -12,6 +12,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1045.0",
     "@aws-sdk/s3-request-presigner": "^3.1045.0",
+    "@node-rs/argon2": "^2.2.1",
     "@smithy/node-http-handler": "^4.7.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

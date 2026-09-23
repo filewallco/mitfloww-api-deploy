@@ -1,4 +1,4 @@
-﻿import { pgSchema } from "drizzle-orm/pg-core";
+import { pgSchema } from "drizzle-orm/pg-core";
 import { createCreditTables } from "./credits";
 import { createFileTables } from "./files";
 import { createHealthTables } from "./health";
@@ -11,6 +11,7 @@ import { createUserTables } from "./users";
 import { createClientTables } from "./clients";
 import { createTransactionTables } from "./transactions";
 import { createAssetTables } from "./assets";
+import { createAuthTables } from "./auth";
 
 export const fw = pgSchema("mitfloww");
 
@@ -57,6 +58,7 @@ export const { notifications } = createNotificationTables(fw, {
 });
 export const { healthChecks } = createHealthTables(fw);
 export const { users, companies } = createUserTables(fw);
+export const { authIdentities, sessions, otpChallenges } = createAuthTables(fw, { users });
 export const { invoiceSettings } = createInvoiceTables(fw, { users });
 export const { clientMasters } = createClientTables(fw, { users });
 export const { transactions } = createTransactionTables(fw, { users, projects });
@@ -153,6 +155,15 @@ export type {
   AssetStatus,
   AssetTemplateKey,
 } from "./assets";
+export type {
+  AuthIdentityRecord,
+  NewAuthIdentityRecord,
+  SessionRecord,
+  NewSessionRecord,
+  OtpChallengeRecord,
+  NewOtpChallengeRecord,
+  OtpPurpose,
+} from "./auth";
 
 export {
   FILE_APPROVAL_STATUSES,

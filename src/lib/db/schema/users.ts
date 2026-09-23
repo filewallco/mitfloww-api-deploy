@@ -22,6 +22,10 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
     avatarUrl: varchar("avatar_url", { length: 1024 }),
     avatarStorageKey: varchar("avatar_storage_key", { length: 1024 }),
     isVerified: boolean("is_verified").notNull().default(true),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    phoneVerified: boolean("phone_verified").notNull().default(false),
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true, mode: "date" }),
+    onboardingStep: integer("onboarding_step").notNull().default(0),
     status: varchar("status", { length: 32 }).notNull().default("active"),
     planKey: varchar("plan_key", { length: 50 })
       .$type<CreditPlanKey>()

@@ -10,7 +10,7 @@ import { usersRouter } from "@/routes/users";
 import { profileRouter } from "@/routes/profile";
 import { authRouter } from "@/routes/auth";
 import { actorStorage } from "@/lib/auth/active-actor";
-import { verifySessionToken } from "@/lib/auth/session";
+import { verifyAccessToken, verifySessionToken } from "@/lib/auth/session";
 import { plansRouter } from "@/routes/plans";
 import { creditsRouter } from "@/routes/credits";
 import { storageRouter } from "@/routes/storage";
@@ -50,13 +50,28 @@ app.use(cookieParser());
 // Session authentication context middleware
 app.use((req, _res, next) => {
   let userId: string | undefined = undefined;
-  const sessionCookie = req.cookies?.mitfloww_session;
-  if (sessionCookie) {
-    const verified = verifySessionToken(sessionCookie);
+
+  // 1. Authorization: Bearer <accessToken>
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7).trim();
+    const verified = verifyAccessToken(token);
     if (verified) {
-      userId = verified;
+      userId = verified.sub;
     }
   }
+
+  // 2. Fallback to cookie
+  if (!userId) {
+    const sessionCookie = req.cookies?.mitfloww_session;
+    if (sessionCookie) {
+      const verified = verifySessionToken(sessionCookie);
+      if (verified) {
+        userId = verified;
+      }
+    }
+  }
+
   if (userId) {
     actorStorage.run({ userId }, () => next());
   } else {

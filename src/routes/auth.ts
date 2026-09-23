@@ -1,104 +1,316 @@
 import { Router } from "express";
 import { z } from "zod";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
-import { createSessionToken } from "@/lib/auth/session";
-import { userService } from "@/lib/services/user-service";
+import { sessionService, REFRESH_COOKIE_NAME } from "@/lib/auth/session";
+import { authService } from "@/lib/services/auth-service";
 import { asyncHandler } from "@/lib/api/route";
 
 export const authRouter = Router();
 
-const signupSchema = z.object({
+function getRequestMeta(req: any) {
+  return {
+    userAgent: req.headers["user-agent"] || undefined,
+    ipAddress: (req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "").toString().split(",")[0].trim() || undefined,
+  };
+}
+
+// ----------------------------------------------------
+// Validation Schemas
+// ----------------------------------------------------
+const requestOtpSchema = z.object({
   email: z.string().trim().email("Please enter a valid email address"),
-  username: z.string().trim().min(3, "Username must be at least 3 characters").max(50),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  firstName: z.string().trim().max(100).optional(),
-  lastName: z.string().trim().max(100).optional(),
 });
 
-const loginSchema = z.object({
+const verifySignupSchema = z.object({
+  email: z.string().trim().email("Please enter a valid email address"),
+  otp: z.string().trim().length(6, "Verification code must be 6 digits"),
+  password: z.string().min(8, "Password must be at least 8 characters").optional(),
+});
+
+const loginPasswordSchema = z.object({
   usernameOrEmail: z.string().trim().min(1, "Username or email is required"),
   password: z.string().min(1, "Password is required"),
 });
 
-const resetPasswordSchema = z.object({
-  usernameOrEmail: z.string().trim().min(1, "Username or email is required"),
-  newPassword: z.string().min(6, "Password must be at least 6 characters"),
+const verifyLoginOtpSchema = z.object({
+  email: z.string().trim().email("Please enter a valid email address"),
+  otp: z.string().trim().length(6, "Verification code must be 6 digits"),
 });
 
-authRouter.post("/signup", asyncHandler(async (req, res) => {
-  const parsed = signupSchema.safeParse(req.body);
-  if (!parsed.success) {
-    const errorMsg = parsed.error.issues.map((i) => i.message).join(", ");
-    return res.status(400).json({ error: errorMsg, details: parsed.error.issues });
-  }
+const googleAuthSchema = z.object({
+  idToken: z.string().trim().min(1, "Google ID token is required"),
+});
 
-  const user = await userService.signup(parsed.data);
-  const sessionToken = createSessionToken(user.id);
+const verifyResetPasswordSchema = z.object({
+  email: z.string().trim().email("Please enter a valid email address"),
+  otp: z.string().trim().length(6, "Verification code must be 6 digits"),
+  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+});
 
-  res.cookie("mitfloww_session", sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 30 * 24 * 3600 * 1000,
-  });
+const updateOnboardingSchema = z.object({
+  step: z.number().int().min(0).max(3),
+});
 
-  return res.status(201).json({ user });
-}));
+// ----------------------------------------------------
+// Endpoints
+// ----------------------------------------------------
 
-authRouter.post("/login", asyncHandler(async (req, res) => {
-  const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) {
-    const errorMsg = parsed.error.issues.map((i) => i.message).join(", ");
-    return res.status(400).json({ error: errorMsg, details: parsed.error.issues });
-  }
+/**
+ * Request Signup OTP
+ */
+authRouter.post(
+  "/signup/request-otp",
+  asyncHandler(async (req, res) => {
+    const parsed = requestOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid email" });
+    }
 
-  const user = await userService.login(parsed.data);
-  const sessionToken = createSessionToken(user.id);
+    const result = await authService.requestSignupOtp(parsed.data.email);
+    return res.json(result);
+  }),
+);
 
-  res.cookie("mitfloww_session", sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 30 * 24 * 3600 * 1000,
-  });
+/**
+ * Verify Signup OTP & Create / Activate Account
+ */
+authRouter.post(
+  "/signup/verify",
+  asyncHandler(async (req, res) => {
+    const parsed = verifySignupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" });
+    }
 
-  return res.json({ user });
-}));
+    const result = await authService.verifySignup({
+      email: parsed.data.email,
+      otp: parsed.data.otp,
+      password: parsed.data.password,
+      meta: getRequestMeta(req),
+    });
 
-authRouter.post("/reset-password", asyncHandler(async (req, res) => {
-  const parsed = resetPasswordSchema.safeParse(req.body);
-  if (!parsed.success) {
-    const errorMsg = parsed.error.issues.map((i) => i.message).join(", ");
-    return res.status(400).json({ error: errorMsg, details: parsed.error.issues });
-  }
+    sessionService.setCookies(res, result.refreshToken, result.user.id);
 
-  const user = await userService.resetPassword(parsed.data);
-  const sessionToken = createSessionToken(user.id);
+    return res.status(201).json({
+      accessToken: result.accessToken,
+      user: result.user,
+      isNewUser: result.isNewUser,
+    });
+  }),
+);
 
-  res.cookie("mitfloww_session", sessionToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 30 * 24 * 3600 * 1000,
-  });
+/**
+ * Password Login
+ */
+authRouter.post(
+  "/login",
+  asyncHandler(async (req, res) => {
+    const parsed = loginPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" });
+    }
 
-  return res.json({ user, message: "Password updated successfully" });
-}));
+    const result = await authService.loginWithPassword({
+      usernameOrEmail: parsed.data.usernameOrEmail,
+      password: parsed.data.password,
+      meta: getRequestMeta(req),
+    });
 
-authRouter.post("/logout", asyncHandler(async (_req, res) => {
-  res.clearCookie("mitfloww_session", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-  });
-  return res.json({ success: true });
-}));
+    sessionService.setCookies(res, result.refreshToken, result.user.id);
 
-authRouter.get("/me", asyncHandler(async (req, res) => {
-  const actor = await resolveActiveActor(req);
-  return res.json({ user: actor });
-}));
+    return res.json({
+      accessToken: result.accessToken,
+      user: result.user,
+    });
+  }),
+);
+
+/**
+ * Passwordless Login: Request OTP
+ */
+authRouter.post(
+  "/login/request-otp",
+  asyncHandler(async (req, res) => {
+    const parsed = requestOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid email" });
+    }
+
+    const result = await authService.requestLoginOtp(parsed.data.email);
+    return res.json(result);
+  }),
+);
+
+/**
+ * Passwordless Login: Verify OTP
+ */
+authRouter.post(
+  "/login/verify-otp",
+  asyncHandler(async (req, res) => {
+    const parsed = verifyLoginOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" });
+    }
+
+    const result = await authService.verifyLoginOtp({
+      email: parsed.data.email,
+      otp: parsed.data.otp,
+      meta: getRequestMeta(req),
+    });
+
+    sessionService.setCookies(res, result.refreshToken, result.user.id);
+
+    return res.json({
+      accessToken: result.accessToken,
+      user: result.user,
+      isNewUser: result.isNewUser,
+    });
+  }),
+);
+
+/**
+ * Google OAuth Login / Signup
+ */
+authRouter.post(
+  "/google",
+  asyncHandler(async (req, res) => {
+    const parsed = googleAuthSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid token" });
+    }
+
+    const result = await authService.authenticateWithGoogle({
+      idToken: parsed.data.idToken,
+      meta: getRequestMeta(req),
+    });
+
+    sessionService.setCookies(res, result.refreshToken, result.user.id);
+
+    return res.json({
+      accessToken: result.accessToken,
+      user: result.user,
+      isNewUser: result.isNewUser,
+    });
+  }),
+);
+
+/**
+ * Password Reset: Request OTP
+ */
+authRouter.post(
+  "/forgot-password/request-otp",
+  asyncHandler(async (req, res) => {
+    const parsed = requestOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid email" });
+    }
+
+    const result = await authService.requestPasswordResetOtp(parsed.data.email);
+    return res.json(result);
+  }),
+);
+
+/**
+ * Password Reset: Verify OTP & Set New Password
+ */
+authRouter.post(
+  "/forgot-password/verify",
+  asyncHandler(async (req, res) => {
+    const parsed = verifyResetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" });
+    }
+
+    const result = await authService.verifyPasswordReset({
+      email: parsed.data.email,
+      otp: parsed.data.otp,
+      newPassword: parsed.data.newPassword,
+      meta: getRequestMeta(req),
+    });
+
+    sessionService.setCookies(res, result.refreshToken, result.user.id);
+
+    return res.json({
+      accessToken: result.accessToken,
+      user: result.user,
+      message: "Password updated successfully.",
+    });
+  }),
+);
+
+/**
+ * Rotate Refresh Token & Issue Fresh Access Token
+ */
+authRouter.post(
+  "/refresh",
+  asyncHandler(async (req, res) => {
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
+    if (!refreshToken) {
+      return res.status(401).json({ error: "No refresh token provided." });
+    }
+
+    const result = await sessionService.rotateSession(refreshToken, getRequestMeta(req));
+    sessionService.setCookies(res, result.refreshToken, result.user.id);
+
+    return res.json({
+      accessToken: result.accessToken,
+      user: result.user,
+    });
+  }),
+);
+
+/**
+ * Logout Current Session
+ */
+authRouter.post(
+  "/logout",
+  asyncHandler(async (req, res) => {
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
+    if (refreshToken) {
+      await sessionService.revokeSessionByToken(refreshToken);
+    }
+    sessionService.clearCookies(res);
+    return res.json({ success: true });
+  }),
+);
+
+/**
+ * Logout All Devices / Sessions
+ */
+authRouter.post(
+  "/logout-all",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    await sessionService.revokeAllSessions(actor.id);
+    sessionService.clearCookies(res);
+    return res.json({ success: true });
+  }),
+);
+
+/**
+ * Get Current Active Actor
+ */
+authRouter.get(
+  "/me",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    return res.json({ user: actor });
+  }),
+);
+
+/**
+ * Update Onboarding Step
+ */
+authRouter.post(
+  "/onboarding-step",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const parsed = updateOnboardingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid step number." });
+    }
+
+    const updated = await authService.updateOnboardingStep(actor.id, parsed.data.step);
+    return res.json({ user: updated });
+  }),
+);
