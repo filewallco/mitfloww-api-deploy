@@ -9,35 +9,39 @@ import { Readable } from "node:stream";
 export const profileRouter = Router();
 
 const accountUpdateSchema = z.object({
-  firstName: z.string().trim().min(1, "First name is required").max(100),
-  lastName: z.string().trim().min(1, "Last name is required").max(100),
-  email: z.string().trim().min(1, "Email address is required").email("Invalid email address format"),
-  phone: z.string().trim().min(1, "Phone number is required").max(30),
-  countryCode: z.string().trim().min(1, "Country code is required").max(10),
-  city: z.string().trim().min(1, "City is required").max(100),
-  state: z.string().trim().min(1, "State is required").max(100),
-  postcode: z.string().trim().min(1, "Postcode is required").max(20),
-  country: z.string().trim().min(1, "Country is required").max(100),
+  firstName: z.string().trim().min(1, "First name is required").max(100).optional(),
+  lastName: z.string().trim().max(100).optional(),
+  email: z.string().trim().email("Invalid email address format").optional(),
+  phone: z.string().trim().max(30).optional(),
+  countryCode: z.string().trim().max(10).optional(),
+  city: z.string().trim().max(100).optional(),
+  state: z.string().trim().max(100).optional(),
+  postcode: z.string().trim().max(20).optional(),
+  country: z.string().trim().max(100).optional(),
   roleTitle: z.string().trim().max(150).optional(),
   bio: z.string().trim().max(1000).optional(),
 }).superRefine((data, ctx) => {
-  const digits = data.phone.replace(/\D/g, "");
-  if (digits.length < 7 || digits.length > 15) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["phone"],
-      message: "Phone number must contain between 7 and 15 digits",
-    });
-  }
-
-  const country = data.country.toLowerCase();
-  if (country === "india" || country === "in") {
-    if (!/^\d{6}$/.test(data.postcode.trim())) {
+  if (data.phone) {
+    const digits = data.phone.replace(/\D/g, "");
+    if (digits.length < 7 || digits.length > 15) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["postcode"],
-        message: "Indian PIN code must be exactly 6 numerical digits",
+        path: ["phone"],
+        message: "Phone number must contain between 7 and 15 digits",
       });
+    }
+  }
+
+  if (data.country && data.postcode) {
+    const country = data.country.toLowerCase();
+    if (country === "india" || country === "in") {
+      if (!/^\d{6}$/.test(data.postcode.trim())) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["postcode"],
+          message: "Indian PIN code must be exactly 6 numerical digits",
+        });
+      }
     }
   }
 });
