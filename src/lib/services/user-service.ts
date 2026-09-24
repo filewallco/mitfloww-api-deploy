@@ -11,6 +11,7 @@ import {
   projects,
   testimonials,
   users,
+  UserStatus,
 } from "@/lib/db/schema";
 import type { CompanyRecord, UserRecord } from "@/lib/db/schema";
 import { ProjectPaymentStatus, toProjectPaymentStatusDbValue } from "@/lib/dto/projects";
@@ -441,7 +442,7 @@ export class UserService {
     await db
       .update(users)
       .set({
-        status: "deleted",
+        status: UserStatus.Deactivated,
         deletedAt: now,
         updatedAt: now,
       })
@@ -606,7 +607,7 @@ export class UserService {
       throw new AppError("Invalid credentials", 401, "invalid_credentials");
     }
 
-    if (user.status === "deleted") {
+    if (user.status === UserStatus.Deactivated || user.status === UserStatus.Suspended) {
       throw new AppError("Account has been deleted.", 403, "account_deleted");
     }
 
@@ -633,7 +634,7 @@ export class UserService {
       throw new AppError("User not found with this username or email.", 404, "user_not_found");
     }
 
-    if (user.status === "deleted") {
+    if (user.status === UserStatus.Deactivated || user.status === UserStatus.Suspended) {
       throw new AppError("Account has been deleted.", 403, "account_deleted");
     }
 

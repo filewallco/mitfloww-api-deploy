@@ -2,6 +2,36 @@ export const STORAGE_SCOPE_TYPES = ["personal", "workspace"] as const;
 
 export type StorageScopeType = (typeof STORAGE_SCOPE_TYPES)[number];
 
+export const StorageScopeType = {
+  Personal: STORAGE_SCOPE_TYPES[0],
+  Workspace: STORAGE_SCOPE_TYPES[1],
+} as const satisfies Record<string, StorageScopeType>;
+
+export const STORAGE_SCOPE_TYPE_DB_VALUES = [0, 1] as const;
+export type StorageScopeTypeDbValue = (typeof STORAGE_SCOPE_TYPE_DB_VALUES)[number];
+export const StorageScopeTypeDb = {
+  Personal: 0,
+  Workspace: 1,
+} as const;
+
+export function toStorageScopeTypeDbValue(scope: unknown): StorageScopeTypeDbValue {
+  if (scope === StorageScopeType.Personal || scope === 0 || scope === "personal") return StorageScopeTypeDb.Personal;
+  if (scope === StorageScopeType.Workspace || scope === 1 || scope === "workspace") return StorageScopeTypeDb.Workspace;
+  return StorageScopeTypeDb.Personal;
+}
+
+export function fromStorageScopeTypeDbValue(value: unknown): StorageScopeType {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case StorageScopeTypeDb.Personal:
+      return StorageScopeType.Personal;
+    case StorageScopeTypeDb.Workspace:
+      return StorageScopeType.Workspace;
+    default:
+      return StorageScopeType.Personal;
+  }
+}
+
 export const STORAGE_MUTATION_OPERATIONS = [
   "commit",
   "release",
@@ -10,6 +40,41 @@ export const STORAGE_MUTATION_OPERATIONS = [
 
 export type StorageMutationOperation =
   (typeof STORAGE_MUTATION_OPERATIONS)[number];
+
+export const StorageMutationOperation = {
+  Commit: STORAGE_MUTATION_OPERATIONS[0],
+  Release: STORAGE_MUTATION_OPERATIONS[1],
+  Adjustment: STORAGE_MUTATION_OPERATIONS[2],
+} as const satisfies Record<string, StorageMutationOperation>;
+
+export const STORAGE_MUTATION_OPERATION_DB_VALUES = [0, 1, 2] as const;
+export type StorageMutationOperationDbValue = (typeof STORAGE_MUTATION_OPERATION_DB_VALUES)[number];
+export const StorageMutationOperationDb = {
+  Commit: 0,
+  Release: 1,
+  Adjustment: 2,
+} as const;
+
+export function toStorageMutationOperationDbValue(operation: unknown): StorageMutationOperationDbValue {
+  if (operation === StorageMutationOperation.Commit || operation === 0 || operation === "commit") return StorageMutationOperationDb.Commit;
+  if (operation === StorageMutationOperation.Release || operation === 1 || operation === "release") return StorageMutationOperationDb.Release;
+  if (operation === StorageMutationOperation.Adjustment || operation === 2 || operation === "adjustment") return StorageMutationOperationDb.Adjustment;
+  return StorageMutationOperationDb.Commit;
+}
+
+export function fromStorageMutationOperationDbValue(value: unknown): StorageMutationOperation {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case StorageMutationOperationDb.Commit:
+      return StorageMutationOperation.Commit;
+    case StorageMutationOperationDb.Release:
+      return StorageMutationOperation.Release;
+    case StorageMutationOperationDb.Adjustment:
+      return StorageMutationOperation.Adjustment;
+    default:
+      return StorageMutationOperation.Commit;
+  }
+}
 
 export type StorageLedgerMetadata = Record<
   string,

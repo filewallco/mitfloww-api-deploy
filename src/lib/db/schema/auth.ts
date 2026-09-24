@@ -1,8 +1,60 @@
-import { boolean, index, integer, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, customType, index, integer, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type { createUserTables } from "./users";
 
-export type OtpPurpose = "SIGNUP_VERIFICATION" | "LOGIN" | "PASSWORD_RESET";
+export const OTP_PURPOSES = ["SIGNUP_VERIFICATION", "LOGIN", "PASSWORD_RESET"] as const;
+export type OtpPurpose = (typeof OTP_PURPOSES)[number];
+export const OtpPurpose = {
+  SignupVerification: OTP_PURPOSES[0],
+  Login: OTP_PURPOSES[1],
+  PasswordReset: OTP_PURPOSES[2],
+} as const satisfies Record<string, OtpPurpose>;
+
+export const OTP_PURPOSE_DB_VALUES = [0, 1, 2] as const;
+export type OtpPurposeDbValue = (typeof OTP_PURPOSE_DB_VALUES)[number];
+export const OtpPurposeDb = {
+  SignupVerification: 0,
+  Login: 1,
+  PasswordReset: 2,
+} as const;
+
+export function toOtpPurposeDbValue(purpose: unknown): OtpPurposeDbValue {
+  if (purpose === OtpPurpose.SignupVerification || purpose === 0 || purpose === "SIGNUP_VERIFICATION") return OtpPurposeDb.SignupVerification;
+  if (purpose === OtpPurpose.Login || purpose === 1 || purpose === "LOGIN") return OtpPurposeDb.Login;
+  if (purpose === OtpPurpose.PasswordReset || purpose === 2 || purpose === "PASSWORD_RESET") return OtpPurposeDb.PasswordReset;
+  return OtpPurposeDb.SignupVerification;
+}
+
+export function fromOtpPurposeDbValue(value: unknown): OtpPurpose {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case OtpPurposeDb.SignupVerification:
+      return OtpPurpose.SignupVerification;
+    case OtpPurposeDb.Login:
+      return OtpPurpose.Login;
+    case OtpPurposeDb.PasswordReset:
+      return OtpPurpose.PasswordReset;
+    default:
+      return OtpPurpose.SignupVerification;
+  }
+}
+
+const otpPurpose = customType<{
+  data: OtpPurpose;
+  driverData: number;
+  notNull: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toOtpPurposeDbValue(value);
+  },
+  fromDriver(value) {
+    return fromOtpPurposeDbValue(value);
+  },
+});
 
 export function createAuthTables(
   schema: ReturnType<typeof import("drizzle-orm/pg-core").pgSchema>,
@@ -64,7 +116,7 @@ export function createAuthTables(
     {
       id: uuid("id").defaultRandom().primaryKey(),
       email: varchar("email", { length: 255 }).notNull(),
-      purpose: varchar("purpose", { length: 32 }).notNull().$type<OtpPurpose>(),
+      purpose: otpPurpose("purpose").notNull(),
       otpHashed: varchar("otp_hashed", { length: 255 }).notNull(),
       attemptsCount: integer("attempts_count").notNull().default(0),
       maxAttempts: integer("max_attempts").notNull().default(5),
@@ -77,6 +129,7 @@ export function createAuthTables(
     (table) => [
       index("otp_challenges_email_purpose_idx").on(table.email, table.purpose),
       index("otp_challenges_created_at_idx").on(table.createdAt),
+      check("otp_challenges_purpose_check", sql`${table.purpose} >= 0 AND ${table.purpose} <= 2`),
     ],
   );
 

@@ -4,6 +4,7 @@ import {
   bigint,
   boolean,
   check,
+  customType,
   index,
   jsonb,
   type PgSchema,
@@ -20,9 +21,15 @@ import {
 import {
   STORAGE_MUTATION_OPERATIONS,
   STORAGE_SCOPE_TYPES,
+  StorageMutationOperation,
+  StorageMutationOperationDb,
+  StorageScopeType,
+  StorageScopeTypeDb,
+  fromStorageMutationOperationDbValue,
+  fromStorageScopeTypeDbValue,
+  toStorageMutationOperationDbValue,
+  toStorageScopeTypeDbValue,
   type StorageLedgerMetadata,
-  type StorageMutationOperation,
-  type StorageScopeType,
 } from "@/lib/storage/types";
 import type { createFileTables } from "./files";
 import type { createProjectTables } from "./projects";
@@ -30,6 +37,44 @@ import type { createProjectTables } from "./projects";
 function buildSqlStringList(values: readonly string[]) {
   return sql.raw(values.map((value) => `'${value}'`).join(","));
 }
+
+const storageScopeType = customType<{
+  data: StorageScopeType;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toStorageScopeTypeDbValue(value);
+  },
+  fromDriver(value) {
+    return fromStorageScopeTypeDbValue(value);
+  },
+});
+
+const storageMutationOperation = customType<{
+  data: StorageMutationOperation;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toStorageMutationOperationDbValue(value);
+  },
+  fromDriver(value) {
+    return fromStorageMutationOperationDbValue(value);
+  },
+});
+
+const DEFAULT_STORAGE_SCOPE_TYPE = toStorageScopeTypeDbValue(
+  StorageScopeType.Personal,
+) as unknown as StorageScopeType;
 
 export const createStorageTables = (
   fw: PgSchema,
@@ -43,9 +88,9 @@ export const createStorageTables = (
     "storage_accounts",
     {
       id: uuid("id").defaultRandom().primaryKey(),
-      scopeType: varchar("scope_type", { length: 32 })
-        .$type<StorageScopeType>()
-        .notNull(),
+      scopeType: storageScopeType("scope_type")
+        .notNull()
+        .default(DEFAULT_STORAGE_SCOPE_TYPE),
       scopeId: varchar("scope_id", { length: 255 }).notNull(),
       planKey: varchar("plan_key", { length: 32 })
         .$type<CreditPlanKey>()
@@ -76,7 +121,7 @@ export const createStorageTables = (
       index("storage_accounts_plan_key_idx").on(table.planKey),
       check(
         "storage_accounts_scope_type_check",
-        sql`${table.scopeType} IN (${buildSqlStringList(STORAGE_SCOPE_TYPES)})`,
+        sql`${table.scopeType} >= 0 AND ${table.scopeType} <= 1`,
       ),
       check(
         "storage_accounts_plan_key_check",
@@ -104,14 +149,10 @@ export const createStorageTables = (
       accountId: uuid("account_id")
         .notNull()
         .references(() => storageAccounts.id, { onDelete: "cascade" }),
-      scopeType: varchar("scope_type", { length: 32 })
-        .$type<StorageScopeType>()
-        .notNull(),
+      scopeType: storageScopeType("scope_type").notNull(),
       scopeId: varchar("scope_id", { length: 255 }).notNull(),
       actorUserId: varchar("actor_user_id", { length: 255 }).notNull(),
-      operation: varchar("operation", { length: 32 })
-        .$type<StorageMutationOperation>()
-        .notNull(),
+      operation: storageMutationOperation("operation").notNull(),
       bytesDelta: bigint("bytes_delta", { mode: "number" }).notNull(),
       idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
       projectId: uuid("project_id").references(() => tables.projects.id, {
@@ -145,11 +186,11 @@ export const createStorageTables = (
       ),
       check(
         "storage_account_mutations_scope_type_check",
-        sql`${table.scopeType} IN (${buildSqlStringList(STORAGE_SCOPE_TYPES)})`,
+        sql`${table.scopeType} >= 0 AND ${table.scopeType} <= 1`,
       ),
       check(
         "storage_account_mutations_operation_check",
-        sql`${table.operation} IN (${buildSqlStringList(STORAGE_MUTATION_OPERATIONS)})`,
+        sql`${table.operation} >= 0 AND ${table.operation} <= 2`,
       ),
       check(
         "storage_account_mutations_bytes_delta_check",

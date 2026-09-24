@@ -1,8 +1,9 @@
-﻿import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
+  customType,
   index,
   integer,
   text,
@@ -16,6 +17,55 @@ import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
 
 export const ASSET_STATUSES = ["active", "deactivated"] as const;
 export type AssetStatus = (typeof ASSET_STATUSES)[number];
+export const AssetStatus = {
+  Active: ASSET_STATUSES[0],
+  Deactivated: ASSET_STATUSES[1],
+} as const satisfies Record<string, AssetStatus>;
+
+export const ASSET_STATUS_DB_VALUES = [0, 1] as const;
+export type AssetStatusDbValue = (typeof ASSET_STATUS_DB_VALUES)[number];
+export const AssetStatusDb = {
+  Active: 0,
+  Deactivated: 1,
+} as const;
+
+export function toAssetStatusDbValue(status: unknown): AssetStatusDbValue {
+  if (status === AssetStatus.Active || status === 0 || status === "active") return AssetStatusDb.Active;
+  if (status === AssetStatus.Deactivated || status === 1 || status === "deactivated") return AssetStatusDb.Deactivated;
+  return AssetStatusDb.Active;
+}
+
+export function fromAssetStatusDbValue(value: unknown): AssetStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case AssetStatusDb.Active:
+      return AssetStatus.Active;
+    case AssetStatusDb.Deactivated:
+      return AssetStatus.Deactivated;
+    default:
+      return AssetStatus.Active;
+  }
+}
+
+const assetStatus = customType<{
+  data: AssetStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toAssetStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromAssetStatusDbValue(value);
+  },
+});
+
+const DEFAULT_ASSET_STATUS =
+  toAssetStatusDbValue(AssetStatus.Active) as unknown as AssetStatus;
 
 export const ASSET_TEMPLATES = [
   "minimal-modern",
@@ -45,10 +95,9 @@ export const createAssetTables = (fw: PgSchema) => {
         .$type<AssetTemplateKey>()
         .notNull()
         .default("minimal-modern"),
-      status: varchar("status", { length: 32 })
-        .$type<AssetStatus>()
+      status: assetStatus("status")
         .notNull()
-        .default("active"),
+        .default(DEFAULT_ASSET_STATUS),
       shareToken: varchar("share_token", { length: 255 }).notNull(),
       shareExpiresAt: timestamp("share_expires_at", {
         mode: "date",
@@ -70,7 +119,7 @@ export const createAssetTables = (fw: PgSchema) => {
       index("assets_updated_at_idx").on(table.updatedAt),
       check(
         "assets_status_check",
-        sql`${table.status} IN (${buildSqlStringList(ASSET_STATUSES)})`,
+        sql`${table.status} >= 0 AND ${table.status} <= 1`,
       ),
       check("assets_amount_cents_check", sql`${table.amountCents} > 0`),
     ],

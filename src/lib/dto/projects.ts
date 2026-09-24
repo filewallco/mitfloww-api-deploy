@@ -55,36 +55,232 @@ export const ProjectPaymentStatusDb = {
 } as const;
 
 export function toProjectPaymentStatusDbValue(
-  status: ProjectPaymentStatus,
+  status: unknown,
 ): ProjectPaymentStatusDbValue {
-  switch (status) {
-    case ProjectPaymentStatus.Pending:
-      return ProjectPaymentStatusDb.Pending;
-    case ProjectPaymentStatus.Paid:
-      return ProjectPaymentStatusDb.Paid;
+  if (status === ProjectPaymentStatus.Pending || status === 0 || status === "pending") {
+    return ProjectPaymentStatusDb.Pending;
   }
+  if (status === ProjectPaymentStatus.Paid || status === 1 || status === "paid") {
+    return ProjectPaymentStatusDb.Paid;
+  }
+  return ProjectPaymentStatusDb.Pending;
 }
 
 export function fromProjectPaymentStatusDbValue(
   value: unknown,
 ): ProjectPaymentStatus {
-  if (value == null) {
-    throw new Error(`Unknown project payment status db value: ${String(value)}`);
-  }
-
   const numeric = typeof value === "number" ? value : Number(value);
-
-  if (!Number.isFinite(numeric)) {
-    throw new Error(`Unknown project payment status db value: ${String(value)}`);
-  }
-
   switch (numeric) {
     case ProjectPaymentStatusDb.Pending:
       return ProjectPaymentStatus.Pending;
     case ProjectPaymentStatusDb.Paid:
       return ProjectPaymentStatus.Paid;
     default:
-      throw new Error(`Unknown project payment status db value: ${String(value)}`);
+      return ProjectPaymentStatus.Pending;
+  }
+}
+
+export const PROJECT_STATUS_DB_VALUES = [0, 1] as const;
+export type ProjectStatusDbValue = (typeof PROJECT_STATUS_DB_VALUES)[number];
+export const ProjectStatusDb = {
+  Active: 0,
+  Completed: 1,
+} as const;
+
+export function toProjectStatusDbValue(
+  status: unknown,
+): ProjectStatusDbValue {
+  if (status === ProjectStatusDb.Active || status === ProjectStatus.Active || status === "active" || status === 0) {
+    return ProjectStatusDb.Active;
+  }
+  if (status === ProjectStatusDb.Completed || status === ProjectStatus.Completed || status === "completed" || status === 1) {
+    return ProjectStatusDb.Completed;
+  }
+  return ProjectStatusDb.Active;
+}
+
+export function fromProjectStatusDbValue(value: unknown): ProjectStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case ProjectStatusDb.Active:
+      return ProjectStatus.Active;
+    case ProjectStatusDb.Completed:
+      return ProjectStatus.Completed;
+    default:
+      return ProjectStatus.Active;
+  }
+}
+
+export const PROJECT_SHARE_STATUS_DB_VALUES = [0, 1, 2, 3, 4] as const;
+export type ProjectShareStatusDbValue = (typeof PROJECT_SHARE_STATUS_DB_VALUES)[number];
+export const ProjectShareStatusDb = {
+  Active: 0,
+  Expired: 1,
+  Locked: 2,
+  Revoked: 3,
+  PasswordRequired: 4,
+} as const;
+
+export function toProjectShareStatusDbValue(
+  status: unknown,
+): ProjectShareStatusDbValue | null {
+  if (status == null) return null;
+  if (status === ProjectShareStatusDb.Active || status === ProjectShareStatus.Active || status === "active" || status === 0) {
+    return ProjectShareStatusDb.Active;
+  }
+  if (status === ProjectShareStatusDb.Expired || status === ProjectShareStatus.Expired || status === "expired" || status === 1) {
+    return ProjectShareStatusDb.Expired;
+  }
+  if (status === ProjectShareStatusDb.Locked || status === ProjectShareStatus.Locked || status === "locked" || status === 2) {
+    return ProjectShareStatusDb.Locked;
+  }
+  if (status === ProjectShareStatusDb.Revoked || status === ProjectShareStatus.Revoked || status === "revoked" || status === 3) {
+    return ProjectShareStatusDb.Revoked;
+  }
+  if (status === ProjectShareStatusDb.PasswordRequired || status === ProjectShareStatus.PasswordRequired || status === "password_required" || status === 4) {
+    return ProjectShareStatusDb.PasswordRequired;
+  }
+  return null;
+}
+
+export function fromProjectShareStatusDbValue(value: unknown): ProjectShareStatus | null {
+  if (value == null) return null;
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case ProjectShareStatusDb.Active:
+      return ProjectShareStatus.Active;
+    case ProjectShareStatusDb.Expired:
+      return ProjectShareStatus.Expired;
+    case ProjectShareStatusDb.Locked:
+      return ProjectShareStatus.Locked;
+    case ProjectShareStatusDb.Revoked:
+      return ProjectShareStatus.Revoked;
+    case ProjectShareStatusDb.PasswordRequired:
+      return ProjectShareStatus.PasswordRequired;
+    default:
+      return null;
+  }
+}
+
+export const PROJECT_PAYMENT_SNAPSHOT_TYPES = [
+  "advance",
+  "final",
+  "full",
+  "remaining",
+] as const;
+export type ProjectPaymentSnapshotType =
+  (typeof PROJECT_PAYMENT_SNAPSHOT_TYPES)[number];
+export const ProjectPaymentSnapshotType = {
+  Advance: PROJECT_PAYMENT_SNAPSHOT_TYPES[0],
+  Final: PROJECT_PAYMENT_SNAPSHOT_TYPES[1],
+  Full: PROJECT_PAYMENT_SNAPSHOT_TYPES[2],
+  Remaining: PROJECT_PAYMENT_SNAPSHOT_TYPES[3],
+} as const satisfies Record<string, ProjectPaymentSnapshotType>;
+
+export const PROJECT_PAYMENT_SNAPSHOT_TYPE_DB_VALUES = [0, 1, 2, 3] as const;
+export type ProjectPaymentSnapshotTypeDbValue =
+  (typeof PROJECT_PAYMENT_SNAPSHOT_TYPE_DB_VALUES)[number];
+export const ProjectPaymentSnapshotTypeDb = {
+  Advance: 0,
+  Final: 1,
+  Full: 2,
+  Remaining: 3,
+} as const;
+
+export function toProjectPaymentSnapshotTypeDbValue(
+  type: unknown,
+): ProjectPaymentSnapshotTypeDbValue {
+  if (type === ProjectPaymentSnapshotType.Advance || type === 0 || type === "advance") {
+    return ProjectPaymentSnapshotTypeDb.Advance;
+  }
+  if (type === ProjectPaymentSnapshotType.Final || type === 1 || type === "final") {
+    return ProjectPaymentSnapshotTypeDb.Final;
+  }
+  if (type === ProjectPaymentSnapshotType.Full || type === 2 || type === "full") {
+    return ProjectPaymentSnapshotTypeDb.Full;
+  }
+  if (type === ProjectPaymentSnapshotType.Remaining || type === 3 || type === "remaining") {
+    return ProjectPaymentSnapshotTypeDb.Remaining;
+  }
+  return ProjectPaymentSnapshotTypeDb.Final;
+}
+
+export function fromProjectPaymentSnapshotTypeDbValue(
+  value: unknown,
+): ProjectPaymentSnapshotType {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case ProjectPaymentSnapshotTypeDb.Advance:
+      return ProjectPaymentSnapshotType.Advance;
+    case ProjectPaymentSnapshotTypeDb.Final:
+      return ProjectPaymentSnapshotType.Final;
+    case ProjectPaymentSnapshotTypeDb.Full:
+      return ProjectPaymentSnapshotType.Full;
+    case ProjectPaymentSnapshotTypeDb.Remaining:
+      return ProjectPaymentSnapshotType.Remaining;
+    default:
+      return ProjectPaymentSnapshotType.Final;
+  }
+}
+
+export const PROJECT_PAYMENT_SNAPSHOT_STATUSES = [
+  "pending",
+  "paid",
+  "failed",
+  "refunded",
+] as const;
+export type ProjectPaymentSnapshotStatus =
+  (typeof PROJECT_PAYMENT_SNAPSHOT_STATUSES)[number];
+export const ProjectPaymentSnapshotStatus = {
+  Pending: PROJECT_PAYMENT_SNAPSHOT_STATUSES[0],
+  Paid: PROJECT_PAYMENT_SNAPSHOT_STATUSES[1],
+  Failed: PROJECT_PAYMENT_SNAPSHOT_STATUSES[2],
+  Refunded: PROJECT_PAYMENT_SNAPSHOT_STATUSES[3],
+} as const satisfies Record<string, ProjectPaymentSnapshotStatus>;
+
+export const PROJECT_PAYMENT_SNAPSHOT_STATUS_DB_VALUES = [0, 1, 2, 3] as const;
+export type ProjectPaymentSnapshotStatusDbValue =
+  (typeof PROJECT_PAYMENT_SNAPSHOT_STATUS_DB_VALUES)[number];
+export const ProjectPaymentSnapshotStatusDb = {
+  Pending: 0,
+  Paid: 1,
+  Failed: 2,
+  Refunded: 3,
+} as const;
+
+export function toProjectPaymentSnapshotStatusDbValue(
+  status: unknown,
+): ProjectPaymentSnapshotStatusDbValue {
+  if (status === ProjectPaymentSnapshotStatus.Pending || status === 0 || status === "pending") {
+    return ProjectPaymentSnapshotStatusDb.Pending;
+  }
+  if (status === ProjectPaymentSnapshotStatus.Paid || status === 1 || status === "paid") {
+    return ProjectPaymentSnapshotStatusDb.Paid;
+  }
+  if (status === ProjectPaymentSnapshotStatus.Failed || status === 2 || status === "failed") {
+    return ProjectPaymentSnapshotStatusDb.Failed;
+  }
+  if (status === ProjectPaymentSnapshotStatus.Refunded || status === 3 || status === "refunded") {
+    return ProjectPaymentSnapshotStatusDb.Refunded;
+  }
+  return ProjectPaymentSnapshotStatusDb.Pending;
+}
+
+export function fromProjectPaymentSnapshotStatusDbValue(
+  value: unknown,
+): ProjectPaymentSnapshotStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case ProjectPaymentSnapshotStatusDb.Pending:
+      return ProjectPaymentSnapshotStatus.Pending;
+    case ProjectPaymentSnapshotStatusDb.Paid:
+      return ProjectPaymentSnapshotStatus.Paid;
+    case ProjectPaymentSnapshotStatusDb.Failed:
+      return ProjectPaymentSnapshotStatus.Failed;
+    case ProjectPaymentSnapshotStatusDb.Refunded:
+      return ProjectPaymentSnapshotStatus.Refunded;
+    default:
+      return ProjectPaymentSnapshotStatus.Pending;
   }
 }
 

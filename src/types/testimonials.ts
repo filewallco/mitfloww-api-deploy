@@ -19,6 +19,39 @@ export const TestimonialStatus = {
   Archived: TESTIMONIAL_STATUSES[3],
 } as const satisfies Record<string, TestimonialStatus>;
 
+export const TESTIMONIAL_STATUS_DB_VALUES = [0, 1, 2, 3] as const;
+export type TestimonialStatusDbValue = (typeof TESTIMONIAL_STATUS_DB_VALUES)[number];
+export const TestimonialStatusDb = {
+  Draft: 0,
+  Saved: 1,
+  Published: 2,
+  Archived: 3,
+} as const;
+
+export function toTestimonialStatusDbValue(status: unknown): TestimonialStatusDbValue {
+  if (status === TestimonialStatus.Draft || status === 0 || status === "draft") return TestimonialStatusDb.Draft;
+  if (status === TestimonialStatus.Saved || status === 1 || status === "saved") return TestimonialStatusDb.Saved;
+  if (status === TestimonialStatus.Published || status === 2 || status === "published") return TestimonialStatusDb.Published;
+  if (status === TestimonialStatus.Archived || status === 3 || status === "archived") return TestimonialStatusDb.Archived;
+  return TestimonialStatusDb.Draft;
+}
+
+export function fromTestimonialStatusDbValue(value: unknown): TestimonialStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case TestimonialStatusDb.Draft:
+      return TestimonialStatus.Draft;
+    case TestimonialStatusDb.Saved:
+      return TestimonialStatus.Saved;
+    case TestimonialStatusDb.Published:
+      return TestimonialStatus.Published;
+    case TestimonialStatusDb.Archived:
+      return TestimonialStatus.Archived;
+    default:
+      return TestimonialStatus.Draft;
+  }
+}
+
 export const TESTIMONIAL_TEMPLATE_SCOPES = ["system", "user"] as const;
 
 export type TestimonialTemplateScope =
@@ -28,6 +61,31 @@ export const TestimonialTemplateScope = {
   System: TESTIMONIAL_TEMPLATE_SCOPES[0],
   User: TESTIMONIAL_TEMPLATE_SCOPES[1],
 } as const satisfies Record<string, TestimonialTemplateScope>;
+
+export const TESTIMONIAL_TEMPLATE_SCOPE_DB_VALUES = [0, 1] as const;
+export type TestimonialTemplateScopeDbValue = (typeof TESTIMONIAL_TEMPLATE_SCOPE_DB_VALUES)[number];
+export const TestimonialTemplateScopeDb = {
+  System: 0,
+  User: 1,
+} as const;
+
+export function toTestimonialTemplateScopeDbValue(scope: unknown): TestimonialTemplateScopeDbValue {
+  if (scope === TestimonialTemplateScope.System || scope === 0 || scope === "system") return TestimonialTemplateScopeDb.System;
+  if (scope === TestimonialTemplateScope.User || scope === 1 || scope === "user") return TestimonialTemplateScopeDb.User;
+  return TestimonialTemplateScopeDb.System;
+}
+
+export function fromTestimonialTemplateScopeDbValue(value: unknown): TestimonialTemplateScope {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case TestimonialTemplateScopeDb.System:
+      return TestimonialTemplateScope.System;
+    case TestimonialTemplateScopeDb.User:
+      return TestimonialTemplateScope.User;
+    default:
+      return TestimonialTemplateScope.System;
+  }
+}
 
 export const TESTIMONIAL_TEMPLATE_ACCESS_LEVELS = [
   "free",
@@ -41,6 +99,31 @@ export const TestimonialTemplateAccessLevel = {
   Free: TESTIMONIAL_TEMPLATE_ACCESS_LEVELS[0],
   Premium: TESTIMONIAL_TEMPLATE_ACCESS_LEVELS[1],
 } as const satisfies Record<string, TestimonialTemplateAccessLevel>;
+
+export const TESTIMONIAL_TEMPLATE_ACCESS_LEVEL_DB_VALUES = [0, 1] as const;
+export type TestimonialTemplateAccessLevelDbValue = (typeof TESTIMONIAL_TEMPLATE_ACCESS_LEVEL_DB_VALUES)[number];
+export const TestimonialTemplateAccessLevelDb = {
+  Free: 0,
+  Premium: 1,
+} as const;
+
+export function toTestimonialTemplateAccessLevelDbValue(level: unknown): TestimonialTemplateAccessLevelDbValue {
+  if (level === TestimonialTemplateAccessLevel.Free || level === 0 || level === "free") return TestimonialTemplateAccessLevelDb.Free;
+  if (level === TestimonialTemplateAccessLevel.Premium || level === 1 || level === "premium") return TestimonialTemplateAccessLevelDb.Premium;
+  return TestimonialTemplateAccessLevelDb.Free;
+}
+
+export function fromTestimonialTemplateAccessLevelDbValue(value: unknown): TestimonialTemplateAccessLevel {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case TestimonialTemplateAccessLevelDb.Free:
+      return TestimonialTemplateAccessLevel.Free;
+    case TestimonialTemplateAccessLevelDb.Premium:
+      return TestimonialTemplateAccessLevel.Premium;
+    default:
+      return TestimonialTemplateAccessLevel.Free;
+  }
+}
 
 export const TESTIMONIAL_CANVAS_PRESETS = [
   "square",
@@ -312,12 +395,61 @@ export type TestimonialBindingValues = Record<
   string | number | null
 >;
 
+export const TESTIMONIAL_REVISION_REASONS = [
+  "autosave",
+  "manual",
+  "duplicate",
+  "publish",
+  "template-change",
+] as const;
+
 export type TestimonialRevisionReason =
-  | "autosave"
-  | "manual"
-  | "duplicate"
-  | "publish"
-  | "template-change";
+  (typeof TESTIMONIAL_REVISION_REASONS)[number];
+
+export const TestimonialRevisionReason = {
+  Autosave: TESTIMONIAL_REVISION_REASONS[0],
+  Manual: TESTIMONIAL_REVISION_REASONS[1],
+  Duplicate: TESTIMONIAL_REVISION_REASONS[2],
+  Publish: TESTIMONIAL_REVISION_REASONS[3],
+  TemplateChange: TESTIMONIAL_REVISION_REASONS[4],
+} as const satisfies Record<string, TestimonialRevisionReason>;
+
+export const TESTIMONIAL_REVISION_REASON_DB_VALUES = [0, 1, 2, 3, 4] as const;
+export type TestimonialRevisionReasonDbValue = (typeof TESTIMONIAL_REVISION_REASON_DB_VALUES)[number];
+export const TestimonialRevisionReasonDb = {
+  Autosave: 0,
+  Manual: 1,
+  Duplicate: 2,
+  Publish: 3,
+  TemplateChange: 4,
+} as const;
+
+export function toTestimonialRevisionReasonDbValue(reason: unknown): TestimonialRevisionReasonDbValue {
+  if (reason === TestimonialRevisionReason.Autosave || reason === 0 || reason === "autosave") return TestimonialRevisionReasonDb.Autosave;
+  if (reason === TestimonialRevisionReason.Manual || reason === 1 || reason === "manual") return TestimonialRevisionReasonDb.Manual;
+  if (reason === TestimonialRevisionReason.Duplicate || reason === 2 || reason === "duplicate") return TestimonialRevisionReasonDb.Duplicate;
+  if (reason === TestimonialRevisionReason.Publish || reason === 3 || reason === "publish") return TestimonialRevisionReasonDb.Publish;
+  if (reason === TestimonialRevisionReason.TemplateChange || reason === 4 || reason === "template-change") return TestimonialRevisionReasonDb.TemplateChange;
+  return TestimonialRevisionReasonDb.Autosave;
+}
+
+export function fromTestimonialRevisionReasonDbValue(value: unknown): TestimonialRevisionReason {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case TestimonialRevisionReasonDb.Autosave:
+      return TestimonialRevisionReason.Autosave;
+    case TestimonialRevisionReasonDb.Manual:
+      return TestimonialRevisionReason.Manual;
+    case TestimonialRevisionReasonDb.Duplicate:
+      return TestimonialRevisionReason.Duplicate;
+    case TestimonialRevisionReasonDb.Publish:
+      return TestimonialRevisionReason.Publish;
+    case TestimonialRevisionReasonDb.TemplateChange:
+      return TestimonialRevisionReason.TemplateChange;
+    default:
+      return TestimonialRevisionReason.Autosave;
+  }
+}
 
 export type TestimonialRevisionRecord = {
   canvas: TestimonialCanvasDocument;

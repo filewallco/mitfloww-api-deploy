@@ -16,15 +16,30 @@ import {
 
 import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
 import {
+  fromProjectPaymentSnapshotStatusDbValue,
+  fromProjectPaymentSnapshotTypeDbValue,
   fromProjectPaymentStatusDbValue,
-  ProjectPaymentStatus,
+  fromProjectShareStatusDbValue,
+  fromProjectStatusDbValue,
+  PROJECT_PAYMENT_SNAPSHOT_STATUSES,
+  PROJECT_PAYMENT_SNAPSHOT_TYPES,
   PROJECT_SHARE_STATUSES,
   PROJECT_STATUSES,
-  type ProjectShareStatus as ProjectShareStatusType,
+  ProjectPaymentSnapshotStatus,
+  ProjectPaymentSnapshotType,
+  ProjectPaymentStatus,
+  ProjectShareStatus,
   ProjectStatus,
-  type ProjectPaymentStatus as ProjectPaymentStatusType,
-  type ProjectStatus as ProjectStatusType,
+  toProjectPaymentSnapshotStatusDbValue,
+  toProjectPaymentSnapshotTypeDbValue,
   toProjectPaymentStatusDbValue,
+  toProjectShareStatusDbValue,
+  toProjectStatusDbValue,
+  type ProjectPaymentSnapshotStatus as ProjectPaymentSnapshotStatusType,
+  type ProjectPaymentSnapshotType as ProjectPaymentSnapshotTypeType,
+  type ProjectPaymentStatus as ProjectPaymentStatusType,
+  type ProjectShareStatus as ProjectShareStatusType,
+  type ProjectStatus as ProjectStatusType,
 } from "@/lib/dto/projects";
 
 const projectPaymentStatus = customType<{
@@ -44,10 +59,83 @@ const projectPaymentStatus = customType<{
   },
 });
 
-// Keep the default in driver format so drizzle-kit can diff the schema correctly.
+const projectStatus = customType<{
+  data: ProjectStatusType;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toProjectStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromProjectStatusDbValue(value);
+  },
+});
+
+const projectShareStatus = customType<{
+  data: ProjectShareStatusType;
+  driverData: number;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toProjectShareStatusDbValue(value) as number;
+  },
+  fromDriver(value) {
+    return fromProjectShareStatusDbValue(value) as ProjectShareStatusType;
+  },
+});
+
+const projectPaymentSnapshotType = customType<{
+  data: ProjectPaymentSnapshotTypeType;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toProjectPaymentSnapshotTypeDbValue(value);
+  },
+  fromDriver(value) {
+    return fromProjectPaymentSnapshotTypeDbValue(value);
+  },
+});
+
+const projectPaymentSnapshotStatus = customType<{
+  data: ProjectPaymentSnapshotStatusType;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toProjectPaymentSnapshotStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromProjectPaymentSnapshotStatusDbValue(value);
+  },
+});
+
 const DEFAULT_PROJECT_PAYMENT_STATUS =
-  toProjectPaymentStatusDbValue(ProjectPaymentStatus.Pending) as
-    unknown as ProjectPaymentStatusType;
+  toProjectPaymentStatusDbValue(ProjectPaymentStatus.Pending) as unknown as ProjectPaymentStatusType;
+
+const DEFAULT_PROJECT_STATUS =
+  toProjectStatusDbValue(ProjectStatus.Active) as unknown as ProjectStatusType;
+
+const DEFAULT_PROJECT_PAYMENT_SNAPSHOT_TYPE =
+  toProjectPaymentSnapshotTypeDbValue(ProjectPaymentSnapshotType.Final) as unknown as ProjectPaymentSnapshotTypeType;
+
+const DEFAULT_PROJECT_PAYMENT_SNAPSHOT_STATUS =
+  toProjectPaymentSnapshotStatusDbValue(ProjectPaymentSnapshotStatus.Pending) as unknown as ProjectPaymentSnapshotStatusType;
 
 function buildSqlStringList(values: readonly string[]) {
   return sql.raw(values.map((value) => `'${value}'`).join(","));
@@ -73,13 +161,10 @@ export const createProjectTables = (fw: PgSchema) => {
         .notNull()
         .default("und"),
       clientEmail: varchar("client_email", { length: 255 }),
-      status: varchar("status", { length: 32 })
-        .$type<ProjectStatusType>()
+      status: projectStatus("status")
         .notNull()
-        .default(ProjectStatus.Active),
-      shareStatus: varchar("share_status", { length: 32 }).$type<
-        ProjectShareStatusType
-      >(),
+        .default(DEFAULT_PROJECT_STATUS),
+      shareStatus: projectShareStatus("share_status"),
       shareToken: varchar("share_token", { length: 255 }),
       shareUrl: varchar("share_url", { length: 1024 }),
       shareExpiresAt: timestamp("share_expires_at", {
@@ -153,11 +238,11 @@ export const createProjectTables = (fw: PgSchema) => {
       uniqueIndex("projects_invoice_id_unique_idx").on(table.invoiceId),
       check(
         "projects_status_check",
-        sql`${table.status} IN (${buildSqlStringList(PROJECT_STATUSES)})`,
+        sql`${table.status} >= 0 AND ${table.status} <= 1`,
       ),
       check(
         "projects_share_status_check",
-        sql`${table.shareStatus} IS NULL OR ${table.shareStatus} IN (${buildSqlStringList(PROJECT_SHARE_STATUSES)})`,
+        sql`${table.shareStatus} IS NULL OR (${table.shareStatus} >= 0 AND ${table.shareStatus} <= 4)`,
       ),
       check(
         "projects_currency_format_check",
@@ -250,12 +335,12 @@ export const createProjectTables = (fw: PgSchema) => {
           onDelete: "cascade",
           onUpdate: "cascade",
         }),
-      paymentType: varchar("payment_type", { length: 32 })
+      paymentType: projectPaymentSnapshotType("payment_type")
         .notNull()
-        .default("final"),
-      status: varchar("status", { length: 32 })
+        .default(DEFAULT_PROJECT_PAYMENT_SNAPSHOT_TYPE),
+      status: projectPaymentSnapshotStatus("status")
         .notNull()
-        .default("pending"),
+        .default(DEFAULT_PROJECT_PAYMENT_SNAPSHOT_STATUS),
       amountCents: integer("amount_cents").notNull(),
       currency: varchar("currency", { length: 3 })
         .notNull()
@@ -284,6 +369,14 @@ export const createProjectTables = (fw: PgSchema) => {
     (table) => [
       index("project_payment_snapshots_project_id_idx").on(table.projectId),
       index("project_payment_snapshots_status_idx").on(table.status),
+      check(
+        "project_payment_snapshots_payment_type_check",
+        sql`${table.paymentType} >= 0 AND ${table.paymentType} <= 3`,
+      ),
+      check(
+        "project_payment_snapshots_status_check",
+        sql`${table.status} >= 0 AND ${table.status} <= 3`,
+      ),
     ],
   );
 

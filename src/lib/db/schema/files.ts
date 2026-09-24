@@ -16,9 +16,17 @@ import {
 } from "drizzle-orm/pg-core";
 import {
   FileUploadStatus,
+  FileUploadStatusDb,
   fromFileUploadStatusDbValue,
   toFileUploadStatusDbValue,
 } from "@/lib/dto/file-contracts";
+
+export {
+  FileUploadStatus,
+  FileUploadStatusDb,
+  fromFileUploadStatusDbValue,
+  toFileUploadStatusDbValue,
+};
 import type { createProjectTables } from "@/lib/db/schema/projects";
 
 export const FILE_PROCESSING_STATUSES = [
@@ -47,6 +55,59 @@ export const FileProcessingStatus = {
   Cancelled: "cancelled",
 } as const satisfies Record<string, FileProcessingStatus>;
 
+export const FILE_PROCESSING_STATUS_DB_VALUES = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
+export type FileProcessingStatusDbValue = (typeof FILE_PROCESSING_STATUS_DB_VALUES)[number];
+export const FileProcessingStatusDb = {
+  Queued: 0,
+  Processing: 1,
+  Uploading: 2,
+  Completed: 3,
+  Retrying: 4,
+  Failed: 5,
+  Corrupt: 6,
+  Skipped: 7,
+  Cancelled: 8,
+} as const;
+
+export function toFileProcessingStatusDbValue(status: unknown): FileProcessingStatusDbValue {
+  if (status === FileProcessingStatus.Queued || status === 0 || status === "queued") return FileProcessingStatusDb.Queued;
+  if (status === FileProcessingStatus.Processing || status === 1 || status === "processing") return FileProcessingStatusDb.Processing;
+  if (status === FileProcessingStatus.Uploading || status === 2 || status === "uploading") return FileProcessingStatusDb.Uploading;
+  if (status === FileProcessingStatus.Completed || status === 3 || status === "completed") return FileProcessingStatusDb.Completed;
+  if (status === FileProcessingStatus.Retrying || status === 4 || status === "retrying") return FileProcessingStatusDb.Retrying;
+  if (status === FileProcessingStatus.Failed || status === 5 || status === "failed") return FileProcessingStatusDb.Failed;
+  if (status === FileProcessingStatus.Corrupt || status === 6 || status === "corrupt") return FileProcessingStatusDb.Corrupt;
+  if (status === FileProcessingStatus.Skipped || status === 7 || status === "skipped") return FileProcessingStatusDb.Skipped;
+  if (status === FileProcessingStatus.Cancelled || status === 8 || status === "cancelled") return FileProcessingStatusDb.Cancelled;
+  return FileProcessingStatusDb.Queued;
+}
+
+export function fromFileProcessingStatusDbValue(value: unknown): FileProcessingStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case FileProcessingStatusDb.Queued:
+      return FileProcessingStatus.Queued;
+    case FileProcessingStatusDb.Processing:
+      return FileProcessingStatus.Processing;
+    case FileProcessingStatusDb.Uploading:
+      return FileProcessingStatus.Uploading;
+    case FileProcessingStatusDb.Completed:
+      return FileProcessingStatus.Completed;
+    case FileProcessingStatusDb.Retrying:
+      return FileProcessingStatus.Retrying;
+    case FileProcessingStatusDb.Failed:
+      return FileProcessingStatus.Failed;
+    case FileProcessingStatusDb.Corrupt:
+      return FileProcessingStatus.Corrupt;
+    case FileProcessingStatusDb.Skipped:
+      return FileProcessingStatus.Skipped;
+    case FileProcessingStatusDb.Cancelled:
+      return FileProcessingStatus.Cancelled;
+    default:
+      return FileProcessingStatus.Queued;
+  }
+}
+
 export const FILE_PROCESSING_CALLBACK_STATUSES = [
   FileProcessingStatus.Completed,
   FileProcessingStatus.Failed,
@@ -56,14 +117,44 @@ export const FILE_PROCESSING_CALLBACK_STATUSES = [
 export type FileProcessingCallbackStatus =
   (typeof FILE_PROCESSING_CALLBACK_STATUSES)[number];
 
-export const FILE_APPROVAL_STATUSES = ["pending", "approved"] as const;
+export const FILE_APPROVAL_STATUSES = ["pending", "approved", "rejected"] as const;
 
 export type FileApprovalStatus = (typeof FILE_APPROVAL_STATUSES)[number];
 
 export const FileApprovalStatus = {
   Pending: FILE_APPROVAL_STATUSES[0],
   Approved: FILE_APPROVAL_STATUSES[1],
+  Rejected: FILE_APPROVAL_STATUSES[2],
 } as const satisfies Record<string, FileApprovalStatus>;
+
+export const FILE_APPROVAL_STATUS_DB_VALUES = [0, 1, 2] as const;
+export type FileApprovalStatusDbValue = (typeof FILE_APPROVAL_STATUS_DB_VALUES)[number];
+export const FileApprovalStatusDb = {
+  Pending: 0,
+  Approved: 1,
+  Rejected: 2,
+} as const;
+
+export function toFileApprovalStatusDbValue(status: unknown): FileApprovalStatusDbValue {
+  if (status === FileApprovalStatus.Pending || status === 0 || status === "pending") return FileApprovalStatusDb.Pending;
+  if (status === FileApprovalStatus.Approved || status === 1 || status === "approved") return FileApprovalStatusDb.Approved;
+  if (status === FileApprovalStatus.Rejected || status === 2 || status === "rejected") return FileApprovalStatusDb.Rejected;
+  return FileApprovalStatusDb.Pending;
+}
+
+export function fromFileApprovalStatusDbValue(value: unknown): FileApprovalStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case FileApprovalStatusDb.Pending:
+      return FileApprovalStatus.Pending;
+    case FileApprovalStatusDb.Approved:
+      return FileApprovalStatus.Approved;
+    case FileApprovalStatusDb.Rejected:
+      return FileApprovalStatus.Rejected;
+    default:
+      return FileApprovalStatus.Pending;
+  }
+}
 
 export const FILE_FINAL_DRAFT_REPORT_STATUSES = [
   "none",
@@ -84,6 +175,43 @@ export const FileFinalDraftReportStatus = {
   Dismissed: FILE_FINAL_DRAFT_REPORT_STATUSES[4],
 } as const satisfies Record<string, FileFinalDraftReportStatus>;
 
+export const FILE_FINAL_DRAFT_REPORT_STATUS_DB_VALUES = [0, 1, 2, 3, 4] as const;
+export type FileFinalDraftReportStatusDbValue = (typeof FILE_FINAL_DRAFT_REPORT_STATUS_DB_VALUES)[number];
+export const FileFinalDraftReportStatusDb = {
+  None: 0,
+  Reported: 1,
+  UnderReview: 2,
+  Resolved: 3,
+  Dismissed: 4,
+} as const;
+
+export function toFileFinalDraftReportStatusDbValue(status: unknown): FileFinalDraftReportStatusDbValue {
+  if (status === FileFinalDraftReportStatus.None || status === 0 || status === "none") return FileFinalDraftReportStatusDb.None;
+  if (status === FileFinalDraftReportStatus.Reported || status === 1 || status === "reported") return FileFinalDraftReportStatusDb.Reported;
+  if (status === FileFinalDraftReportStatus.UnderReview || status === 2 || status === "under_review") return FileFinalDraftReportStatusDb.UnderReview;
+  if (status === FileFinalDraftReportStatus.Resolved || status === 3 || status === "resolved") return FileFinalDraftReportStatusDb.Resolved;
+  if (status === FileFinalDraftReportStatus.Dismissed || status === 4 || status === "dismissed") return FileFinalDraftReportStatusDb.Dismissed;
+  return FileFinalDraftReportStatusDb.None;
+}
+
+export function fromFileFinalDraftReportStatusDbValue(value: unknown): FileFinalDraftReportStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case FileFinalDraftReportStatusDb.None:
+      return FileFinalDraftReportStatus.None;
+    case FileFinalDraftReportStatusDb.Reported:
+      return FileFinalDraftReportStatus.Reported;
+    case FileFinalDraftReportStatusDb.UnderReview:
+      return FileFinalDraftReportStatus.UnderReview;
+    case FileFinalDraftReportStatusDb.Resolved:
+      return FileFinalDraftReportStatus.Resolved;
+    case FileFinalDraftReportStatusDb.Dismissed:
+      return FileFinalDraftReportStatus.Dismissed;
+    default:
+      return FileFinalDraftReportStatus.None;
+  }
+}
+
 export const FILE_VERSION_REPORT_STATUSES = [
   "reported",
   "under_review",
@@ -100,6 +228,39 @@ export const FileVersionReportStatus = {
   Resolved: FILE_VERSION_REPORT_STATUSES[2],
   Dismissed: FILE_VERSION_REPORT_STATUSES[3],
 } as const satisfies Record<string, FileVersionReportStatus>;
+
+export const FILE_VERSION_REPORT_STATUS_DB_VALUES = [0, 1, 2, 3] as const;
+export type FileVersionReportStatusDbValue = (typeof FILE_VERSION_REPORT_STATUS_DB_VALUES)[number];
+export const FileVersionReportStatusDb = {
+  Reported: 0,
+  UnderReview: 1,
+  Resolved: 2,
+  Dismissed: 3,
+} as const;
+
+export function toFileVersionReportStatusDbValue(status: unknown): FileVersionReportStatusDbValue {
+  if (status === FileVersionReportStatus.Reported || status === 0 || status === "reported") return FileVersionReportStatusDb.Reported;
+  if (status === FileVersionReportStatus.UnderReview || status === 1 || status === "under_review") return FileVersionReportStatusDb.UnderReview;
+  if (status === FileVersionReportStatus.Resolved || status === 2 || status === "resolved") return FileVersionReportStatusDb.Resolved;
+  if (status === FileVersionReportStatus.Dismissed || status === 3 || status === "dismissed") return FileVersionReportStatusDb.Dismissed;
+  return FileVersionReportStatusDb.Reported;
+}
+
+export function fromFileVersionReportStatusDbValue(value: unknown): FileVersionReportStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case FileVersionReportStatusDb.Reported:
+      return FileVersionReportStatus.Reported;
+    case FileVersionReportStatusDb.UnderReview:
+      return FileVersionReportStatus.UnderReview;
+    case FileVersionReportStatusDb.Resolved:
+      return FileVersionReportStatus.Resolved;
+    case FileVersionReportStatusDb.Dismissed:
+      return FileVersionReportStatus.Dismissed;
+    default:
+      return FileVersionReportStatus.Reported;
+  }
+}
 
 export const FILE_REVISION_NOTE_REPLY_EMAIL_STATUSES = [
   "not_configured",
@@ -125,6 +286,39 @@ export const FileRevisionCommentReportStatus = {
   Dismissed: FILE_REVISION_COMMENT_REPORT_STATUSES[3],
 } as const satisfies Record<string, FileRevisionCommentReportStatus>;
 
+export const FILE_REVISION_COMMENT_REPORT_STATUS_DB_VALUES = [0, 1, 2, 3] as const;
+export type FileRevisionCommentReportStatusDbValue = (typeof FILE_REVISION_COMMENT_REPORT_STATUS_DB_VALUES)[number];
+export const FileRevisionCommentReportStatusDb = {
+  Reported: 0,
+  UnderReview: 1,
+  Resolved: 2,
+  Dismissed: 3,
+} as const;
+
+export function toFileRevisionCommentReportStatusDbValue(status: unknown): FileRevisionCommentReportStatusDbValue {
+  if (status === FileRevisionCommentReportStatus.Reported || status === 0 || status === "reported") return FileRevisionCommentReportStatusDb.Reported;
+  if (status === FileRevisionCommentReportStatus.UnderReview || status === 1 || status === "under_review") return FileRevisionCommentReportStatusDb.UnderReview;
+  if (status === FileRevisionCommentReportStatus.Resolved || status === 2 || status === "resolved") return FileRevisionCommentReportStatusDb.Resolved;
+  if (status === FileRevisionCommentReportStatus.Dismissed || status === 3 || status === "dismissed") return FileRevisionCommentReportStatusDb.Dismissed;
+  return FileRevisionCommentReportStatusDb.Reported;
+}
+
+export function fromFileRevisionCommentReportStatusDbValue(value: unknown): FileRevisionCommentReportStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case FileRevisionCommentReportStatusDb.Reported:
+      return FileRevisionCommentReportStatus.Reported;
+    case FileRevisionCommentReportStatusDb.UnderReview:
+      return FileRevisionCommentReportStatus.UnderReview;
+    case FileRevisionCommentReportStatusDb.Resolved:
+      return FileRevisionCommentReportStatus.Resolved;
+    case FileRevisionCommentReportStatusDb.Dismissed:
+      return FileRevisionCommentReportStatus.Dismissed;
+    default:
+      return FileRevisionCommentReportStatus.Reported;
+  }
+}
+
 export const FILE_REVISION_COMMENT_STATUSES = [
   "pending",
   "resolved",
@@ -138,6 +332,31 @@ export const FileRevisionCommentStatus = {
   Resolved: FILE_REVISION_COMMENT_STATUSES[1],
 } as const satisfies Record<string, FileRevisionCommentStatus>;
 
+export const FILE_REVISION_COMMENT_STATUS_DB_VALUES = [0, 1] as const;
+export type FileRevisionCommentStatusDbValue = (typeof FILE_REVISION_COMMENT_STATUS_DB_VALUES)[number];
+export const FileRevisionCommentStatusDb = {
+  Pending: 0,
+  Resolved: 1,
+} as const;
+
+export function toFileRevisionCommentStatusDbValue(status: unknown): FileRevisionCommentStatusDbValue {
+  if (status === FileRevisionCommentStatus.Pending || status === 0 || status === "pending") return FileRevisionCommentStatusDb.Pending;
+  if (status === FileRevisionCommentStatus.Resolved || status === 1 || status === "resolved") return FileRevisionCommentStatusDb.Resolved;
+  return FileRevisionCommentStatusDb.Pending;
+}
+
+export function fromFileRevisionCommentStatusDbValue(value: unknown): FileRevisionCommentStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case FileRevisionCommentStatusDb.Pending:
+      return FileRevisionCommentStatus.Pending;
+    case FileRevisionCommentStatusDb.Resolved:
+      return FileRevisionCommentStatus.Resolved;
+    default:
+      return FileRevisionCommentStatus.Pending;
+  }
+}
+
 export type FileRevisionNoteReplyEmailStatus =
   (typeof FILE_REVISION_NOTE_REPLY_EMAIL_STATUSES)[number];
 
@@ -150,6 +369,19 @@ export const RevisionCommentMarkerType = {
   Region: REVISION_COMMENT_MARKER_TYPES[0],
 } as const satisfies Record<string, RevisionCommentMarkerType>;
 
+export const REVISION_COMMENT_MARKER_TYPE_DB_VALUES = [0] as const;
+export type RevisionCommentMarkerTypeDbValue = (typeof REVISION_COMMENT_MARKER_TYPE_DB_VALUES)[number];
+export const RevisionCommentMarkerTypeDb = {
+  Region: 0,
+} as const;
+
+export function toRevisionCommentMarkerTypeDbValue(type: unknown): RevisionCommentMarkerTypeDbValue {
+  return RevisionCommentMarkerTypeDb.Region;
+}
+
+export function fromRevisionCommentMarkerTypeDbValue(value: unknown): RevisionCommentMarkerType {
+  return RevisionCommentMarkerType.Region;
+}
 
 export const FileRevisionNoteReplyEmailStatus = {
   Failed: FILE_REVISION_NOTE_REPLY_EMAIL_STATUSES[3],
@@ -175,10 +407,149 @@ const fileUploadStatus = customType<{
   },
 });
 
-// Keep the default in driver format so drizzle-kit can diff the schema correctly.
+const fileApprovalStatus = customType<{
+  data: FileApprovalStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toFileApprovalStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromFileApprovalStatusDbValue(value);
+  },
+});
+
+const fileFinalDraftReportStatus = customType<{
+  data: FileFinalDraftReportStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toFileFinalDraftReportStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromFileFinalDraftReportStatusDbValue(value);
+  },
+});
+
+const fileProcessingStatus = customType<{
+  data: FileProcessingStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toFileProcessingStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromFileProcessingStatusDbValue(value);
+  },
+});
+
+const fileVersionReportStatus = customType<{
+  data: FileVersionReportStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toFileVersionReportStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromFileVersionReportStatusDbValue(value);
+  },
+});
+
+const fileRevisionCommentStatus = customType<{
+  data: FileRevisionCommentStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toFileRevisionCommentStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromFileRevisionCommentStatusDbValue(value);
+  },
+});
+
+const fileRevisionCommentReportStatus = customType<{
+  data: FileRevisionCommentReportStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toFileRevisionCommentReportStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromFileRevisionCommentReportStatusDbValue(value);
+  },
+});
+
+const revisionCommentMarkerType = customType<{
+  data: RevisionCommentMarkerType;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toRevisionCommentMarkerTypeDbValue(value);
+  },
+  fromDriver(value) {
+    return fromRevisionCommentMarkerTypeDbValue(value);
+  },
+});
+
 const DEFAULT_FILE_UPLOAD_STATUS =
   toFileUploadStatusDbValue(FileUploadStatus.Pending) as unknown as
     (typeof FileUploadStatus)[keyof typeof FileUploadStatus];
+
+const DEFAULT_FILE_APPROVAL_STATUS =
+  toFileApprovalStatusDbValue(FileApprovalStatus.Pending) as unknown as FileApprovalStatus;
+
+const DEFAULT_FILE_FINAL_DRAFT_REPORT_STATUS =
+  toFileFinalDraftReportStatusDbValue(FileFinalDraftReportStatus.None) as unknown as FileFinalDraftReportStatus;
+
+const DEFAULT_FILE_PROCESSING_STATUS =
+  toFileProcessingStatusDbValue(FileProcessingStatus.Queued) as unknown as FileProcessingStatus;
+
+const DEFAULT_FILE_VERSION_REPORT_STATUS =
+  toFileVersionReportStatusDbValue(FileVersionReportStatus.Reported) as unknown as FileVersionReportStatus;
+
+const DEFAULT_FILE_REVISION_COMMENT_STATUS =
+  toFileRevisionCommentStatusDbValue(FileRevisionCommentStatus.Pending) as unknown as FileRevisionCommentStatus;
+
+const DEFAULT_FILE_REVISION_COMMENT_REPORT_STATUS =
+  toFileRevisionCommentReportStatusDbValue(FileRevisionCommentReportStatus.Reported) as unknown as FileRevisionCommentReportStatus;
+
+const DEFAULT_REVISION_COMMENT_MARKER_TYPE =
+  toRevisionCommentMarkerTypeDbValue(RevisionCommentMarkerType.Region) as unknown as RevisionCommentMarkerType;
 
 export const createFileTables = (
   fw: PgSchema,
@@ -208,18 +579,14 @@ export const createFileTables = (
         .default("files"),
 
       currentVersionId: uuid("current_version_id"),
-      approvalStatus: varchar("approval_status", { length: 32 })
-        .$type<FileApprovalStatus>()
+      approvalStatus: fileApprovalStatus("approval_status")
         .notNull()
-        .default(FileApprovalStatus.Pending),
+        .default(DEFAULT_FILE_APPROVAL_STATUS),
       approvedVersionId: uuid("approved_version_id"),
       finalDraftVersionId: uuid("final_draft_version_id"),
-      finalDraftReportStatus: varchar("final_draft_report_status", {
-        length: 32,
-      })
-        .$type<FileFinalDraftReportStatus>()
+      finalDraftReportStatus: fileFinalDraftReportStatus("final_draft_report_status")
         .notNull()
-        .default(FileFinalDraftReportStatus.None),
+        .default(DEFAULT_FILE_FINAL_DRAFT_REPORT_STATUS),
       finalDraftReportedAt: timestamp("final_draft_reported_at", {
         mode: "date",
         withTimezone: true,
@@ -274,11 +641,11 @@ export const createFileTables = (
       ),
       check(
         "files_approval_status_check",
-        sql`${table.approvalStatus} IN ('pending','approved')`,
+        sql`${table.approvalStatus} >= 0 AND ${table.approvalStatus} <= 2`,
       ),
       check(
         "files_final_draft_report_status_check",
-        sql`${table.finalDraftReportStatus} IN ('none','reported','under_review','resolved','dismissed')`,
+        sql`${table.finalDraftReportStatus} >= 0 AND ${table.finalDraftReportStatus} <= 4`,
       ),
     ],
   );
@@ -337,10 +704,9 @@ export const createFileTables = (
       deletedBy: varchar("deleted_by", { length: 255 }),
       deleteReason: text("delete_reason"),
 
-      processingStatus: varchar("processing_status", { length: 32 })
-        .$type<FileProcessingStatus>()
+      processingStatus: fileProcessingStatus("processing_status")
         .notNull()
-        .default(FileProcessingStatus.Queued),
+        .default(DEFAULT_FILE_PROCESSING_STATUS),
       processingJobId: varchar("processing_job_id", { length: 128 }),
       processingErrorCode: varchar("processing_error_code", { length: 128 }),
       processingErrorMessage: text("processing_error_message"),
@@ -390,7 +756,7 @@ export const createFileTables = (
       ),
       check(
         "file_versions_processing_status_check",
-        sql`${table.processingStatus} IN ('queued','processing','uploading','completed','retrying','failed','corrupt','skipped','cancelled')`,
+        sql`${table.processingStatus} >= 0 AND ${table.processingStatus} <= 8`,
       ),
     ],
   );
@@ -412,10 +778,9 @@ export const createFileTables = (
       sourceLocale: varchar("source_locale", { length: 16 })
         .notNull()
         .default("und"),
-      status: varchar("status", { length: 32 })
-        .$type<FileRevisionCommentStatus>()
+      status: fileRevisionCommentStatus("status")
         .notNull()
-        .default(FileRevisionCommentStatus.Pending),
+        .default(DEFAULT_FILE_REVISION_COMMENT_STATUS),
       createdBy: varchar("created_by", { length: 255 }),
       updatedBy: varchar("updated_by", { length: 255 }),
       deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
@@ -437,7 +802,7 @@ export const createFileTables = (
       index("revision_comments_created_at_idx").on(table.createdAt),
       check(
         "revision_comments_status_check",
-        sql`${table.status} IN ('pending','resolved')`,
+        sql`${table.status} >= 0 AND ${table.status} <= 1`,
       ),
     ],
   );
@@ -458,10 +823,9 @@ export const createFileTables = (
       projectId: uuid("project_id")
         .notNull()
         .references(() => projects.id, { onDelete: "restrict" }),
-      type: varchar("type", { length: 32 })
-        .$type<RevisionCommentMarkerType>()
+      type: revisionCommentMarkerType("type")
         .notNull()
-        .default(RevisionCommentMarkerType.Region),
+        .default(DEFAULT_REVISION_COMMENT_MARKER_TYPE),
       labelNumber: integer("label_number").notNull(),
       pageNumber: integer("page_number"),
       xBp: integer("x_bp").notNull(),
@@ -486,7 +850,7 @@ export const createFileTables = (
       index("revision_comment_markers_deleted_at_idx").on(table.deletedAt),
       check(
         "revision_comment_markers_type_check",
-        sql`${table.type} IN ('region')`,
+        sql`${table.type} >= 0`,
       ),
       check(
         "revision_comment_markers_label_number_check",
@@ -613,10 +977,9 @@ export const createFileTables = (
       sourceLocale: varchar("source_locale", { length: 16 })
         .notNull()
         .default("und"),
-      status: varchar("status", { length: 32 })
-        .$type<FileVersionReportStatus>()
+      status: fileVersionReportStatus("status")
         .notNull()
-        .default(FileVersionReportStatus.Reported),
+        .default(DEFAULT_FILE_VERSION_REPORT_STATUS),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
         .defaultNow(),
@@ -631,7 +994,7 @@ export const createFileTables = (
       index("file_version_reports_status_idx").on(table.status),
       check(
         "file_version_reports_status_check",
-        sql`${table.status} IN ('reported','under_review','resolved','dismissed')`,
+        sql`${table.status} >= 0 AND ${table.status} <= 3`,
       ),
     ],
   );
@@ -658,10 +1021,9 @@ export const createFileTables = (
       sourceLocale: varchar("source_locale", { length: 16 })
         .notNull()
         .default("und"),
-      status: varchar("status", { length: 32 })
-        .$type<FileRevisionCommentReportStatus>()
+      status: fileRevisionCommentReportStatus("status")
         .notNull()
-        .default(FileRevisionCommentReportStatus.Reported),
+        .default(DEFAULT_FILE_REVISION_COMMENT_REPORT_STATUS),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
         .defaultNow(),
@@ -681,7 +1043,7 @@ export const createFileTables = (
       ),
       check(
         "revision_comment_reports_status_check",
-        sql`${table.status} IN ('reported','under_review','resolved','dismissed')`,
+        sql`${table.status} >= 0 AND ${table.status} <= 3`,
       ),
     ],
   );

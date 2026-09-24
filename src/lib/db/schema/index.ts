@@ -101,7 +101,6 @@ export type {
   FileVersionReportRecord,
 } from "./files";
 export type {
-  AppNotificationCategory,
   NewNotificationRecord,
   NotificationMetadata,
   NotificationRecord,
@@ -152,7 +151,6 @@ export type {
   NewAssetFileRecord,
   AssetPurchaseRecord,
   NewAssetPurchaseRecord,
-  AssetStatus,
   AssetTemplateKey,
 } from "./assets";
 export type {
@@ -162,7 +160,6 @@ export type {
   NewSessionRecord,
   OtpChallengeRecord,
   NewOtpChallengeRecord,
-  OtpPurpose,
 } from "./auth";
 
 export {
@@ -176,13 +173,22 @@ export {
   FILE_VERSION_REPORT_STATUSES,
   REVISION_COMMENT_MARKER_TYPES,
   FileApprovalStatus,
+  FileApprovalStatusDb,
   FileFinalDraftReportStatus,
+  FileFinalDraftReportStatusDb,
   FileRevisionCommentStatus,
+  FileRevisionCommentStatusDb,
   FileRevisionCommentReportStatus,
+  FileRevisionCommentReportStatusDb,
   FileProcessingStatus,
+  FileProcessingStatusDb,
+  FileUploadStatus,
+  FileUploadStatusDb,
   FileRevisionNoteReplyEmailStatus,
   FileVersionReportStatus,
+  FileVersionReportStatusDb,
   RevisionCommentMarkerType,
+  RevisionCommentMarkerTypeDb,
   type FileProcessingCallbackStatus,
   type FileProcessingCallbackStatus as FileProcessingCallbackStatusType,
   type FileApprovalStatus as FileApprovalStatusType,
@@ -199,4 +205,60 @@ export { auditColumns, type BaseAuditEntity } from "./audit";
 export {
   ASSET_STATUSES,
   ASSET_TEMPLATES,
+  AssetStatus,
+  AssetStatusDb,
 } from "./assets";
+export {
+  ProjectStatus,
+  ProjectStatusDb,
+  ProjectShareStatus,
+  ProjectShareStatusDb,
+  ProjectPaymentSnapshotType,
+  ProjectPaymentSnapshotTypeDb,
+  ProjectPaymentSnapshotStatus,
+  ProjectPaymentSnapshotStatusDb,
+} from "@/lib/dto/projects";
+export {
+  TransactionPaymentStatus,
+  TransactionPaymentStatusDb,
+  TransactionPaymentType,
+  TransactionPaymentTypeDb,
+} from "./transactions";
+export {
+  UserStatus,
+  UserStatusDb,
+} from "./users";
+export {
+  OtpPurpose,
+  OtpPurposeDb,
+} from "./auth";
+export {
+  AppNotificationCategory,
+  AppNotificationCategoryDb,
+} from "./notifications";
+export {
+  StorageScopeType,
+  StorageScopeTypeDb,
+  StorageMutationOperation,
+  StorageMutationOperationDb,
+} from "@/lib/storage/types";
+export {
+  CreditLedgerType,
+  CreditLedgerTypeDb,
+  CreditLedgerSource,
+  CreditLedgerSourceDb,
+  CreditReservationStatus,
+  CreditReservationStatusDb,
+  CreditScopeType,
+  CreditScopeTypeDb,
+} from "@/lib/credits";
+export {
+  TestimonialStatus,
+  TestimonialStatusDb,
+  TestimonialTemplateScope,
+  TestimonialTemplateScopeDb,
+  TestimonialTemplateAccessLevel,
+  TestimonialTemplateAccessLevelDb,
+  TestimonialRevisionReason,
+  TestimonialRevisionReasonDb,
+} from "@/types/testimonials";

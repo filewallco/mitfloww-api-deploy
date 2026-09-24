@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  customType,
   index,
   integer,
   jsonb,
@@ -18,16 +19,109 @@ import {
   TESTIMONIAL_TEMPLATE_ACCESS_LEVELS,
   TESTIMONIAL_TEMPLATE_SCOPES,
   TESTIMONIAL_STATUSES,
+  TestimonialStatus,
+  TestimonialStatusDb,
+  toTestimonialStatusDbValue,
+  fromTestimonialStatusDbValue,
+  TestimonialTemplateScope,
+  TestimonialTemplateScopeDb,
+  toTestimonialTemplateScopeDbValue,
+  fromTestimonialTemplateScopeDbValue,
+  TestimonialTemplateAccessLevel,
+  TestimonialTemplateAccessLevelDb,
+  toTestimonialTemplateAccessLevelDbValue,
+  fromTestimonialTemplateAccessLevelDbValue,
+  TestimonialRevisionReason,
+  TestimonialRevisionReasonDb,
+  toTestimonialRevisionReasonDbValue,
+  fromTestimonialRevisionReasonDbValue,
   type TestimonialCanvasPresetId,
-  type TestimonialTemplateAccessLevel,
-  type TestimonialTemplateScope,
-  type TestimonialStatus,
 } from "@/types/testimonials";
 import type { createProjectTables } from "./projects";
 
-function buildSqlStringList(values: readonly string[]) {
-  return sql.raw(values.map((value) => `'${value}'`).join(","));
-}
+const testimonialStatus = customType<{
+  data: TestimonialStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toTestimonialStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromTestimonialStatusDbValue(value);
+  },
+});
+
+const testimonialTemplateScope = customType<{
+  data: TestimonialTemplateScope;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toTestimonialTemplateScopeDbValue(value);
+  },
+  fromDriver(value) {
+    return fromTestimonialTemplateScopeDbValue(value);
+  },
+});
+
+const testimonialTemplateAccessLevel = customType<{
+  data: TestimonialTemplateAccessLevel;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toTestimonialTemplateAccessLevelDbValue(value);
+  },
+  fromDriver(value) {
+    return fromTestimonialTemplateAccessLevelDbValue(value);
+  },
+});
+
+const testimonialRevisionReason = customType<{
+  data: TestimonialRevisionReason;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toTestimonialRevisionReasonDbValue(value);
+  },
+  fromDriver(value) {
+    return fromTestimonialRevisionReasonDbValue(value);
+  },
+});
+
+const DEFAULT_TESTIMONIAL_STATUS = toTestimonialStatusDbValue(
+  TestimonialStatus.Draft,
+) as unknown as TestimonialStatus;
+
+const DEFAULT_TEMPLATE_SCOPE = toTestimonialTemplateScopeDbValue(
+  TestimonialTemplateScope.System,
+) as unknown as TestimonialTemplateScope;
+
+const DEFAULT_TEMPLATE_ACCESS_LEVEL = toTestimonialTemplateAccessLevelDbValue(
+  TestimonialTemplateAccessLevel.Free,
+) as unknown as TestimonialTemplateAccessLevel;
+
+const DEFAULT_REVISION_REASON = toTestimonialRevisionReasonDbValue(
+  TestimonialRevisionReason.Autosave,
+) as unknown as TestimonialRevisionReason;
 
 export const createTestimonialTables = (
   fw: PgSchema,
@@ -42,14 +136,12 @@ export const createTestimonialTables = (
       id: uuid("id").defaultRandom().primaryKey(),
       ownerId: varchar("owner_id", { length: 255 }).notNull().default("system"),
       templateKey: varchar("template_key", { length: 120 }).notNull(),
-      scope: varchar("scope", { length: 32 })
-        .$type<TestimonialTemplateScope>()
+      scope: testimonialTemplateScope("scope")
         .notNull()
-        .default(TESTIMONIAL_TEMPLATE_SCOPES[0]),
-      accessLevel: varchar("access_level", { length: 32 })
-        .$type<TestimonialTemplateAccessLevel>()
+        .default(DEFAULT_TEMPLATE_SCOPE),
+      accessLevel: testimonialTemplateAccessLevel("access_level")
         .notNull()
-        .default(TESTIMONIAL_TEMPLATE_ACCESS_LEVELS[0]),
+        .default(DEFAULT_TEMPLATE_ACCESS_LEVEL),
       name: varchar("name", { length: 120 }).notNull(),
       category: varchar("category", { length: 80 }).notNull(),
       presetId: varchar("preset_id", { length: 24 })
@@ -76,11 +168,11 @@ export const createTestimonialTables = (
       index("testimonial_templates_updated_at_idx").on(table.updatedAt),
       check(
         "testimonial_templates_scope_check",
-        sql`${table.scope} IN (${buildSqlStringList(TESTIMONIAL_TEMPLATE_SCOPES)})`,
+        sql`${table.scope} >= 0 AND ${table.scope} <= 1`,
       ),
       check(
         "testimonial_templates_access_level_check",
-        sql`${table.accessLevel} IN (${buildSqlStringList(TESTIMONIAL_TEMPLATE_ACCESS_LEVELS)})`,
+        sql`${table.accessLevel} >= 0 AND ${table.accessLevel} <= 1`,
       ),
     ],
   );
@@ -95,19 +187,17 @@ export const createTestimonialTables = (
         .notNull()
         .default("und"),
       slug: varchar("slug", { length: 160 }).notNull(),
-      status: varchar("status", { length: 32 })
-        .$type<TestimonialStatus>()
+      status: testimonialStatus("status")
         .notNull()
-        .default(TESTIMONIAL_STATUSES[0]),
+        .default(DEFAULT_TESTIMONIAL_STATUS),
       templateId: uuid("template_id").references(() => testimonialTemplates.id, {
         onDelete: "set null",
         onUpdate: "cascade",
       }),
       templateKey: varchar("template_key", { length: 120 }).notNull(),
-      templateScope: varchar("template_scope", { length: 32 })
-        .$type<TestimonialTemplateScope>()
+      templateScope: testimonialTemplateScope("template_scope")
         .notNull()
-        .default(TESTIMONIAL_TEMPLATE_SCOPES[0]),
+        .default(DEFAULT_TEMPLATE_SCOPE),
       presetId: varchar("preset_id", { length: 24 })
         .$type<TestimonialCanvasPresetId>()
         .notNull(),
@@ -159,11 +249,11 @@ export const createTestimonialTables = (
       index("testimonials_deleted_at_idx").on(table.deletedAt),
       check(
         "testimonials_status_check",
-        sql`${table.status} IN (${buildSqlStringList(TESTIMONIAL_STATUSES)})`,
+        sql`${table.status} >= 0 AND ${table.status} <= 3`,
       ),
       check(
         "testimonials_template_scope_check",
-        sql`${table.templateScope} IN (${buildSqlStringList(TESTIMONIAL_TEMPLATE_SCOPES)})`,
+        sql`${table.templateScope} >= 0 AND ${table.templateScope} <= 1`,
       ),
     ],
   );
@@ -180,7 +270,9 @@ export const createTestimonialTables = (
         }),
       revisionNumber: integer("revision_number").notNull(),
       title: varchar("title", { length: 120 }).notNull(),
-      reason: varchar("reason", { length: 32 }).notNull(),
+      reason: testimonialRevisionReason("reason")
+        .notNull()
+        .default(DEFAULT_REVISION_REASON),
       snapshotJson: jsonb("snapshot_json").notNull(),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
@@ -195,7 +287,7 @@ export const createTestimonialTables = (
       index("testimonial_revisions_created_at_idx").on(table.createdAt),
       check(
         "testimonial_revisions_reason_check",
-        sql`${table.reason} IN ('autosave','manual','duplicate','publish','template-change')`,
+        sql`${table.reason} >= 0 AND ${table.reason} <= 4`,
       ),
       check(
         "testimonial_revisions_revision_number_check",
@@ -234,4 +326,3 @@ export type TestimonialRevisionRecord = InferSelectModel<
 export type NewTestimonialRevisionRecord = InferInsertModel<
   ReturnType<typeof createTestimonialTables>["testimonialRevisions"]
 >;
-

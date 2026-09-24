@@ -1,6 +1,64 @@
-import { boolean, integer, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, customType, integer, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type { CreditPlanKey } from "@/lib/credits";
+
+export const USER_STATUSES = ["active", "suspended", "deactivated"] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+export const UserStatus = {
+  Active: USER_STATUSES[0],
+  Suspended: USER_STATUSES[1],
+  Deactivated: USER_STATUSES[2],
+} as const satisfies Record<string, UserStatus>;
+
+export const USER_STATUS_DB_VALUES = [0, 1, 2] as const;
+export type UserStatusDbValue = (typeof USER_STATUS_DB_VALUES)[number];
+export const UserStatusDb = {
+  Active: 0,
+  Suspended: 1,
+  Deactivated: 2,
+} as const;
+
+export function toUserStatusDbValue(status: unknown): UserStatusDbValue {
+  if (status === UserStatus.Active || status === 0 || status === "active") return UserStatusDb.Active;
+  if (status === UserStatus.Suspended || status === 1 || status === "suspended") return UserStatusDb.Suspended;
+  if (status === UserStatus.Deactivated || status === 2 || status === "deactivated") return UserStatusDb.Deactivated;
+  return UserStatusDb.Active;
+}
+
+export function fromUserStatusDbValue(value: unknown): UserStatus {
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case UserStatusDb.Active:
+      return UserStatus.Active;
+    case UserStatusDb.Suspended:
+      return UserStatus.Suspended;
+    case UserStatusDb.Deactivated:
+      return UserStatus.Deactivated;
+    default:
+      return UserStatus.Active;
+  }
+}
+
+const userStatus = customType<{
+  data: UserStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toUserStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromUserStatusDbValue(value);
+  },
+});
+
+const DEFAULT_USER_STATUS =
+  toUserStatusDbValue(UserStatus.Active) as unknown as UserStatus;
 
 export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/pg-core").pgSchema>) {
   const users = schema.table("users", {
@@ -26,7 +84,7 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
     phoneVerified: boolean("phone_verified").notNull().default(false),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true, mode: "date" }),
     onboardingStep: integer("onboarding_step").notNull().default(0),
-    status: varchar("status", { length: 32 }).notNull().default("active"),
+    status: userStatus("status").notNull().default(DEFAULT_USER_STATUS),
     planKey: varchar("plan_key", { length: 50 })
       .$type<CreditPlanKey>()
       .notNull()
@@ -41,7 +99,9 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
-  });
+  }, (table) => [
+    check("users_status_check", sql`${table.status} >= 0 AND ${table.status} <= 2`),
+  ]);
 
   const companies = schema.table("companies", {
     id: uuid("id").defaultRandom().primaryKey(),

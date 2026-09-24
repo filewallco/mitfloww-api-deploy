@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { Response } from "express";
 import { and, desc, eq, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { sessions, users, type SessionRecord, type UserRecord } from "@/lib/db/schema";
+import { sessions, users, UserStatus, type SessionRecord, type UserRecord } from "@/lib/db/schema";
 import { AppError, UnauthorizedAppError } from "@/lib/errors/app-error";
 
 const SESSION_SECRET = process.env.SESSION_SECRET || "mitfloww_secure_session_secret_key_2026";
@@ -174,7 +174,7 @@ export class SessionService {
       .where(and(eq(users.id, existingSession.userId), isNull(users.deletedAt)))
       .limit(1);
 
-    if (!user || user.status === "deleted") {
+    if (!user || user.status === UserStatus.Deactivated || user.status === UserStatus.Suspended) {
       await this.revokeSession(existingSession.id);
       throw new UnauthorizedAppError("User account not found or deactivated.");
     }

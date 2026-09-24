@@ -5,6 +5,7 @@ import {
   authIdentities,
   companies,
   users,
+  UserStatus,
   type UserRecord,
 } from "@/lib/db/schema";
 import { AppError } from "@/lib/errors/app-error";
@@ -191,7 +192,7 @@ export class AuthService {
       throw new AppError("Invalid email or password.", 401, "invalid_credentials");
     }
 
-    if (user.status === "deleted") {
+    if (user.status === UserStatus.Deactivated || user.status === UserStatus.Suspended) {
       throw new AppError("Account has been deactivated.", 403, "account_deactivated");
     }
 
@@ -423,7 +424,7 @@ export class AuthService {
       }
     }
 
-    if (user.status === "deleted") {
+    if (user.status === UserStatus.Deactivated || user.status === UserStatus.Suspended) {
       throw new AppError("Account has been deactivated.", 403, "account_deactivated");
     }
 

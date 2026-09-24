@@ -2,6 +2,7 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
   check,
+  customType,
   index,
   integer,
   boolean,
@@ -17,18 +18,103 @@ import {
   CREDIT_LEDGER_SOURCES,
   CREDIT_LEDGER_TYPES,
   CREDIT_RESERVATION_STATUSES,
-  type CreditLedgerSource,
-  type CreditLedgerType,
+  CreditLedgerSource,
+  CreditLedgerSourceDb,
+  CreditLedgerType,
+  CreditLedgerTypeDb,
+  CreditReservationStatus,
+  CreditReservationStatusDb,
+  CreditScopeType,
+  CreditScopeTypeDb,
+  fromCreditLedgerSourceDbValue,
+  fromCreditLedgerTypeDbValue,
+  fromCreditReservationStatusDbValue,
+  fromCreditScopeTypeDbValue,
+  toCreditLedgerSourceDbValue,
+  toCreditLedgerTypeDbValue,
+  toCreditReservationStatusDbValue,
+  toCreditScopeTypeDbValue,
   type CreditPlanKey,
-  type CreditReservationStatus,
 } from "@/lib/credits";
 import type { CreditLedgerMetadata } from "@/lib/credits";
 import type { createFileTables } from "./files";
 import type { createProjectTables } from "./projects";
 
-function buildSqlStringList(values: readonly string[]) {
-  return sql.raw(values.map((value) => `'${value}'`).join(","));
-}
+const creditLedgerType = customType<{
+  data: CreditLedgerType;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toCreditLedgerTypeDbValue(value);
+  },
+  fromDriver(value) {
+    return fromCreditLedgerTypeDbValue(value);
+  },
+});
+
+const creditLedgerSource = customType<{
+  data: CreditLedgerSource;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toCreditLedgerSourceDbValue(value);
+  },
+  fromDriver(value) {
+    return fromCreditLedgerSourceDbValue(value);
+  },
+});
+
+const creditReservationStatus = customType<{
+  data: CreditReservationStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toCreditReservationStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromCreditReservationStatusDbValue(value);
+  },
+});
+
+const creditScopeType = customType<{
+  data: CreditScopeType;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toCreditScopeTypeDbValue(value);
+  },
+  fromDriver(value) {
+    return fromCreditScopeTypeDbValue(value);
+  },
+});
+
+const DEFAULT_CREDIT_SCOPE_TYPE = toCreditScopeTypeDbValue(
+  CreditScopeType.Personal,
+) as unknown as CreditScopeType;
+
+const DEFAULT_CREDIT_RESERVATION_STATUS = toCreditReservationStatusDbValue(
+  CreditReservationStatus.Active,
+) as unknown as CreditReservationStatus;
 
 export const createCreditTables = (
   fw: PgSchema,
@@ -42,7 +128,9 @@ export const createCreditTables = (
     "credit_accounts",
     {
       id: uuid("id").defaultRandom().primaryKey(),
-      scopeType: varchar("scope_type", { length: 32 }).notNull().default("personal"),
+      scopeType: creditScopeType("scope_type")
+        .notNull()
+        .default(DEFAULT_CREDIT_SCOPE_TYPE),
       scopeId: varchar("scope_id", { length: 255 }).notNull(),
       ownerId: varchar("owner_id", { length: 255 }).notNull(),
       planKey: varchar("plan_key", { length: 32 })
@@ -84,7 +172,7 @@ export const createCreditTables = (
       index("credit_accounts_plan_key_idx").on(table.planKey),
       check(
         "credit_accounts_scope_type_check",
-        sql`${table.scopeType} IN ('personal','workspace')`,
+        sql`${table.scopeType} >= 0 AND ${table.scopeType} <= 1`,
       ),
       check(
         "credit_accounts_plan_key_check",
@@ -132,16 +220,14 @@ export const createCreditTables = (
       accountId: uuid("account_id")
         .notNull()
         .references(() => creditAccounts.id, { onDelete: "cascade" }),
-      scopeType: varchar("scope_type", { length: 32 }).notNull().default("personal"),
+      scopeType: creditScopeType("scope_type")
+        .notNull()
+        .default(DEFAULT_CREDIT_SCOPE_TYPE),
       scopeId: varchar("scope_id", { length: 255 }).notNull(),
       ownerId: varchar("owner_id", { length: 255 }).notNull(),
       actorUserId: varchar("actor_user_id", { length: 255 }).notNull(),
-      type: varchar("type", { length: 40 })
-        .$type<CreditLedgerType>()
-        .notNull(),
-      source: varchar("source", { length: 40 })
-        .$type<CreditLedgerSource>()
-        .notNull(),
+      type: creditLedgerType("type").notNull(),
+      source: creditLedgerSource("source").notNull(),
       featureKey: varchar("feature_key", { length: 80 }),
       descriptionKey: varchar("description_key", { length: 160 }),
       credits: integer("credits").notNull(),
@@ -189,15 +275,15 @@ export const createCreditTables = (
       index("credit_ledger_entries_version_id_idx").on(table.versionId),
       check(
         "credit_ledger_entries_scope_type_check",
-        sql`${table.scopeType} IN ('personal','workspace')`,
+        sql`${table.scopeType} >= 0 AND ${table.scopeType} <= 1`,
       ),
       check(
         "credit_ledger_entries_type_check",
-        sql`${table.type} IN (${buildSqlStringList(CREDIT_LEDGER_TYPES)})`,
+        sql`${table.type} >= 0 AND ${table.type} <= 8`,
       ),
       check(
         "credit_ledger_entries_source_check",
-        sql`${table.source} IN (${buildSqlStringList(CREDIT_LEDGER_SOURCES)})`,
+        sql`${table.source} >= 0 AND ${table.source} <= 6`,
       ),
       check(
         "credit_ledger_entries_balance_after_check",
@@ -205,7 +291,7 @@ export const createCreditTables = (
       ),
       check(
         "credit_ledger_entries_credit_value_check",
-        sql`${table.credits} <> 0 OR ${table.type} = 'reservation_capture'`,
+        sql`(${table.credits} <> 0) OR (${table.type} = 8)`,
       ),
     ],
   );
@@ -217,15 +303,16 @@ export const createCreditTables = (
       accountId: uuid("account_id")
         .notNull()
         .references(() => creditAccounts.id, { onDelete: "cascade" }),
-      scopeType: varchar("scope_type", { length: 32 }).notNull().default("personal"),
+      scopeType: creditScopeType("scope_type")
+        .notNull()
+        .default(DEFAULT_CREDIT_SCOPE_TYPE),
       scopeId: varchar("scope_id", { length: 255 }).notNull(),
       ownerId: varchar("owner_id", { length: 255 }).notNull(),
       actorUserId: varchar("actor_user_id", { length: 255 }).notNull(),
       credits: integer("credits").notNull(),
-      status: varchar("status", { length: 32 })
-        .$type<CreditReservationStatus>()
+      status: creditReservationStatus("status")
         .notNull()
-        .default(CREDIT_RESERVATION_STATUSES[0]),
+        .default(DEFAULT_CREDIT_RESERVATION_STATUS),
       featureKey: varchar("feature_key", { length: 80 }).notNull(),
       idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
       projectId: uuid("project_id").references(() => tables.projects.id, {
@@ -266,11 +353,11 @@ export const createCreditTables = (
       ),
       check(
         "credit_reservations_scope_type_check",
-        sql`${table.scopeType} IN ('personal','workspace')`,
+        sql`${table.scopeType} >= 0 AND ${table.scopeType} <= 1`,
       ),
       check(
         "credit_reservations_status_check",
-        sql`${table.status} IN (${buildSqlStringList(CREDIT_RESERVATION_STATUSES)})`,
+        sql`${table.status} >= 0 AND ${table.status} <= 3`,
       ),
       check(
         "credit_reservations_credits_check",
