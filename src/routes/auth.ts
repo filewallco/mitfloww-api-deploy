@@ -195,6 +195,18 @@ authRouter.post(
 );
 
 /**
+ * Public Google OAuth Client ID for frontend initialization
+ */
+authRouter.get(
+  "/google/client-id",
+  asyncHandler(async (_req, res) => {
+    return res.json({
+      clientId: process.env.GOOGLE_CLIENT_ID || null,
+    });
+  }),
+);
+
+/**
  * Password Reset: Request OTP
  */
 authRouter.post(

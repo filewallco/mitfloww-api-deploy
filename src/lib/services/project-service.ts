@@ -144,7 +144,6 @@
     const configuredBaseUrl = (
       process.env.APP_URL ||
       process.env.WEB_URL ||
-      process.env.NEXT_PUBLIC_APP_URL ||
       process.env.PROCESSING_CALLBACK_BASE_URL
     )?.trim().replace(/\/+$/, "");
 

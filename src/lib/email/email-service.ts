@@ -81,7 +81,7 @@ export class EmailService {
           Your account has been set up successfully. You're ready to share deliverables, manage project revisions, and streamline creative workflows.
         </p>
         <div style="margin-bottom: 28px;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://mitfloww.com"}/projects" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Go to Dashboard</a>
+          <a href="${process.env.APP_URL || "https://mitfloww.com"}/projects" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Go to Dashboard</a>
         </div>
         <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
         <p style="font-size: 12px; color: #94a3b8; margin: 0;">

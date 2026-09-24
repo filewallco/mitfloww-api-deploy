@@ -63,7 +63,7 @@ export class LocalStorage implements FileStorage {
     const rawBasePath = env.LOCAL_STORAGE_PATH || "/storage";
     this.basePath = path.resolve(process.cwd(), rawBasePath);
     this.secret = env.PROJECT_SHARE_SIGNING_SECRET || "local-storage-secret";
-    this.baseUrl = env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    this.baseUrl = env.APP_URL || "http://localhost:3000";
   }
 
   private getFilePath(bucket: string, key: string): string {
