@@ -423,13 +423,11 @@ export class AuthService {
     }
 
     if (!user) {
-      const normalizedGoogleEmail = googleProfile.email.toLowerCase().trim();
-
       // Check if user exists by verified email
       const [existingByEmail] = await db
         .select()
         .from(users)
-        .where(eq(users.email, normalizedGoogleEmail))
+        .where(eq(users.email, googleProfile.email))
         .limit(1);
 
       if (existingByEmail) {
@@ -439,21 +437,21 @@ export class AuthService {
           userId: user.id,
           provider: "google",
           providerUserId: googleProfile.sub,
-          email: normalizedGoogleEmail,
+          email: googleProfile.email,
           emailVerified: googleProfile.emailVerified,
         });
       } else {
         // Create new user without requiring a password!
         const id = crypto.randomUUID();
         const username =
-          normalizedGoogleEmail.split("@")[0].replace(/[^a-zA-Z0-9_-]/g, "") || `user_${Date.now()}`;
+          googleProfile.email.split("@")[0].replace(/[^a-zA-Z0-9_-]/g, "") || `user_${Date.now()}`;
         const displayName = googleProfile.name || googleProfile.givenName || username;
 
         const [newUser] = await db
           .insert(users)
           .values({
             id,
-            email: normalizedGoogleEmail,
+            email: googleProfile.email,
             username,
             displayName,
             firstName: googleProfile.givenName || "",
