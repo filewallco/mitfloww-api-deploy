@@ -57,7 +57,7 @@ export const { notifications } = createNotificationTables(fw, {
   projects,
 });
 export const { healthChecks } = createHealthTables(fw);
-export const { users, companies } = createUserTables(fw);
+export const { users, companies, creatorWorkProfiles } = createUserTables(fw);
 export const { authIdentities, sessions, otpChallenges } = createAuthTables(fw, { users });
 export const { invoiceSettings } = createInvoiceTables(fw, { users });
 export const { clientMasters } = createClientTables(fw, { users });
@@ -128,6 +128,8 @@ export type {
   NewCompanyRecord,
   NewUserRecord,
   UserRecord,
+  CreatorWorkProfileRecord,
+  NewCreatorWorkProfileRecord,
 } from "./users";
 export type {
   TransactionRecord,

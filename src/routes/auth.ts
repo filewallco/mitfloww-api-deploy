@@ -89,13 +89,33 @@ authRouter.post(
       meta: getRequestMeta(req),
     });
 
-    sessionService.setCookies(res, result.refreshToken, result.user.id);
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
 
     return res.status(201).json({
       accessToken: result.accessToken,
       user: result.user,
       isNewUser: result.isNewUser,
     });
+  }),
+);
+
+/**
+ * Validate Signup OTP without consuming it
+ */
+authRouter.post(
+  "/signup/check-otp",
+  asyncHandler(async (req, res) => {
+    const parsed = verifySignupSchema.pick({ email: true, otp: true }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" });
+    }
+
+    const result = await authService.checkSignupOtp({
+      email: parsed.data.email,
+      otp: parsed.data.otp,
+    });
+
+    return res.json(result);
   }),
 );
 
@@ -116,7 +136,11 @@ authRouter.post(
       meta: getRequestMeta(req),
     });
 
-    sessionService.setCookies(res, result.refreshToken, result.user.id);
+    if (result.requiresReactivation) {
+      return res.json(result);
+    }
+
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
 
     return res.json({
       accessToken: result.accessToken,
@@ -158,7 +182,11 @@ authRouter.post(
       meta: getRequestMeta(req),
     });
 
-    sessionService.setCookies(res, result.refreshToken, result.user.id);
+    if (result.requiresReactivation) {
+      return res.json(result);
+    }
+
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
 
     return res.json({
       accessToken: result.accessToken,
@@ -184,12 +212,38 @@ authRouter.post(
       meta: getRequestMeta(req),
     });
 
-    sessionService.setCookies(res, result.refreshToken, result.user.id);
+    if (result.requiresReactivation) {
+      return res.json(result);
+    }
+
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
 
     return res.json({
       accessToken: result.accessToken,
       user: result.user,
       isNewUser: result.isNewUser,
+    });
+  }),
+);
+
+/**
+ * Reactivate Deactivated / Pending Deletion Account
+ */
+authRouter.post(
+  "/reactivate",
+  asyncHandler(async (req, res) => {
+    const parsed = z.object({ email: z.string().trim().email() }).safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Please enter a valid email address." });
+    }
+
+    const result = await authService.reactivateAccount(parsed.data.email, getRequestMeta(req));
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
+
+    return res.json({
+      accessToken: result.accessToken,
+      user: result.user,
+      message: "Account reactivated successfully.",
     });
   }),
 );
@@ -240,7 +294,7 @@ authRouter.post(
       meta: getRequestMeta(req),
     });
 
-    sessionService.setCookies(res, result.refreshToken, result.user.id);
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
 
     return res.json({
       accessToken: result.accessToken,

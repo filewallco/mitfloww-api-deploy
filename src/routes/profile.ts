@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { userService } from "@/lib/services/user-service";
+import { sessionService } from "@/lib/auth/session";
 import { asyncHandler } from "@/lib/api/route";
 import { AppError } from "@/lib/errors/app-error";
 import { Readable } from "node:stream";
@@ -85,6 +86,13 @@ const companyUpdateSchema = z.object({
   }
 });
 
+const workProfileUpdateSchema = z.object({
+  primaryProfession: z.string().trim().min(1, "Primary profession is required").max(100),
+  customProfession: z.string().trim().max(255).nullable().optional(),
+  yearsOfExperience: z.string().trim().min(1, "Years of experience is required").max(50),
+  companyAddress: z.string().trim().max(1000).nullable().optional(),
+});
+
 // Helper to extract file buffer from multipart/binary or JSON base64
 function extractUploadBuffer(req: any): { buffer: Buffer; filename: string; mimeType: string } {
   if (req.body && typeof req.body === "object" && typeof req.body.fileBase64 === "string") {
@@ -132,6 +140,23 @@ profileRouter.patch("/company", asyncHandler(async (req, res) => {
   return res.json({ company: updated });
 }));
 
+profileRouter.get("/work-profile", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const workProfile = await userService.getWorkProfile(actor.id);
+  return res.json({ workProfile });
+}));
+
+profileRouter.patch("/work-profile", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const parsed = workProfileUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid work profile input", details: parsed.error.issues });
+  }
+
+  const updated = await userService.updateWorkProfile(actor.id, parsed.data);
+  return res.json({ workProfile: updated });
+}));
+
 profileRouter.post("/avatar", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor(req);
   const file = extractUploadBuffer(req);
@@ -155,14 +180,17 @@ profileRouter.delete("/logo", asyncHandler(async (req, res) => {
 profileRouter.post("/deactivate", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor(req);
   await userService.deactivateAccount(actor.id);
+  await sessionService.revokeAllSessions(actor.id);
+  sessionService.clearCookies(res);
   return res.json({ success: true, message: "Account has been deactivated." });
 }));
 
 profileRouter.delete("/", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor(req);
   await userService.softDeleteAccount(actor.id);
-  res.clearCookie("mitfloww_user_id", { path: "/" });
-  return res.json({ success: true, message: "Account has been deleted." });
+  await sessionService.revokeAllSessions(actor.id);
+  sessionService.clearCookies(res);
+  return res.json({ success: true, message: "Account has been scheduled for deletion (30 days recovery period)." });
 }));
 
 profileRouter.get("/media", asyncHandler(async (req, res) => {

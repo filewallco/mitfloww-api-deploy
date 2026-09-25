@@ -16,10 +16,15 @@ import { verifyGoogleIdToken } from "@/lib/auth/google";
 import { emailService } from "@/lib/email/email-service";
 
 export type AuthResult = {
-  accessToken: string;
-  refreshToken: string;
-  user: UserRecord;
+  accessToken?: string;
+  refreshToken?: string;
+  user?: UserRecord;
   isNewUser?: boolean;
+  requiresReactivation?: boolean;
+  status?: "deactivated" | "scheduled_for_deletion";
+  deactivatedAt?: string;
+  email?: string;
+  name?: string;
 };
 
 export class AuthService {
@@ -54,6 +59,31 @@ export class AuthService {
       success: true,
       message: "Verification code sent to your email address.",
     };
+  }
+
+  /**
+   * Validate Signup OTP without consuming it
+   */
+  async checkSignupOtp(input: { email: string; otp: string }): Promise<{ isValid: boolean }> {
+    const normalizedEmail = input.email.toLowerCase().trim();
+    const verifyResult = await otpService.verifyOtp(
+      normalizedEmail,
+      "SIGNUP_VERIFICATION",
+      input.otp,
+      { consume: false },
+    );
+
+    if (!verifyResult.isValid) {
+      if (verifyResult.error === "EXPIRED") {
+        throw new AppError("The verification code has expired. Please request a new one.", 400, "otp_expired");
+      }
+      if (verifyResult.error === "MAX_ATTEMPTS_EXCEEDED") {
+        throw new AppError("Too many incorrect attempts. Please request a new code.", 429, "max_attempts_exceeded");
+      }
+      throw new AppError("Invalid verification code. Please check and try again.", 400, "invalid_otp");
+    }
+
+    return { isValid: true };
   }
 
   /**
@@ -180,25 +210,49 @@ export class AuthService {
     const [user] = await db
       .select()
       .from(users)
-      .where(
-        and(
-          or(eq(users.email, lookup), eq(users.username, lookup)),
-          isNull(users.deletedAt),
-        ),
-      )
+      .where(or(eq(users.email, lookup), eq(users.username, lookup)))
       .limit(1);
 
     if (!user || !user.passwordHash) {
       throw new AppError("Invalid email or password.", 401, "invalid_credentials");
     }
 
-    if (user.status === UserStatus.Deactivated || user.status === UserStatus.Suspended) {
-      throw new AppError("Account has been deactivated.", 403, "account_deactivated");
-    }
-
     const { isValid, needsRehash } = await verifyPassword(input.password, user.passwordHash);
     if (!isValid) {
       throw new AppError("Invalid email or password.", 401, "invalid_credentials");
+    }
+
+    // Check account status & 30-day recovery window
+    if (user.deletedAt) {
+      const daysElapsed = (Date.now() - user.deletedAt.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysElapsed > 30) {
+        throw new AppError(
+          "This account was permanently deleted more than 30 days ago and cannot be recovered.",
+          403,
+          "account_permanently_deleted",
+        );
+      }
+      return {
+        requiresReactivation: true,
+        status: "scheduled_for_deletion",
+        deactivatedAt: user.deletedAt.toISOString(),
+        email: user.email || undefined,
+        name: user.displayName || user.firstName || "Creator",
+      };
+    }
+
+    if (user.status === UserStatus.Deactivated) {
+      return {
+        requiresReactivation: true,
+        status: "deactivated",
+        deactivatedAt: (user.updatedAt || user.createdAt).toISOString(),
+        email: user.email || undefined,
+        name: user.displayName || user.firstName || "Creator",
+      };
+    }
+
+    if (user.status === UserStatus.Suspended) {
+      throw new AppError("Account has been suspended by administration.", 403, "account_suspended");
     }
 
     // Seamlessly rehash legacy passwords to Argon2id
@@ -237,6 +291,17 @@ export class AuthService {
       message: "If an account exists, a 6-digit code has been sent to your email.",
     };
 
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, normalizedEmail))
+      .limit(1);
+
+    if (!existingUser) {
+      // User doesn't exist, do not send email
+      return genericResponse;
+    }
+
     const { otp } = await otpService.createChallenge(normalizedEmail, "LOGIN");
     await emailService.sendLoginOtpEmail(normalizedEmail, otp);
 
@@ -264,52 +329,53 @@ export class AuthService {
       throw new AppError("Invalid login code. Please check and try again.", 400, "invalid_otp");
     }
 
-    let [user] = await db
+    const [user] = await db
       .select()
       .from(users)
-      .where(and(eq(users.email, normalizedEmail), isNull(users.deletedAt)))
+      .where(eq(users.email, normalizedEmail))
       .limit(1);
 
-    let isNewUser = false;
-
     if (!user) {
-      // Passwordless registration
-      const id = crypto.randomUUID();
-      const username = normalizedEmail.split("@")[0].replace(/[^a-zA-Z0-9_-]/g, "") || `user_${Date.now()}`;
-
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          id,
-          email: normalizedEmail,
-          username,
-          emailVerified: true,
-          status: "active",
-          planKey: "free",
-          onboardingStep: 0,
-          lastLoginAt: new Date(),
-        })
-        .returning();
-
-      user = newUser;
-      isNewUser = true;
-
-      await db.insert(companies).values({
-        userId: user.id,
-        name: "My Studio",
-        tagline: "Creative Operations",
-        industry: "Design & Creative",
-        yearFounded: new Date().getFullYear().toString(),
-        companySize: "1 Member",
-      });
-
-      await emailService.sendWelcomeEmail(user.email!, "");
-    } else {
-      await db
-        .update(users)
-        .set({ emailVerified: true, lastLoginAt: new Date() })
-        .where(eq(users.id, user.id));
+      throw new AppError("Account not found. Please sign up first.", 404, "user_not_found");
     }
+
+    // Check account status & 30-day recovery window
+    if (user.deletedAt) {
+      const daysElapsed = (Date.now() - user.deletedAt.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysElapsed > 30) {
+        throw new AppError(
+          "This account was permanently deleted more than 30 days ago and cannot be recovered.",
+          403,
+          "account_permanently_deleted",
+        );
+      }
+      return {
+        requiresReactivation: true,
+        status: "scheduled_for_deletion",
+        deactivatedAt: user.deletedAt.toISOString(),
+        email: user.email || undefined,
+        name: user.displayName || user.firstName || "Creator",
+      };
+    }
+
+    if (user.status === UserStatus.Deactivated) {
+      return {
+        requiresReactivation: true,
+        status: "deactivated",
+        deactivatedAt: (user.updatedAt || user.createdAt).toISOString(),
+        email: user.email || undefined,
+        name: user.displayName || user.firstName || "Creator",
+      };
+    }
+
+    if (user.status === UserStatus.Suspended) {
+      throw new AppError("Account has been suspended by administration.", 403, "account_suspended");
+    }
+
+    await db
+      .update(users)
+      .set({ emailVerified: true, lastLoginAt: new Date() })
+      .where(eq(users.id, user.id));
 
     const { accessToken, refreshToken } = await sessionService.createSession(user.id, input.meta);
 
@@ -317,7 +383,6 @@ export class AuthService {
       accessToken,
       refreshToken,
       user,
-      isNewUser,
     };
   }
 
@@ -350,7 +415,7 @@ export class AuthService {
       const [u] = await db
         .select()
         .from(users)
-        .where(and(eq(users.id, existingIdentity.userId), isNull(users.deletedAt)))
+        .where(eq(users.id, existingIdentity.userId))
         .limit(1);
       user = u;
     }
@@ -360,7 +425,7 @@ export class AuthService {
       const [existingByEmail] = await db
         .select()
         .from(users)
-        .where(and(eq(users.email, googleProfile.email), isNull(users.deletedAt)))
+        .where(eq(users.email, googleProfile.email))
         .limit(1);
 
       if (existingByEmail) {
@@ -424,8 +489,37 @@ export class AuthService {
       }
     }
 
-    if (user.status === UserStatus.Deactivated || user.status === UserStatus.Suspended) {
-      throw new AppError("Account has been deactivated.", 403, "account_deactivated");
+    // Check account status & 30-day recovery window
+    if (user.deletedAt) {
+      const daysElapsed = (Date.now() - user.deletedAt.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysElapsed > 30) {
+        throw new AppError(
+          "This account was permanently deleted more than 30 days ago and cannot be recovered.",
+          403,
+          "account_permanently_deleted",
+        );
+      }
+      return {
+        requiresReactivation: true,
+        status: "scheduled_for_deletion",
+        deactivatedAt: user.deletedAt.toISOString(),
+        email: user.email || undefined,
+        name: user.displayName || user.firstName || "Creator",
+      };
+    }
+
+    if (user.status === UserStatus.Deactivated) {
+      return {
+        requiresReactivation: true,
+        status: "deactivated",
+        deactivatedAt: (user.updatedAt || user.createdAt).toISOString(),
+        email: user.email || undefined,
+        name: user.displayName || user.firstName || "Creator",
+      };
+    }
+
+    if (user.status === UserStatus.Suspended) {
+      throw new AppError("Account has been suspended by administration.", 403, "account_suspended");
     }
 
     // Update last login
@@ -556,6 +650,64 @@ export class AuthService {
       throw new AppError("User not found.", 404, "user_not_found");
     }
     return updated;
+  }
+
+  /**
+   * Reactivate an account that is deactivated or scheduled for deletion within 30 days.
+   */
+  async reactivateAccount(
+    email: string,
+    meta?: { userAgent?: string; ipAddress?: string },
+  ): Promise<AuthResult> {
+    const normalizedEmail = email.toLowerCase().trim();
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, normalizedEmail))
+      .limit(1);
+
+    if (!user) {
+      throw new AppError("Account not found.", 404, "user_not_found");
+    }
+
+    if (user.deletedAt) {
+      const daysElapsed = (Date.now() - user.deletedAt.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysElapsed > 30) {
+        throw new AppError(
+          "This account was permanently deleted more than 30 days ago and cannot be recovered.",
+          403,
+          "account_permanently_deleted",
+        );
+      }
+    }
+
+    // Restore user
+    const [reactivated] = await db
+      .update(users)
+      .set({
+        status: "active",
+        deletedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id))
+      .returning();
+
+    // Restore company
+    await db
+      .update(companies)
+      .set({
+        deletedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(companies.userId, user.id));
+
+    const { accessToken, refreshToken } = await sessionService.createSession(reactivated.id, meta);
+
+    return {
+      accessToken,
+      refreshToken,
+      user: reactivated,
+    };
   }
 }
 

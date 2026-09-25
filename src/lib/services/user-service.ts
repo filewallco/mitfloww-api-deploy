@@ -5,6 +5,7 @@ import type { CreditPlanKey } from "@/lib/credits";
 import { db } from "@/lib/db/client";
 import {
   companies,
+  creatorWorkProfiles,
   files,
   fileVersions,
   projectClientReviews,
@@ -13,7 +14,7 @@ import {
   users,
   UserStatus,
 } from "@/lib/db/schema";
-import type { CompanyRecord, UserRecord } from "@/lib/db/schema";
+import type { CompanyRecord, CreatorWorkProfileRecord, UserRecord } from "@/lib/db/schema";
 import { ProjectPaymentStatus, toProjectPaymentStatusDbValue } from "@/lib/dto/projects";
 import { AppError } from "@/lib/errors/app-error";
 import { r2Storage } from "@/lib/storage/r2";
@@ -54,6 +55,7 @@ export type ProfileStats = {
 export type FullUserProfile = {
   user: UserRecord;
   company: CompanyRecord | null;
+  workProfile: CreatorWorkProfileRecord | null;
   stats: ProfileStats;
 };
 
@@ -171,9 +173,16 @@ export class UserService {
       isVerified: user.isVerified ?? true,
     };
 
+    const [workProfile] = await db
+      .select()
+      .from(creatorWorkProfiles)
+      .where(eq(creatorWorkProfiles.userId, userId))
+      .limit(1);
+
     return {
       user,
       company: company ?? null,
+      workProfile: workProfile ?? null,
       stats,
     };
   }
@@ -649,6 +658,58 @@ export class UserService {
       .returning();
 
     return updatedUser;
+  }
+
+  async getWorkProfile(userId: string): Promise<CreatorWorkProfileRecord | null> {
+    const [profile] = await db
+      .select()
+      .from(creatorWorkProfiles)
+      .where(eq(creatorWorkProfiles.userId, userId))
+      .limit(1);
+    return profile || null;
+  }
+
+  async updateWorkProfile(
+    userId: string,
+    input: {
+      primaryProfession: string;
+      customProfession?: string | null;
+      yearsOfExperience: string;
+      companyAddress?: string | null;
+    },
+  ): Promise<CreatorWorkProfileRecord> {
+    const [existing] = await db
+      .select()
+      .from(creatorWorkProfiles)
+      .where(eq(creatorWorkProfiles.userId, userId))
+      .limit(1);
+
+    if (existing) {
+      const [updated] = await db
+        .update(creatorWorkProfiles)
+        .set({
+          primaryProfession: input.primaryProfession,
+          customProfession: input.customProfession ?? null,
+          yearsOfExperience: input.yearsOfExperience,
+          companyAddress: input.companyAddress ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(creatorWorkProfiles.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(creatorWorkProfiles)
+      .values({
+        userId,
+        primaryProfession: input.primaryProfession,
+        customProfession: input.customProfession ?? null,
+        yearsOfExperience: input.yearsOfExperience,
+        companyAddress: input.companyAddress ?? null,
+      })
+      .returning();
+    return created;
   }
 }
 

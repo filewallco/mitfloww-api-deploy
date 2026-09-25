@@ -126,7 +126,25 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
       .defaultNow(),
   });
 
-  return { users, companies };
+  const creatorWorkProfiles = schema.table("creator_work_profiles", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: varchar("user_id", { length: 255 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" })
+      .unique(),
+    primaryProfession: varchar("primary_profession", { length: 100 }).notNull(),
+    customProfession: varchar("custom_profession", { length: 255 }),
+    yearsOfExperience: varchar("years_of_experience", { length: 50 }).notNull(),
+    companyAddress: text("company_address"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  });
+
+  return { users, companies, creatorWorkProfiles };
 }
 
 export type UserRecord = InferSelectModel<
@@ -143,4 +161,12 @@ export type CompanyRecord = InferSelectModel<
 
 export type NewCompanyRecord = InferInsertModel<
   ReturnType<typeof createUserTables>["companies"]
+>;
+
+export type CreatorWorkProfileRecord = InferSelectModel<
+  ReturnType<typeof createUserTables>["creatorWorkProfiles"]
+>;
+
+export type NewCreatorWorkProfileRecord = InferInsertModel<
+  ReturnType<typeof createUserTables>["creatorWorkProfiles"]
 >;

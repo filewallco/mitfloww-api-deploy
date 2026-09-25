@@ -75,6 +75,18 @@ export class OtpService {
     const otpHashed = this.hashOtp(otp);
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
+    // Invalidate any previous unconsumed challenges for this email and purpose so only the latest code works
+    await db
+      .update(otpChallenges)
+      .set({ consumedAt: new Date() })
+      .where(
+        and(
+          eq(otpChallenges.email, normalizedEmail),
+          eq(otpChallenges.purpose, purpose),
+          isNull(otpChallenges.consumedAt),
+        ),
+      );
+
     const [created] = await db
       .insert(otpChallenges)
       .values({
@@ -102,7 +114,9 @@ export class OtpService {
     email: string,
     purpose: OtpPurpose,
     candidateOtp: string,
+    options?: { consume?: boolean },
   ): Promise<VerifyOtpResult> {
+    const shouldConsume = options?.consume ?? true;
     const normalizedEmail = email.toLowerCase().trim();
     const cleanOtp = candidateOtp.trim();
 
@@ -159,11 +173,13 @@ export class OtpService {
       return { isValid: false, error: "INVALID" };
     }
 
-    // Mark consumed immediately
-    await db
-      .update(otpChallenges)
-      .set({ consumedAt: new Date() })
-      .where(eq(otpChallenges.id, challenge.id));
+    // Mark consumed if requested
+    if (shouldConsume) {
+      await db
+        .update(otpChallenges)
+        .set({ consumedAt: new Date() })
+        .where(eq(otpChallenges.id, challenge.id));
+    }
 
     return { isValid: true };
   }

@@ -1,6 +1,41 @@
 import type { EmailProvider, SendEmailOptions, SendEmailResult } from "./email-provider";
 import { ResendEmailProvider } from "./resend-provider";
 
+function getEmailBrandHeaderHtml(): string {
+  const logoUrl = process.env.APP_URL
+    ? `${process.env.APP_URL.replace(/\/$/, "")}/mitfloww-logo.png`
+    : "https://mitfloww.com/mitfloww-logo.png";
+  return `
+    <div style="margin-bottom: 24px; text-align: left;">
+      <table cellpadding="0" cellspacing="0" border="0" style="display: inline-table;">
+        <tr>
+          <td valign="middle" style="padding-right: 10px;">
+            <img src="${logoUrl}" alt="MitFloww" width="34" height="34" style="display: block; border-radius: 8px; border: 0;" />
+          </td>
+          <td valign="middle">
+            <span style="font-size: 22px; font-weight: 800; color: #005bdd; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">MitFloww</span>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+}
+
+function getEmailBrandFooterHtml(): string {
+  const logoUrl = process.env.APP_URL
+    ? `${process.env.APP_URL.replace(/\/$/, "")}/mitfloww-logo.png`
+    : "https://mitfloww.com/mitfloww-logo.png";
+  return `
+    <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
+    <div style="text-align: center; padding-top: 4px;">
+      <img src="${logoUrl}" alt="" width="22" height="22" style="opacity: 0.35; filter: grayscale(100%); display: inline-block; margin-bottom: 8px;" />
+      <p style="font-size: 11px; color: #94a3b8; margin: 0; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+        © ${new Date().getFullYear()} MitFloww. Professional Creative Operations.
+      </p>
+    </div>
+  `;
+}
+
 export class EmailService {
   private provider: EmailProvider;
 
@@ -17,16 +52,14 @@ export class EmailService {
   }
 
   async sendAsync(options: SendEmailOptions): Promise<void> {
-    Promise.resolve()
-      .then(() => this.provider.sendEmail(options))
-      .then((res) => {
-        if (!res.success) {
-          console.warn(`[EmailService] Failed sending to ${options.to}:`, res.error);
-        }
-      })
-      .catch((err) => {
-        console.error(`[EmailService] Unexpected error sending to ${options.to}:`, err);
-      });
+    try {
+      const res = await this.provider.sendEmail(options);
+      if (!res.success) {
+        console.warn(`[EmailService] Failed sending to ${options.to}:`, res.error);
+      }
+    } catch (err) {
+      console.error(`[EmailService] Unexpected error sending to ${options.to}:`, err);
+    }
   }
 
   async sendSignupOtpEmail(email: string, otp: string): Promise<void> {
@@ -73,9 +106,7 @@ export class EmailService {
     const subject = "Welcome to MitFloww!";
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
-        <div style="margin-bottom: 24px;">
-          <span style="font-size: 20px; font-weight: 700; color: #005bdd; letter-spacing: -0.5px;">MitFloww</span>
-        </div>
+        ${getEmailBrandHeaderHtml()}
         <h1 style="font-size: 22px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px;">Welcome to MitFloww${displayName}!</h1>
         <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px;">
           Your account has been set up successfully. You're ready to share deliverables, manage project revisions, and streamline creative workflows.
@@ -83,10 +114,7 @@ export class EmailService {
         <div style="margin-bottom: 28px;">
           <a href="${process.env.APP_URL || "https://mitfloww.com"}/projects" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Go to Dashboard</a>
         </div>
-        <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
-        <p style="font-size: 12px; color: #94a3b8; margin: 0;">
-          © ${new Date().getFullYear()} MitFloww. All rights reserved.
-        </p>
+        ${getEmailBrandFooterHtml()}
       </div>
     `;
     const text = `Welcome to MitFloww${displayName}! Your account is now active.`;
@@ -98,9 +126,7 @@ export class EmailService {
     const subject = `Security Alert: ${title}`;
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
-        <div style="margin-bottom: 24px;">
-          <span style="font-size: 20px; font-weight: 700; color: #005bdd; letter-spacing: -0.5px;">MitFloww</span>
-        </div>
+        ${getEmailBrandHeaderHtml()}
         <h1 style="font-size: 20px; font-weight: 700; color: #dc2626; margin-top: 0; margin-bottom: 12px;">${title}</h1>
         <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 16px;">
           ${details}
@@ -108,10 +134,7 @@ export class EmailService {
         <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin-bottom: 24px;">
           If this was not you, please log in immediately and change your password, or use the "Log out of all devices" option in your account settings.
         </p>
-        <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
-        <p style="font-size: 12px; color: #94a3b8; margin: 0;">
-          © ${new Date().getFullYear()} MitFloww. All rights reserved.
-        </p>
+        ${getEmailBrandFooterHtml()}
       </div>
     `;
     const text = `Security Alert: ${title}\n\n${details}`;
@@ -142,10 +165,7 @@ export class EmailService {
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
                   <tr>
                     <td>
-                      <!-- Brand Logo / Header -->
-                      <div style="margin-bottom: 24px; text-align: left;">
-                        <span style="font-size: 22px; font-weight: 800; color: #005bdd; letter-spacing: -0.5px;">MitFloww</span>
-                      </div>
+                      ${getEmailBrandHeaderHtml()}
 
                       <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
                         Payment Successful! Access Your Download
@@ -177,10 +197,7 @@ export class EmailService {
                         Bookmark this link or keep this email safe. You can access your files anytime using this link.
                       </p>
 
-                      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
-                      <p style="font-size: 11px; color: #94a3b8; margin: 0; text-align: center;">
-                        © ${new Date().getFullYear()} MitFloww. Professional Creative Operations.
-                      </p>
+                      ${getEmailBrandFooterHtml()}
                     </td>
                   </tr>
                 </table>
@@ -218,9 +235,7 @@ export class EmailService {
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
                   <tr>
                     <td>
-                      <div style="margin-bottom: 24px; text-align: left;">
-                        <span style="font-size: 22px; font-weight: 800; color: #005bdd; letter-spacing: -0.5px;">MitFloww</span>
-                      </div>
+                      ${getEmailBrandHeaderHtml()}
 
                       <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; line-height: 1.3;">
                         Payment Successful
@@ -250,10 +265,7 @@ export class EmailService {
                         Your official invoice PDF is attached to this email for your accounting records.
                       </p>
 
-                      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
-                      <p style="font-size: 11px; color: #94a3b8; margin: 0; text-align: center;">
-                        © ${new Date().getFullYear()} MitFloww. Professional Creative Operations.
-                      </p>
+                      ${getEmailBrandFooterHtml()}
                     </td>
                   </tr>
                 </table>
@@ -308,9 +320,7 @@ export class EmailService {
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
                   <tr>
                     <td>
-                      <div style="margin-bottom: 24px; text-align: left;">
-                        <span style="font-size: 22px; font-weight: 800; color: #005bdd; letter-spacing: -0.5px;">MitFloww</span>
-                      </div>
+                      ${getEmailBrandHeaderHtml()}
 
                       <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; line-height: 1.3;">
                         Payment Received!
@@ -342,10 +352,7 @@ export class EmailService {
                         </a>
                       </div>
 
-                      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
-                      <p style="font-size: 11px; color: #94a3b8; margin: 0; text-align: center;">
-                        © ${new Date().getFullYear()} MitFloww. Professional Creative Operations.
-                      </p>
+                      ${getEmailBrandFooterHtml()}
                     </td>
                   </tr>
                 </table>
@@ -380,10 +387,7 @@ export class EmailService {
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 480px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
                   <tr>
                     <td>
-                      <!-- Brand Logo / Header -->
-                      <div style="margin-bottom: 24px; text-align: left;">
-                        <span style="font-size: 22px; font-weight: 800; color: #005bdd; letter-spacing: -0.5px;">MitFloww</span>
-                      </div>
+                      ${getEmailBrandHeaderHtml()}
 
                       <!-- Heading -->
                       <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; line-height: 1.3;">
@@ -405,12 +409,7 @@ export class EmailService {
                         ${params.hint}
                       </p>
 
-                      <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
-
-                      <!-- Footer -->
-                      <p style="font-size: 11px; color: #cbd5e1; margin: 0; text-align: center;">
-                        © ${new Date().getFullYear()} MitFloww. Professional Creative Operations.
-                      </p>
+                      ${getEmailBrandFooterHtml()}
                     </td>
                   </tr>
                 </table>
