@@ -4,6 +4,8 @@ import { db } from "@/lib/db/client";
 import {
   authIdentities,
   companies,
+  projects,
+  testimonials,
   users,
   UserStatus,
   type UserRecord,
@@ -701,7 +703,32 @@ export class AuthService {
       })
       .where(eq(companies.userId, user.id));
 
+    // Restore projects
+    await db
+      .update(projects)
+      .set({
+        deletedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(projects.userId, user.id));
+
+    // Restore testimonials
+    await db
+      .update(testimonials)
+      .set({
+        deletedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(testimonials.userId, user.id));
+
     const { accessToken, refreshToken } = await sessionService.createSession(reactivated.id, meta);
+
+    if (reactivated.email) {
+      await emailService.sendAccountReactivatedEmail({
+        email: reactivated.email,
+        name: reactivated.displayName || reactivated.firstName || "Creator",
+      });
+    }
 
     return {
       accessToken,

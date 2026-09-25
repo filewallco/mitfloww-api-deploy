@@ -3,6 +3,7 @@ import { z } from "zod";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { userService } from "@/lib/services/user-service";
 import { sessionService } from "@/lib/auth/session";
+import { emailService } from "@/lib/email/email-service";
 import { asyncHandler } from "@/lib/api/route";
 import { AppError } from "@/lib/errors/app-error";
 import { Readable } from "node:stream";
@@ -180,6 +181,14 @@ profileRouter.delete("/logo", asyncHandler(async (req, res) => {
 profileRouter.post("/deactivate", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor(req);
   await userService.deactivateAccount(actor.id);
+
+  if (actor.email) {
+    await emailService.sendAccountDeactivatedEmail({
+      email: actor.email,
+      name: actor.name || "Creator",
+    });
+  }
+
   await sessionService.revokeAllSessions(actor.id);
   sessionService.clearCookies(res);
   return res.json({ success: true, message: "Account has been deactivated." });
@@ -188,6 +197,16 @@ profileRouter.post("/deactivate", asyncHandler(async (req, res) => {
 profileRouter.delete("/", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor(req);
   await userService.softDeleteAccount(actor.id);
+
+  const deletionDeadline = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  if (actor.email) {
+    await emailService.sendAccountScheduledForDeletionEmail({
+      email: actor.email,
+      name: actor.name || "Creator",
+      deletionDeadline,
+    });
+  }
+
   await sessionService.revokeAllSessions(actor.id);
   sessionService.clearCookies(res);
   return res.json({ success: true, message: "Account has been scheduled for deletion (30 days recovery period)." });
