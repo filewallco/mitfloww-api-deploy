@@ -19,6 +19,7 @@ import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
 import { AppError, NotFoundAppError, ValidationAppError } from "@/lib/errors/app-error";
 import { r2Storage } from "@/lib/storage/r2";
 import { createStoredZip } from "@/lib/utils/zip";
+import { emailService } from "@/lib/email/email-service";
 
 async function readBodyToBytes(body: any): Promise<Uint8Array> {
   if (body == null) return new Uint8Array();
@@ -890,6 +891,38 @@ export class AssetService {
         )
       )
       .orderBy(asc(assetFiles.name));
+
+    // Send delivery email to buyer with the share link
+    try {
+      const [creator] = await db
+        .select({
+          firstName: users.firstName,
+          lastName: users.lastName,
+          displayName: users.displayName,
+          email: users.email,
+        })
+        .from(users)
+        .where(eq(users.id, asset.userId))
+        .limit(1);
+
+      const creatorName =
+        creator?.displayName ||
+        [creator?.firstName, creator?.lastName].filter(Boolean).join(" ") ||
+        "MitFloww Creator";
+      const appUrl = (process.env.APP_URL || "https://mitfloww.com").replace(/\/+$/, "");
+      const downloadUrl = `${appUrl}/s/asset/${shareToken}?email=${encodeURIComponent(normalizedEmail)}`;
+      const formattedAmount = `${(asset.currency || "USD").toUpperCase()} ${(asset.amountCents / 100).toFixed(2)}`;
+
+      await emailService.sendAssetPurchaseDeliveryEmail({
+        buyerEmail: normalizedEmail,
+        assetTitle: asset.title,
+        amountFormatted: formattedAmount,
+        downloadUrl,
+        creatorName,
+      });
+    } catch (emailErr) {
+      console.error("[AssetService] Failed to send asset delivery email:", emailErr);
+    }
 
     return {
       success: true,
