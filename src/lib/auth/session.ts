@@ -227,6 +227,24 @@ export class SessionService {
   }
 
   /**
+   * Resolves a user ID from a raw refresh token, if valid and unrevoked.
+   */
+  async getUserIdByRefreshToken(rawRefreshToken: string): Promise<string | null> {
+    if (!rawRefreshToken || typeof rawRefreshToken !== "string") return null;
+    const tokenHash = hashRefreshToken(rawRefreshToken.trim());
+    const [session] = await db
+      .select({ userId: sessions.userId, expiresAt: sessions.expiresAt, revokedAt: sessions.revokedAt })
+      .from(sessions)
+      .where(and(eq(sessions.refreshTokenHash, tokenHash), isNull(sessions.revokedAt)))
+      .limit(1);
+
+    if (!session || session.revokedAt || new Date() > session.expiresAt) {
+      return null;
+    }
+    return session.userId;
+  }
+
+  /**
    * Revokes all active sessions for a user (e.g. "Logout of all devices").
    */
   async revokeAllSessions(userId: string): Promise<void> {

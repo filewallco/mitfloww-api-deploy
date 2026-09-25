@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { CreditPlanKey } from "@/lib/credits";
 import { UnauthorizedAppError } from "@/lib/errors/app-error";
 import { userService } from "@/lib/services/user-service";
-import { verifySessionToken } from "./session";
+import { sessionService, verifySessionToken } from "./session";
 
 export const actorStorage = new AsyncLocalStorage<{ userId: string }>();
 
@@ -17,7 +17,7 @@ export type ActiveActor = {
 
 /**
  * Returns the current active actor for server-side operations.
- * Resolves strictly from server-controlled session cookie or actorStorage.
+ * Resolves strictly from server-controlled session cookie, refresh cookie, or actorStorage.
  * Does not trust arbitrary client headers.
  */
 export async function resolveActiveActor(req?: {
@@ -26,6 +26,13 @@ export async function resolveActiveActor(req?: {
   let id: string | null = null;
   if (req?.cookies?.mitfloww_session) {
     id = verifySessionToken(req.cookies.mitfloww_session);
+  }
+  if (!id && req?.cookies?.mitfloww_refresh) {
+    try {
+      id = await sessionService.getUserIdByRefreshToken(req.cookies.mitfloww_refresh);
+    } catch {
+      // Fallback
+    }
   }
   if (!id) {
     id = actorStorage.getStore()?.userId || null;

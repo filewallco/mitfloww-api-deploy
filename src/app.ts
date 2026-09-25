@@ -10,7 +10,7 @@ import { usersRouter } from "@/routes/users";
 import { profileRouter } from "@/routes/profile";
 import { authRouter } from "@/routes/auth";
 import { actorStorage } from "@/lib/auth/active-actor";
-import { verifyAccessToken, verifySessionToken } from "@/lib/auth/session";
+import { sessionService, verifyAccessToken, verifySessionToken } from "@/lib/auth/session";
 import { plansRouter } from "@/routes/plans";
 import { creditsRouter } from "@/routes/credits";
 import { storageRouter } from "@/routes/storage";
@@ -48,7 +48,7 @@ app.use(
 app.use(cookieParser());
 
 // Session authentication context middleware
-app.use((req, _res, next) => {
+app.use(async (req, _res, next) => {
   let userId: string | undefined = undefined;
 
   // 1. Authorization: Bearer <accessToken>
@@ -61,13 +61,28 @@ app.use((req, _res, next) => {
     }
   }
 
-  // 2. Fallback to cookie
+  // 2. Fallback to session cookie
   if (!userId) {
     const sessionCookie = req.cookies?.mitfloww_session;
     if (sessionCookie) {
       const verified = verifySessionToken(sessionCookie);
       if (verified) {
         userId = verified;
+      }
+    }
+  }
+
+  // 3. Fallback to refresh token cookie
+  if (!userId) {
+    const refreshCookie = req.cookies?.mitfloww_refresh;
+    if (refreshCookie) {
+      try {
+        const resolvedId = await sessionService.getUserIdByRefreshToken(refreshCookie);
+        if (resolvedId) {
+          userId = resolvedId;
+        }
+      } catch {
+        // Fallback silently
       }
     }
   }
