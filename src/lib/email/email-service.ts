@@ -1,40 +1,12 @@
 import type { EmailProvider, SendEmailOptions, SendEmailResult } from "./email-provider";
 import { ResendEmailProvider } from "./resend-provider";
+import {
+  getEmailBrandHeaderHtml,
+  getEmailBrandFooterHtml,
+  getEmailLogoAttachment,
+} from "./email-logo";
 
-function getEmailBrandHeaderHtml(): string {
-  const logoUrl = process.env.APP_URL
-    ? `${process.env.APP_URL.replace(/\/$/, "")}/mitfloww-logo.png`
-    : "https://mitfloww.com/mitfloww-logo.png";
-  return `
-    <div style="margin-bottom: 24px; text-align: left;">
-      <table cellpadding="0" cellspacing="0" border="0" style="display: inline-table;">
-        <tr>
-          <td valign="middle" style="padding-right: 10px;">
-            <img src="${logoUrl}" alt="MitFloww" width="34" height="34" style="display: block; border-radius: 8px; border: 0;" />
-          </td>
-          <td valign="middle">
-            <span style="font-size: 22px; font-weight: 800; color: #005bdd; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">MitFloww</span>
-          </td>
-        </tr>
-      </table>
-    </div>
-  `;
-}
-
-function getEmailBrandFooterHtml(): string {
-  const logoUrl = process.env.APP_URL
-    ? `${process.env.APP_URL.replace(/\/$/, "")}/mitfloww-logo.png`
-    : "https://mitfloww.com/mitfloww-logo.png";
-  return `
-    <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 24px 0;" />
-    <div style="text-align: center; padding-top: 4px;">
-      <img src="${logoUrl}" alt="" width="22" height="22" style="opacity: 0.35; filter: grayscale(100%); display: inline-block; margin-bottom: 8px;" />
-      <p style="font-size: 11px; color: #94a3b8; margin: 0; text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-        © ${new Date().getFullYear()} MitFloww. Professional Creative Operations.
-      </p>
-    </div>
-  `;
-}
+export { getEmailBrandHeaderHtml, getEmailBrandFooterHtml };
 
 export class EmailService {
   private provider: EmailProvider;
@@ -53,7 +25,22 @@ export class EmailService {
 
   async sendAsync(options: SendEmailOptions): Promise<void> {
     try {
-      const res = await this.provider.sendEmail(options);
+      const attachments = [...(options.attachments || [])];
+
+      // Automatically attach dark-mode safe MitFloww logo if referenced as CID
+      if (
+        options.html.includes("cid:mitfloww-logo") &&
+        !attachments.some(
+          (a) => (a as any).contentId === "mitfloww-logo" || (a as any).content_id === "mitfloww-logo",
+        )
+      ) {
+        attachments.push(getEmailLogoAttachment());
+      }
+
+      const res = await this.provider.sendEmail({
+        ...options,
+        attachments,
+      });
       if (!res.success) {
         console.warn(`[EmailService] Failed sending to ${options.to}:`, res.error);
       }

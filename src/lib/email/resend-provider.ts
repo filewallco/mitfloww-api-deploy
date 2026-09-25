@@ -36,6 +36,14 @@ export class ResendEmailProvider implements EmailProvider {
       };
     }
 
+    const attachments = options.attachments?.map((att) => ({
+      filename: att.filename,
+      content: Buffer.isBuffer(att.content) ? att.content.toString("base64") : att.content,
+      content_id: att.content_id || att.contentId,
+      contentId: att.contentId || att.content_id,
+      contentType: att.contentType,
+    }));
+
     try {
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -51,6 +59,7 @@ export class ResendEmailProvider implements EmailProvider {
           text: options.text,
           reply_to: options.replyTo,
           tags: options.tags,
+          ...(attachments && attachments.length > 0 ? { attachments } : {}),
         }),
       });
 

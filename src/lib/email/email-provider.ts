@@ -2,6 +2,8 @@ export type EmailAttachment = {
   filename: string;
   content: string | Buffer;
   contentType?: string;
+  contentId?: string;
+  content_id?: string;
 };
 
 export type SendEmailOptions = {
