@@ -113,7 +113,12 @@ authRouter.post(
     const result = await authService.checkSignupOtp({
       email: parsed.data.email,
       otp: parsed.data.otp,
+      meta: getRequestMeta(req),
     });
+
+    if (result.refreshToken && result.user) {
+      sessionService.setCookies(res, result.refreshToken, result.user.id);
+    }
 
     return res.json(result);
   }),

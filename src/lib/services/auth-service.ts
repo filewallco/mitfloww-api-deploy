@@ -64,9 +64,24 @@ export class AuthService {
   }
 
   /**
-   * Validate Signup OTP without consuming it
+   * Validate Signup OTP. If user already exists, consume OTP and authenticate immediately.
    */
-  async checkSignupOtp(input: { email: string; otp: string }): Promise<{ isValid: boolean }> {
+  async checkSignupOtp(input: {
+    email: string;
+    otp: string;
+    meta?: { userAgent?: string; ipAddress?: string };
+  }): Promise<{
+    isValid: boolean;
+    isExistingUser?: boolean;
+    accessToken?: string;
+    refreshToken?: string;
+    user?: UserRecord;
+    requiresReactivation?: boolean;
+    status?: "deactivated" | "scheduled_for_deletion";
+    deactivatedAt?: string;
+    email?: string;
+    name?: string;
+  }> {
     const normalizedEmail = input.email.toLowerCase().trim();
     const verifyResult = await otpService.verifyOtp(
       normalizedEmail,
@@ -85,7 +100,70 @@ export class AuthService {
       throw new AppError("Invalid verification code. Please check and try again.", 400, "invalid_otp");
     }
 
-    return { isValid: true };
+    // Check if user already exists
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, normalizedEmail))
+      .limit(1);
+
+    if (existingUser) {
+      // Consume the OTP code now
+      await otpService.verifyOtp(normalizedEmail, "SIGNUP_VERIFICATION", input.otp, { consume: true });
+
+      // Check account status & 30-day recovery window
+      if (existingUser.deletedAt) {
+        const daysElapsed = (Date.now() - existingUser.deletedAt.getTime()) / (1000 * 60 * 60 * 24);
+        if (daysElapsed > 30) {
+          throw new AppError(
+            "This account was permanently deleted more than 30 days ago and cannot be recovered.",
+            403,
+            "account_permanently_deleted",
+          );
+        }
+        return {
+          isValid: true,
+          requiresReactivation: true,
+          status: "scheduled_for_deletion",
+          deactivatedAt: existingUser.deletedAt.toISOString(),
+          email: existingUser.email || undefined,
+          name: existingUser.displayName || existingUser.firstName || "Creator",
+        };
+      }
+
+      if (existingUser.status === UserStatus.Deactivated) {
+        return {
+          isValid: true,
+          requiresReactivation: true,
+          status: "deactivated",
+          deactivatedAt: (existingUser.updatedAt || existingUser.createdAt).toISOString(),
+          email: existingUser.email || undefined,
+          name: existingUser.displayName || existingUser.firstName || "Creator",
+        };
+      }
+
+      if (existingUser.status === UserStatus.Suspended) {
+        throw new AppError("Account has been suspended by administration.", 403, "account_suspended");
+      }
+
+      // Update last login
+      await db
+        .update(users)
+        .set({ lastLoginAt: new Date() })
+        .where(eq(users.id, existingUser.id));
+
+      const { accessToken, refreshToken } = await sessionService.createSession(existingUser.id, input.meta);
+
+      return {
+        isValid: true,
+        isExistingUser: true,
+        accessToken,
+        refreshToken,
+        user: existingUser,
+      };
+    }
+
+    return { isValid: true, isExistingUser: false };
   }
 
   /**
