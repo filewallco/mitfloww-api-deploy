@@ -29,6 +29,8 @@ import {
   fileRevisionNoteMutationQuerySchema,
   fileRevisionNoteReportBodySchema,
 } from "@/lib/validation/file-revision-notes";
+import { Readable } from "node:stream";
+import { r2Storage } from "@/lib/storage/r2";
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
 
 export const shareLinksRouter = Router();
@@ -242,6 +244,25 @@ shareLinksRouter.get("/:token/files/:fileId/download", asyncHandler(async (req, 
     projectId: project.id,
   });
 
+  // Fast path: Redirect directly to Cloudflare R2 presigned download URL
+  // Eliminates 100% server RAM and network bandwidth usage for large video files
+  if (result.storageKey) {
+    try {
+      const presigned = await r2Storage.getPresignedGetObjectUrl({
+        bucket: result.storageBucket,
+        key: result.storageKey,
+        filename: result.filename,
+        disposition: "attachment",
+        expiresInSeconds: 900,
+      });
+      if (presigned?.url) {
+        return res.redirect(302, presigned.url);
+      }
+    } catch {
+      // Fall back to direct stream if presigning unavailable
+    }
+  }
+
   res.setHeader("Content-Disposition", `attachment; filename="${result.filename.replace(/"/g, "")}"`);
   res.setHeader("Content-Type", result.contentType);
   if (result.contentLength != null) {
@@ -251,7 +272,15 @@ shareLinksRouter.get("/:token/files/:fileId/download", asyncHandler(async (req, 
     res.setHeader("ETag", result.etag);
   }
 
-  return res.send(Buffer.from(result.body as any));
+  if (result.body instanceof Readable) {
+    return result.body.pipe(res);
+  } else if (result.body && typeof (result.body as any).getReader === "function") {
+    return Readable.fromWeb(result.body as any).pipe(res);
+  } else if (Buffer.isBuffer(result.body) || result.body instanceof Uint8Array) {
+    return res.send(Buffer.from(result.body));
+  } else {
+    return res.send(result.body);
+  }
 }));
 
 shareLinksRouter.delete("/:token/files/:fileId/approval", asyncHandler(async (req, res) => {

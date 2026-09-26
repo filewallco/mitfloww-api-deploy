@@ -998,74 +998,79 @@
       // Pre-check: assert no file is currently uploading or processing in worker
       await fileService.assertNoActiveProcessingInProject(existing.id);
 
-      const processedFileIds = new Set<string>();
-
-      // Delete active files and their R2 storage objects
-      while (true) {
-        const batch = await this.fileRepository.findMany({
-          includeTotal: false,
-          limit: 100,
-          page: 1,
-          offset: 0,
-          order: "asc",
-          projectId: existing.id,
-          sort: "createdAt",
-        });
-
-        if (batch.records.length === 0) {
-          break;
-        }
-
-        for (const file of batch.records) {
-          processedFileIds.add(file.id);
-          await fileService.deleteFile(file.id, {
-            allowApproved: true,
-            awaitStorageDelete: true,
-          });
-        }
-      }
-
-      // Also clean up any leftover R2 storage objects for previously soft-deleted files of this project
-      const allProjectFiles = await this.fileRepository.findMany({
-        includeDeleted: true,
-        includeTotal: false,
-        limit: 500,
-        page: 1,
-        offset: 0,
-        order: "asc",
-        projectId: existing.id,
-        sort: "createdAt",
-      });
-
-      for (const file of allProjectFiles.records) {
-        if (!processedFileIds.has(file.id)) {
-          try {
-            const fileWithVersions =
-              await this.fileRepository.findWithVersionsById(file.id, {
-                includeDeleted: true,
-                includeDeletedVersions: true,
-              });
-            if (fileWithVersions) {
-              await fileService.deleteFileStorageObjects(fileWithVersions);
-            }
-          } catch (error) {
-            console.warn(
-              "[project-service] Cleanup of previously deleted file storage failed (continuing)",
-              {
-                fileId: file.id,
-                error,
-              },
-            );
-          }
-        }
-      }
-
+      // Soft-delete the project in database immediately for fast <50ms response
       const deletedAt = new Date();
       const record = await this.repository.softDelete(existing.id, deletedAt);
 
       if (!record) {
         throw new NotFoundAppError("Project not found.");
       }
+
+      // Soft-delete active files and dispatch background storage cleanup
+      void (async () => {
+        try {
+          const processedFileIds = new Set<string>();
+
+          while (true) {
+            const batch = await this.fileRepository.findMany({
+              includeTotal: false,
+              limit: 100,
+              page: 1,
+              offset: 0,
+              order: "asc",
+              projectId: existing.id,
+              sort: "createdAt",
+            });
+
+            if (batch.records.length === 0) {
+              break;
+            }
+
+            for (const file of batch.records) {
+              processedFileIds.add(file.id);
+              await fileService.deleteFile(file.id, {
+                allowApproved: true,
+                awaitStorageDelete: false,
+              }).catch((err) => {
+                console.warn("[project-service] Background file deletion failed for file:", file.id, err);
+              });
+            }
+          }
+
+          // Also clean up any leftover R2 storage objects for previously soft-deleted files of this project
+          const allProjectFiles = await this.fileRepository.findMany({
+            includeDeleted: true,
+            includeTotal: false,
+            limit: 500,
+            page: 1,
+            offset: 0,
+            order: "asc",
+            projectId: existing.id,
+            sort: "createdAt",
+          });
+
+          for (const file of allProjectFiles.records) {
+            if (!processedFileIds.has(file.id)) {
+              try {
+                const fileWithVersions = await this.fileRepository.findWithVersionsById(file.id, {
+                  includeDeleted: true,
+                  includeDeletedVersions: true,
+                });
+                if (fileWithVersions) {
+                  await fileService.deleteFileStorageObjects(fileWithVersions).catch(() => {});
+                }
+              } catch (error) {
+                console.warn(
+                  "[project-service] Cleanup of previously deleted file storage failed (continuing)",
+                  { fileId: file.id, error },
+                );
+              }
+            }
+          }
+        } catch (bgError) {
+          console.error("[project-service] Error during background project file cleanup:", bgError);
+        }
+      })();
 
       return {
         deletedAt: deletedAt.toISOString(),

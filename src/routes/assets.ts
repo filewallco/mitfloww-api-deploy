@@ -9,6 +9,7 @@ import {
   assetPurchaseSchema,
   uploadAssetFilesSchema,
 } from "@/lib/validation/assets";
+import { Readable } from "node:stream";
 import { r2Storage } from "@/lib/storage/r2";
 import { AppError } from "@/lib/errors/app-error";
 
@@ -315,6 +316,24 @@ assetsRouter.get(
 
     const file = await assetService.getPublicAssetDownloadFile(token, fileId, email);
 
+    // Fast path: Redirect directly to Cloudflare R2 presigned download URL
+    // Saves 100% server RAM and network bandwidth
+    if (file.storageKey) {
+      try {
+        const presigned = await r2Storage.getPresignedGetObjectUrl({
+          key: file.storageKey,
+          filename: file.filename,
+          disposition: "attachment",
+          expiresInSeconds: 900,
+        });
+        if (presigned?.url) {
+          return res.redirect(302, presigned.url);
+        }
+      } catch {
+        // Fall back to direct stream if presigning not available
+      }
+    }
+
     res.setHeader("Content-Disposition", `attachment; filename="${file.filename.replace(/"/g, "")}"`);
     res.setHeader("Content-Type", file.mimeType);
     if (file.contentLength != null) {
@@ -323,6 +342,8 @@ assetsRouter.get(
 
     if (typeof (file.body as any)?.pipe === "function") {
       return (file.body as any).pipe(res);
+    } else if (file.body && typeof (file.body as any).getReader === "function") {
+      return Readable.fromWeb(file.body as any).pipe(res);
     } else if (Buffer.isBuffer(file.body) || file.body instanceof Uint8Array) {
       return res.send(Buffer.from(file.body));
     } else {

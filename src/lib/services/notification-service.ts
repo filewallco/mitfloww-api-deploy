@@ -193,6 +193,29 @@ function toNotificationDTO(
   };
 }
 
+// High-performance in-memory cache for notifications and unread counts
+type CachedNotificationResponse = {
+  data: PaginatedResult<NotificationDTO> & { unreadCount: number | null };
+  expiresAt: number;
+};
+
+const notificationListCache = new Map<string, CachedNotificationResponse>();
+const entityNameCache = new Map<string, { name: string; expiresAt: number }>();
+const NOTIFICATION_CACHE_TTL_MS = 10_000; // 10 seconds TTL for fast polling
+const ENTITY_CACHE_TTL_MS = 300_000; // 5 minutes TTL for file/project names
+
+function invalidateNotificationCache(userId?: string) {
+  if (!userId) {
+    notificationListCache.clear();
+    return;
+  }
+  for (const key of notificationListCache.keys()) {
+    if (key.startsWith(`${userId}:`)) {
+      notificationListCache.delete(key);
+    }
+  }
+}
+
 export class NotificationService {
   constructor(
     private readonly repository: NotificationRepository,
@@ -204,6 +227,7 @@ export class NotificationService {
     input: CreateNotificationRecordInput,
   ): Promise<NotificationDTO | null> {
     const record = await this.repository.create(input);
+    invalidateNotificationCache();
     return record
       ? this.resolveNotificationDTO(record, defaultLocale)
       : null;
@@ -218,6 +242,12 @@ export class NotificationService {
       unreadCount: number | null;
     }
   > {
+    const cacheKey = `${userId ?? "all"}:${viewerLocale}:${params.page ?? 1}:${params.limit ?? 10}:${params.unreadOnly ?? false}:${params.includeTotal ?? true}`;
+    const cached = notificationListCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
     const pagination = buildPaginationParams({
       limit: params.limit,
       page: params.page,
@@ -237,7 +267,7 @@ export class NotificationService {
       viewerLocale,
     );
 
-    return {
+    const responseData = {
       items,
       pagination:
         result.total == null
@@ -249,10 +279,18 @@ export class NotificationService {
             }),
       unreadCount,
     };
+
+    notificationListCache.set(cacheKey, {
+      data: responseData,
+      expiresAt: Date.now() + NOTIFICATION_CACHE_TTL_MS,
+    });
+
+    return responseData;
   }
 
   async markAllNotificationsRead(userId?: string): Promise<MarkAllNotificationsReadResultDTO> {
     const markedCount = await this.repository.markAllRead(new Date(), userId);
+    invalidateNotificationCache(userId);
 
     return {
       markedCount,
@@ -269,6 +307,8 @@ export class NotificationService {
     if (!record) {
       throw new NotFoundAppError("Notification not found.");
     }
+
+    invalidateNotificationCache(userId);
 
     return this.resolveNotificationDTO(record, viewerLocale);
   }
@@ -316,25 +356,55 @@ export class NotificationService {
     const projectIds = Array.from(
       new Set(records.map((record) => record.projectId).filter(Boolean)),
     ) as string[];
-    const [files, projects] = await Promise.all([
-      Promise.all(fileIds.map((id) => this.fileRepository.findById(id))),
-      Promise.all(projectIds.map((id) => this.projectRepository.findById(id))),
-    ]);
+
+    const fileNamesById = new Map<string, string>();
+    const projectTitlesById = new Map<string, string>();
+    const missingFileIds: string[] = [];
+    const missingProjectIds: string[] = [];
+
+    const now = Date.now();
+    for (const id of fileIds) {
+      const cached = entityNameCache.get(`file:${id}`);
+      if (cached && cached.expiresAt > now) {
+        fileNamesById.set(id, cached.name);
+      } else {
+        missingFileIds.push(id);
+      }
+    }
+
+    for (const id of projectIds) {
+      const cached = entityNameCache.get(`project:${id}`);
+      if (cached && cached.expiresAt > now) {
+        projectTitlesById.set(id, cached.name);
+      } else {
+        missingProjectIds.push(id);
+      }
+    }
+
+    if (missingFileIds.length > 0 || missingProjectIds.length > 0) {
+      const [fetchedFiles, fetchedProjects] = await Promise.all([
+        Promise.all(missingFileIds.map((id) => this.fileRepository.findById(id))),
+        Promise.all(missingProjectIds.map((id) => this.projectRepository.findById(id))),
+      ]);
+
+      for (const file of fetchedFiles) {
+        if (file) {
+          fileNamesById.set(file.id, file.name);
+          entityNameCache.set(`file:${file.id}`, { name: file.name, expiresAt: now + ENTITY_CACHE_TTL_MS });
+        }
+      }
+
+      for (const project of fetchedProjects) {
+        if (project) {
+          projectTitlesById.set(project.id, project.title);
+          entityNameCache.set(`project:${project.id}`, { name: project.title, expiresAt: now + ENTITY_CACHE_TTL_MS });
+        }
+      }
+    }
 
     return {
-      fileNamesById: new Map(
-        files
-          .filter((record): record is NonNullable<(typeof files)[number]> => Boolean(record))
-          .map((record) => [record.id, record.name] as const),
-      ),
-      projectTitlesById: new Map(
-        projects
-          .filter(
-            (record): record is NonNullable<(typeof projects)[number]> =>
-              Boolean(record),
-          )
-          .map((record) => [record.id, record.title] as const),
-      ),
+      fileNamesById,
+      projectTitlesById,
     };
   }
 

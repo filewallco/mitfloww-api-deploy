@@ -4803,6 +4803,8 @@ export class FileService {
     contentType: string;
     etag: string | null;
     filename: string;
+    storageBucket?: string;
+    storageKey?: string;
   }> {
     const fileWithVersions = await this.repository.findWithVersionsById(
       input.fileId,
@@ -4858,6 +4860,8 @@ export class FileService {
         "application/octet-stream",
       etag: result.etag,
       filename: finalDraftVersion.originalName,
+      storageBucket: finalDraftVersion.storageBucket,
+      storageKey: finalDraftVersion.storageKey,
     };
   }
 

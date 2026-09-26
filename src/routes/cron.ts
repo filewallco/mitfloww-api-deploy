@@ -1,4 +1,4 @@
-﻿import { DELETED_RESOURCE_RETENTION_DAYS } from "@/config/retention";
+import { DELETED_RESOURCE_RETENTION_DAYS } from "@/config/retention";
 import { assets } from "@/lib/db/schema";
 import { r2Storage } from "@/lib/storage/r2";
 import { Router } from "express";
@@ -28,50 +28,11 @@ cronRouter.get("/reconcile-stale-jobs", asyncHandler(async (_req, res) => {
 }));
 
 cronRouter.get("/cleanup-final-drafts", asyncHandler(async (_req, res) => {
-  const lockHours = PROJECT_FILE_DELETION_LOCK_HOURS;
-  const expiryThreshold = new Date(Date.now() - lockHours * 60 * 60 * 1000);
-
-  const expiredFinalDrafts = await db
-    .select({
-      versionId: fileVersions.id,
-      fileId: files.id,
-      projectId: files.projectId,
-    })
-    .from(fileVersions)
-    .innerJoin(files, eq(files.id, fileVersions.fileId))
-    .innerJoin(projects, eq(projects.id, files.projectId))
-    .where(
-      and(
-        eq(fileVersions.isFinalDraft, true),
-        isNotNull(fileVersions.finalDraftDownloadedAt),
-        isNotNull(projects.clientPaymentCompletedAt),
-        lte(projects.clientPaymentCompletedAt, expiryThreshold),
-        isNull(fileVersions.deletedAt),
-      ),
-    );
-
-  let processedCount = 0;
-  let errorCount = 0;
-
-  for (const draft of expiredFinalDrafts) {
-    try {
-      await fileService.deleteFileVersion({
-        deletedBy: "system",
-        fileId: draft.fileId,
-        projectId: draft.projectId,
-        versionId: draft.versionId,
-      });
-      processedCount++;
-    } catch (err) {
-      console.error(`Failed to delete expired final draft version ${draft.versionId}:`, err);
-      errorCount++;
-    }
-  }
-
   return res.json({
     success: true,
-    processedFinalDrafts: processedCount,
-    errors: errorCount,
+    message: "Automated R2 final draft deletions are disabled pending dedicated external background scheduler.",
+    processedFinalDrafts: 0,
+    errors: 0,
   });
 }));
 
@@ -172,63 +133,11 @@ cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
 }));
 
 cronRouter.get("/cleanup-deleted-resources", asyncHandler(async (_req, res) => {
-  const retentionDays = DELETED_RESOURCE_RETENTION_DAYS;
-  const expiryThreshold = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
-
-  // 1. Purge R2 files for soft-deleted projects older than retention threshold
-  const expiredProjects = await db
-    .select({ id: projects.id, userId: projects.userId })
-    .from(projects)
-    .where(
-      and(
-        isNotNull(projects.deletedAt),
-        lte(projects.deletedAt, expiryThreshold)
-      )
-    );
-
-  let cleanedProjectsCount = 0;
-  for (const proj of expiredProjects) {
-    try {
-      const filePrefix = `users/${proj.userId}/projects/${proj.id}/`;
-      const r2Files = await r2Storage.listFiles({ prefix: filePrefix });
-      for (const item of r2Files.objects) {
-        await r2Storage.deleteFile({ key: item.key });
-      }
-      cleanedProjectsCount++;
-    } catch (err) {
-      console.error(`Failed to clean R2 files for expired project ${proj.id}:`, err);
-    }
-  }
-
-  // 2. Purge R2 files for soft-deleted assets older than retention threshold
-  const expiredAssets = await db
-    .select({ id: assets.id, userId: assets.userId })
-    .from(assets)
-    .where(
-      and(
-        isNotNull(assets.deletedAt),
-        lte(assets.deletedAt, expiryThreshold)
-      )
-    );
-
-  let cleanedAssetsCount = 0;
-  for (const asset of expiredAssets) {
-    try {
-      const assetPrefix = `users/${asset.userId}/assets/${asset.id}/`;
-      const r2Files = await r2Storage.listFiles({ prefix: assetPrefix });
-      for (const item of r2Files.objects) {
-        await r2Storage.deleteFile({ key: item.key });
-      }
-      cleanedAssetsCount++;
-    } catch (err) {
-      console.error(`Failed to clean R2 files for expired asset ${asset.id}:`, err);
-    }
-  }
-
   return res.json({
     success: true,
-    retentionDays,
-    cleanedProjects: cleanedProjectsCount,
-    cleanedAssets: cleanedAssetsCount,
+    message: "Automated R2 resource deletions are disabled pending dedicated external background scheduler.",
+    retentionDays: DELETED_RESOURCE_RETENTION_DAYS,
+    cleanedProjects: 0,
+    cleanedAssets: 0,
   });
 }));

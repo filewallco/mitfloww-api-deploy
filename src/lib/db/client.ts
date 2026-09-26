@@ -15,6 +15,12 @@ const isRemoteNeon =
   typeof process.env.DATABASE_URL === "string" &&
   process.env.DATABASE_URL.includes("neon.tech");
 
+const poolMax = process.env.DB_POOL_MAX
+  ? parseInt(process.env.DB_POOL_MAX, 10)
+  : isRemoteNeon
+    ? 25
+    : 10;
+
 export const pool =
   globalForDb.pool ??
   new Pool({
@@ -23,9 +29,9 @@ export const pool =
       process.env.NODE_ENV === "production" || isRemoteNeon
         ? { rejectUnauthorized: false }
         : undefined,
-    max: 10,
-    idleTimeoutMillis: 20000,
-    connectionTimeoutMillis: 10000,
+    max: poolMax,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 15000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
   });
