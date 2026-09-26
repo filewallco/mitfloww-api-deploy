@@ -136,6 +136,8 @@ function getFeatureActionLabelKey(featureKey: CreditFeatureCostParams["featureKe
       return "creditsHistoryActionTestimonialCustomize";
     case "testimonial_download":
       return "creditsHistoryActionTestimonialDownload";
+    case "asset_publish":
+      return "creditsHistoryActionAssetPublish";
     default:
       return "creditsHistoryActionFeatureUsage";
   }

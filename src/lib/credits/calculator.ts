@@ -545,6 +545,13 @@ export function calculateFeatureCreditCost(params: CreditFeatureCostParams) {
       );
       return baseCost * resolutionMultiplier;
     }
+    case "asset_publish":
+      return applyCurrencyCreditMultiplier(
+        params.isCustomTemplate
+          ? FEATURE_CREDIT_COSTS.assets.customTemplatePublish.credits
+          : FEATURE_CREDIT_COSTS.assets.publish.credits,
+        params.currency,
+      );
     default:
       throw new UnknownCreditFeatureError();
   }

@@ -305,25 +305,6 @@ export class AssetService {
 
   async createAsset(userId: string, input: CreateAssetInput) {
     const templateKey = input.templateKey || "minimal-modern";
-    const isPremiumTemplate = templateKey !== "minimal-modern";
-
-    // If premium template, check and deduct 1 credit
-    if (isPremiumTemplate) {
-      const { scope } = await creditService.getOrCreateCreditAccountForScope();
-      await creditService.calculateAndDeductFeatureCredits({
-        idempotencyKey: `asset-create-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        featureParams: {
-          currency: DEFAULT_PROJECT_CURRENCY,
-          featureKey: "testimonial_create",
-          templateId: templateKey,
-        },
-        scope,
-        metadata: {
-          templateKey,
-          title: input.title,
-        },
-      });
-    }
 
     const shareToken = crypto.randomUUID().replace(/-/g, "");
     const shareExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 1 day
@@ -430,6 +411,30 @@ export class AssetService {
     if (!existing.filesCount || existing.filesCount === 0) {
       throw new ValidationAppError("Cannot publish an asset without any downloadable files.");
     }
+
+    const isCustomTemplate = existing.templateKey !== "minimal-modern";
+    const { scope } = await creditService.getOrCreateCreditAccountForScope({
+      actorUserId: userId,
+      scopeId: userId,
+      scopeType: "personal",
+    });
+
+    await creditService.calculateAndDeductFeatureCredits({
+      idempotencyKey: `asset-publish-${id}`,
+      featureParams: {
+        currency: DEFAULT_PROJECT_CURRENCY,
+        featureKey: "asset_publish",
+        isCustomTemplate,
+      },
+      scope,
+      metadata: {
+        assetId: id,
+        title: existing.title,
+        templateKey: existing.templateKey,
+        templateName: existing.title,
+        isCustomTemplate,
+      },
+    });
 
     const now = new Date();
     await db

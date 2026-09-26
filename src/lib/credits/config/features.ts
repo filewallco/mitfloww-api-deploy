@@ -19,6 +19,7 @@ export const CREDIT_FEATURE_KEYS = [
   "testimonial_create",
   "testimonial_customize",
   "testimonial_download",
+  "asset_publish",
 ] as const;
 
 export type CreditFeatureKey = (typeof CREDIT_FEATURE_KEYS)[number];
@@ -144,6 +145,14 @@ export const FEATURE_CREDIT_COSTS = {
   projects: {
     activeProjectOverage: {
       credits: 10,
+    },
+  },
+  assets: {
+    publish: {
+      credits: 10,
+    },
+    customTemplatePublish: {
+      credits: 20,
     },
   },
   storage: {

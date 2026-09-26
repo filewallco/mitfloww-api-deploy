@@ -132,6 +132,12 @@ export type CreditFeatureCostParams =
       featureKey: "invoice_template_customize";
       planKey?: CreditPlanKey;
       templateId: string;
+    }
+  | {
+      currency: string;
+      featureKey: "asset_publish";
+      planKey?: CreditPlanKey;
+      isCustomTemplate?: boolean;
     };
 
 export type CreditQuoteMessage = {
