@@ -313,7 +313,7 @@ export class EmailService {
                       </div>
 
                       <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0 0 16px 0; text-align: center;">
-                        Bookmark this link or keep this email safe. You can access your files anytime using this link.
+                        This download link is valid for 24 hours. You can access and download your purchased files within this period.
                       </p>
 
                       ${getEmailBrandFooterHtml()}
@@ -326,7 +326,7 @@ export class EmailService {
         </body>
       </html>
     `;
-    const text = `Your download link for "${params.assetTitle}" is ready:\n${params.downloadUrl}\n\nAmount: ${params.amountFormatted}\nCreator: ${params.creatorName}`;
+    const text = `Your download link for "${params.assetTitle}" is ready (valid for 24 hours):\n${params.downloadUrl}\n\nAmount: ${params.amountFormatted}\nCreator: ${params.creatorName}\n\nPlease download your files within 24 hours.`;
 
     await this.sendAsync({ to: params.buyerEmail, subject, html, text });
   }

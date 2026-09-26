@@ -415,6 +415,32 @@ export class AssetService {
     return this.getAssetById(updated.id, userId);
   }
 
+  async publishAsset(id: string, userId: string) {
+    const existing = await this.getAssetById(id, userId);
+    if (!existing) {
+      throw new NotFoundAppError("Asset not found.");
+    }
+
+    if (existing.publishedAt) {
+      return existing;
+    }
+
+    if (!existing.filesCount || existing.filesCount === 0) {
+      throw new ValidationAppError("Cannot publish an asset without any downloadable files.");
+    }
+
+    const now = new Date();
+    await db
+      .update(assets)
+      .set({
+        publishedAt: now,
+        updatedAt: now,
+      })
+      .where(and(eq(assets.id, id), eq(assets.userId, userId)));
+
+    return this.getAssetById(id, userId);
+  }
+
   async regenerateShareToken(id: string, userId: string) {
     const existing = await this.getAssetById(id, userId);
     if (!existing) {
@@ -474,6 +500,10 @@ export class AssetService {
       throw new NotFoundAppError("Asset not found.");
     }
 
+    if (existing.publishedAt) {
+      throw new ValidationAppError("Cannot upload new files to a published asset.");
+    }
+
     const ext = filename.split(".").pop()?.toLowerCase() || "";
     if (ext === "exe") {
       throw new ValidationAppError("Executable (.exe) files are disallowed.");
@@ -530,6 +560,10 @@ export class AssetService {
       throw new NotFoundAppError("Asset not found.");
     }
 
+    if (existing.publishedAt) {
+      throw new ValidationAppError("Cannot upload new files to a published asset.");
+    }
+
     const ext = filename.split(".").pop()?.toLowerCase() || "";
     if (ext === "exe") {
       throw new ValidationAppError("Executable (.exe) files are disallowed.");
@@ -580,6 +614,10 @@ export class AssetService {
       throw new NotFoundAppError("Asset not found.");
     }
 
+    if (existing.publishedAt) {
+      throw new ValidationAppError("Cannot upload new files to a published asset.");
+    }
+
     const totalBytes = filesList.reduce((sum, f) => sum + f.sizeBytes, 0);
 
     if (totalBytes > 0) {
@@ -624,7 +662,14 @@ export class AssetService {
   }
 
   async deleteDownloadableFile(id: string, fileId: string, userId: string) {
-    await this.getAssetById(id, userId);
+    const existing = await this.getAssetById(id, userId);
+    if (!existing) {
+      throw new NotFoundAppError("Asset not found.");
+    }
+
+    if (existing.publishedAt) {
+      throw new ValidationAppError("Cannot delete individual files from a published asset.");
+    }
 
     const [file] = await db
       .select()
@@ -729,7 +774,10 @@ export class AssetService {
         .where(
           and(
             eq(assetFiles.assetId, asset.id),
-            isNull(assetFiles.deletedAt)
+            or(
+              isNull(assetFiles.deletedAt),
+              asset.deletedAt ? sql`${assetFiles.deletedAt} >= ${asset.deletedAt}` : sql`TRUE`
+            )
           )
         )
         .orderBy(asc(assetFiles.name));
@@ -783,6 +831,10 @@ export class AssetService {
           displayName: creatorName,
         },
       };
+    }
+
+    if (!asset.publishedAt) {
+      throw new NotFoundAppError("This Asset has not been published yet.");
     }
 
     // Fetch previews
@@ -851,7 +903,7 @@ export class AssetService {
       )
       .limit(1);
 
-    if (!asset) {
+    if (!asset || !asset.publishedAt) {
       throw new NotFoundAppError("Asset is not active or available for purchase.");
     }
 
@@ -892,7 +944,7 @@ export class AssetService {
       )
       .orderBy(asc(assetFiles.name));
 
-    // Send delivery email to buyer with the share link
+    // Send delivery email to buyer with the dedicated paid downloads link
     try {
       const [creator] = await db
         .select({
@@ -910,7 +962,7 @@ export class AssetService {
         [creator?.firstName, creator?.lastName].filter(Boolean).join(" ") ||
         "MitFloww Creator";
       const appUrl = (process.env.APP_URL || "https://mitfloww.com").replace(/\/+$/, "");
-      const downloadUrl = `${appUrl}/s/asset/${shareToken}?email=${encodeURIComponent(normalizedEmail)}`;
+      const downloadUrl = `${appUrl}/s/asset/${shareToken}/downloads?email=${encodeURIComponent(normalizedEmail)}`;
       const formattedAmount = `${(asset.currency || "USD").toUpperCase()} ${(asset.amountCents / 100).toFixed(2)}`;
 
       await emailService.sendAssetPurchaseDeliveryEmail({
@@ -934,6 +986,7 @@ export class AssetService {
       files,
     };
   }
+
   async getPublicAssetDownloadFile(token: string, fileId: string, buyerEmail?: string | null) {
     const [asset] = await db
       .select()
@@ -945,23 +998,25 @@ export class AssetService {
       throw new NotFoundAppError("Asset link not found.");
     }
 
-    if (buyerEmail && buyerEmail.trim()) {
-      const normalizedEmail = buyerEmail.trim().toLowerCase();
-      const [purchase] = await db
-        .select()
-        .from(assetPurchases)
-        .where(
-          and(
-            eq(assetPurchases.assetId, asset.id),
-            eq(assetPurchases.buyerEmail, normalizedEmail),
-            sql`${assetPurchases.expiresAt} > NOW()`
-          )
-        )
-        .limit(1);
+    if (!buyerEmail || !buyerEmail.trim()) {
+      throw new AppError("Buyer email is required to download asset files.", 403, "buyer_email_required");
+    }
 
-      if (!purchase) {
-        throw new AppError("Purchase required to download asset files.", 403, "purchase_required");
-      }
+    const normalizedEmail = buyerEmail.trim().toLowerCase();
+    const [purchase] = await db
+      .select()
+      .from(assetPurchases)
+      .where(
+        and(
+          eq(assetPurchases.assetId, asset.id),
+          eq(assetPurchases.buyerEmail, normalizedEmail),
+          sql`${assetPurchases.expiresAt} > NOW()`
+        )
+      )
+      .limit(1);
+
+    if (!purchase) {
+      throw new AppError("A valid, unexpired purchase is required to download asset files.", 403, "purchase_required");
     }
 
     const [file] = await db
@@ -971,7 +1026,10 @@ export class AssetService {
         and(
           eq(assetFiles.id, fileId),
           eq(assetFiles.assetId, asset.id),
-          isNull(assetFiles.deletedAt)
+          or(
+            isNull(assetFiles.deletedAt),
+            asset.deletedAt ? sql`${assetFiles.deletedAt} >= ${asset.deletedAt}` : sql`TRUE`
+          )
         )
       )
       .limit(1);
@@ -1001,23 +1059,25 @@ export class AssetService {
       throw new NotFoundAppError("Asset link not found.");
     }
 
-    if (buyerEmail && buyerEmail.trim()) {
-      const normalizedEmail = buyerEmail.trim().toLowerCase();
-      const [purchase] = await db
-        .select()
-        .from(assetPurchases)
-        .where(
-          and(
-            eq(assetPurchases.assetId, asset.id),
-            eq(assetPurchases.buyerEmail, normalizedEmail),
-            sql`${assetPurchases.expiresAt} > NOW()`
-          )
-        )
-        .limit(1);
+    if (!buyerEmail || !buyerEmail.trim()) {
+      throw new AppError("Buyer email is required to download asset files.", 403, "buyer_email_required");
+    }
 
-      if (!purchase) {
-        throw new AppError("Purchase required to download asset files.", 403, "purchase_required");
-      }
+    const normalizedEmail = buyerEmail.trim().toLowerCase();
+    const [purchase] = await db
+      .select()
+      .from(assetPurchases)
+      .where(
+        and(
+          eq(assetPurchases.assetId, asset.id),
+          eq(assetPurchases.buyerEmail, normalizedEmail),
+          sql`${assetPurchases.expiresAt} > NOW()`
+        )
+      )
+      .limit(1);
+
+    if (!purchase) {
+      throw new AppError("A valid, unexpired purchase is required to download asset files.", 403, "purchase_required");
     }
 
     let filesList = await db
@@ -1026,7 +1086,10 @@ export class AssetService {
       .where(
         and(
           eq(assetFiles.assetId, asset.id),
-          isNull(assetFiles.deletedAt)
+          or(
+            isNull(assetFiles.deletedAt),
+            asset.deletedAt ? sql`${assetFiles.deletedAt} >= ${asset.deletedAt}` : sql`TRUE`
+          )
         )
       )
       .orderBy(asc(assetFiles.name));

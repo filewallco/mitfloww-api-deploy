@@ -122,6 +122,17 @@ assetsRouter.patch(
   })
 );
 
+// POST /api/assets/:id/publish - Publish asset
+assetsRouter.post(
+  "/:id/publish",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const id = req.params.id as string;
+    const published = await assetService.publishAsset(id, actor.id);
+    return sendSuccess(res, published);
+  })
+);
+
 // POST /api/assets/:id/regenerate - Regenerate share token/link
 assetsRouter.post(
   "/:id/regenerate",

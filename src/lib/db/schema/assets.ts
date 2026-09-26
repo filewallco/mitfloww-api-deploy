@@ -104,6 +104,7 @@ export const createAssetTables = (fw: PgSchema) => {
         withTimezone: true,
       }),
       deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
+      publishedAt: timestamp("published_at", { mode: "date", withTimezone: true }),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
         .defaultNow(),
