@@ -4,9 +4,55 @@ import {
   getEmailBrandHeaderHtml,
   getEmailBrandFooterHtml,
   getEmailLogoAttachment,
+  getEmailIconAttachment,
 } from "./email-logo";
 
 export { getEmailBrandHeaderHtml, getEmailBrandFooterHtml };
+
+/**
+ * Wraps content in a full-width, responsive, dark-mode safe email document.
+ * Eliminates the narrow rounded container box, using 100% full width with centered content.
+ */
+function wrapEmailHtml(contentHtml: string): string {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <style>
+      body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+      table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+      img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+      body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    </style>
+  </head>
+  <body style="margin: 0; padding: 0; width: 100% !important; min-width: 100%; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+    <!-- Full-width sharp white strip with MitFloww logo -->
+    ${getEmailBrandHeaderHtml()}
+
+    <!-- Main Content Container (Full width responsive, no rounded card box) -->
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width: 100%; min-width: 100%; background-color: #ffffff; border-collapse: collapse;">
+      <tr>
+        <td align="center" style="padding: 0 16px;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%; margin: 0 auto; border-collapse: collapse;">
+            <tr>
+              <td style="color: #0f172a; font-size: 15px; line-height: 1.6; text-align: left;">
+                ${contentHtml}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- Footer with MitFloww icon logo, copyright and year -->
+    ${getEmailBrandFooterHtml()}
+  </body>
+</html>
+  `.trim();
+}
 
 export class EmailService {
   private provider: EmailProvider;
@@ -35,6 +81,16 @@ export class EmailService {
         )
       ) {
         attachments.push(getEmailLogoAttachment());
+      }
+
+      // Automatically attach MitFloww icon mark if referenced as CID
+      if (
+        options.html.includes("cid:mitfloww-icon") &&
+        !attachments.some(
+          (a) => (a as any).contentId === "mitfloww-icon" || (a as any).content_id === "mitfloww-icon",
+        )
+      ) {
+        attachments.push(getEmailIconAttachment());
       }
 
       const res = await this.provider.sendEmail({
@@ -88,22 +144,32 @@ export class EmailService {
     await this.sendAsync({ to: email, subject, html, text });
   }
 
+  async sendAssetAccessOtpEmail(email: string, otp: string, assetTitle: string): Promise<void> {
+    const subject = `${otp} is your MitFloww download access code`;
+    const html = this.buildOtpEmailHtml({
+      title: "Access your purchased downloads",
+      subtitle: `Use the verification code below to access and download your files for "${assetTitle}".`,
+      otp,
+      hint: "This code expires in 5 minutes. Never share this code with anyone.",
+    });
+    const text = `Your MitFloww download access code for "${assetTitle}" is: ${otp}. It expires in 5 minutes.`;
+
+    await this.sendAsync({ to: email, subject, html, text });
+  }
+
   async sendWelcomeEmail(email: string, name?: string): Promise<void> {
     const displayName = name ? ` ${name}` : "";
     const subject = "Welcome to MitFloww!";
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
-        ${getEmailBrandHeaderHtml()}
-        <h1 style="font-size: 22px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px;">Welcome to MitFloww${displayName}!</h1>
-        <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px;">
-          Your account has been set up successfully. You're ready to share deliverables, manage project revisions, and streamline creative workflows.
-        </p>
-        <div style="margin-bottom: 28px;">
-          <a href="${process.env.APP_URL || "https://mitfloww.com"}/projects" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Go to Dashboard</a>
-        </div>
-        ${getEmailBrandFooterHtml()}
+    const content = `
+      <h1 style="font-size: 22px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px;">Welcome to MitFloww${displayName}!</h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px;">
+        Your account has been set up successfully. You're ready to share deliverables, manage project revisions, and streamline creative workflows.
+      </p>
+      <div style="margin-bottom: 28px;">
+        <a href="${process.env.APP_URL || "https://mitfloww.com"}/projects" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Go to Dashboard</a>
       </div>
     `;
+    const html = wrapEmailHtml(content);
     const text = `Welcome to MitFloww${displayName}! Your account is now active.`;
 
     await this.sendAsync({ to: email, subject, html, text });
@@ -111,19 +177,16 @@ export class EmailService {
 
   async sendSecurityAlertEmail(email: string, title: string, details: string): Promise<void> {
     const subject = `Security Alert: ${title}`;
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
-        ${getEmailBrandHeaderHtml()}
-        <h1 style="font-size: 20px; font-weight: 700; color: #dc2626; margin-top: 0; margin-bottom: 12px;">${title}</h1>
-        <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 16px;">
-          ${details}
-        </p>
-        <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin-bottom: 24px;">
-          If this was not you, please log in immediately and change your password, or use the "Log out of all devices" option in your account settings.
-        </p>
-        ${getEmailBrandFooterHtml()}
-      </div>
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #dc2626; margin-top: 0; margin-bottom: 12px;">${title}</h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 16px;">
+        ${details}
+      </p>
+      <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin-bottom: 24px;">
+        If this was not you, please log in immediately and change your password, or use the "Log out of all devices" option in your account settings.
+      </p>
     `;
+    const html = wrapEmailHtml(content);
     const text = `Security Alert: ${title}\n\n${details}`;
 
     await this.sendAsync({ to: email, subject, html, text });
@@ -138,33 +201,30 @@ export class EmailService {
     const appUrl = process.env.APP_URL || "https://mitfloww.com";
     const loginUrl = `${appUrl}/login`;
 
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
-        ${getEmailBrandHeaderHtml()}
-        <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px;">Account Deactivated</h1>
-        <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 16px;">
-          Hello${greetingName},
-        </p>
-        <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 20px;">
-          Your MitFloww account has been deactivated as requested. Your public links and profile are temporarily hidden, and all active sessions have been signed out.
-        </p>
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px;">Account Deactivated</h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 16px;">
+        Hello${greetingName},
+      </p>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 20px;">
+        Your MitFloww account has been deactivated as requested. Your public links and profile are temporarily hidden, and all active sessions have been signed out.
+      </p>
 
-        <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
-          <p style="font-size: 13px; line-height: 1.5; color: #334155; margin: 0;">
-            <strong>Want to reactivate?</strong> You can easily reactivate your account at any time. Simply sign back in using your credentials.
-          </p>
-        </div>
-
-        <div style="margin-bottom: 28px;">
-          <a href="${loginUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Sign in to Reactivate</a>
-        </div>
-
-        <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0 0 16px 0;">
-          If you did not perform this deactivation, please contact our support team immediately.
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <p style="font-size: 13px; line-height: 1.5; color: #334155; margin: 0;">
+          <strong>Want to reactivate?</strong> You can easily reactivate your account at any time. Simply sign back in using your credentials.
         </p>
-        ${getEmailBrandFooterHtml()}
       </div>
+
+      <div style="margin-bottom: 28px;">
+        <a href="${loginUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Sign in to Reactivate</a>
+      </div>
+
+      <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0;">
+        If you did not perform this deactivation, please contact our support team immediately.
+      </p>
     `;
+    const html = wrapEmailHtml(content);
     const text = `Hello${greetingName},\n\nYour MitFloww account has been deactivated. You can reactivate anytime by logging in at ${loginUrl}.\n\nIf you did not perform this action, please contact support.`;
 
     await this.sendAsync({ to: params.email, subject, html, text });
@@ -173,52 +233,47 @@ export class EmailService {
   async sendAccountScheduledForDeletionEmail(params: {
     email: string;
     name?: string;
-    deletionDeadline: Date;
+    deletionScheduledFor?: Date;
+    deletionDeadline?: Date;
   }): Promise<void> {
     const greetingName = params.name ? ` ${params.name}` : "";
-    const subject = "Your MitFloww account is scheduled for deletion";
+    const subject = "Important: Your MitFloww account is scheduled for deletion";
     const appUrl = process.env.APP_URL || "https://mitfloww.com";
     const loginUrl = `${appUrl}/login`;
-    const formattedDeadline = params.deletionDeadline.toLocaleDateString("en-US", {
+    const targetDate = params.deletionScheduledFor || params.deletionDeadline || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const formattedDeadline = targetDate.toLocaleDateString("en-US", {
+      year: "numeric",
       month: "long",
       day: "numeric",
-      year: "numeric",
     });
 
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
-        ${getEmailBrandHeaderHtml()}
-        <h1 style="font-size: 20px; font-weight: 700; color: #dc2626; margin-top: 0; margin-bottom: 12px;">Account Scheduled for Deletion</h1>
-        <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 16px;">
-          Hello${greetingName},
-        </p>
-        <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 20px;">
-          We received a request to delete your MitFloww account. Your account has now been scheduled for permanent deletion.
-        </p>
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #dc2626; margin-top: 0; margin-bottom: 12px;">Account Scheduled for Deletion</h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 16px;">
+        Hello${greetingName},
+      </p>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 20px;">
+        As requested, your MitFloww account has been scheduled for permanent deletion.
+      </p>
 
-        <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
-          <p style="font-size: 13px; font-weight: 600; color: #92400e; margin: 0 0 6px 0;">
-            30-Day Recovery Grace Period
-          </p>
-          <p style="font-size: 13px; line-height: 1.5; color: #78350f; margin: 0;">
-            You have until <strong>${formattedDeadline}</strong> to recover your account. If you log in before this date, you can reactivate your account and restore all your projects and files.
-          </p>
-        </div>
-
-        <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin-bottom: 24px;">
-          After <strong>${formattedDeadline}</strong>, your account, projects, testimonials, and stored deliverables will be permanently and irreversibly purged.
+      <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <p style="font-size: 13px; line-height: 1.5; color: #991b1b; margin: 0 0 8px 0;">
+          <strong>30-Day Recovery Period:</strong>
         </p>
-
-        <div style="margin-bottom: 28px;">
-          <a href="${loginUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Sign in to Recover Account</a>
-        </div>
-
-        <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0 0 16px 0;">
-          If you did not request this deletion, please log in immediately to restore and secure your account.
+        <p style="font-size: 13px; line-height: 1.5; color: #7f1d1d; margin: 0;">
+          Your account data will be permanently and irreversibly purged on <strong>${formattedDeadline}</strong>. Until that time, you can cancel this request simply by signing back into your account.
         </p>
-        ${getEmailBrandFooterHtml()}
       </div>
+
+      <div style="margin-bottom: 28px;">
+        <a href="${loginUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Sign in to Restore Account</a>
+      </div>
+
+      <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0;">
+        If you did not request this deletion, please log in immediately to restore and secure your account.
+      </p>
     `;
+    const html = wrapEmailHtml(content);
     const text = `Hello${greetingName},\n\nYour MitFloww account has been scheduled for deletion. You have a 30-day grace period until ${formattedDeadline} to recover it.\n\nTo restore your account and projects, log in at ${loginUrl} before ${formattedDeadline}.\n\nAfter this date, your data will be permanently purged.`;
 
     await this.sendAsync({ to: params.email, subject, html, text });
@@ -229,33 +284,24 @@ export class EmailService {
     name?: string;
   }): Promise<void> {
     const greetingName = params.name ? ` ${params.name}` : "";
-    const subject = "Your MitFloww account has been reactivated!";
+    const subject = "Your MitFloww account has been reactivated";
     const appUrl = process.env.APP_URL || "https://mitfloww.com";
     const dashboardUrl = `${appUrl}/projects`;
 
-    const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px;">
-        ${getEmailBrandHeaderHtml()}
-        <h1 style="font-size: 20px; font-weight: 700; color: #059669; margin-top: 0; margin-bottom: 12px;">Welcome Back! Your Account is Active</h1>
-        <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 16px;">
-          Hello${greetingName},
-        </p>
-        <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 20px;">
-          Your MitFloww account has been successfully reactivated. Your workspace, projects, testimonials, deliverables, and company profile are fully restored.
-        </p>
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #16a34a; margin-top: 0; margin-bottom: 12px;">Welcome Back!</h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 16px;">
+        Hello${greetingName},
+      </p>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin-bottom: 24px;">
+        Your MitFloww account has been reactivated successfully. All your projects, files, and links are active once again.
+      </p>
 
-        <div style="background-color: #ecfdf5; border: 1px solid #d1fae5; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
-          <p style="font-size: 13px; line-height: 1.5; color: #065f46; margin: 0;">
-            Everything is just as you left it. You can pick up right where you stopped!
-          </p>
-        </div>
-
-        <div style="margin-bottom: 28px;">
-          <a href="${dashboardUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Go to Projects</a>
-        </div>
-        ${getEmailBrandFooterHtml()}
+      <div style="margin-bottom: 28px;">
+        <a href="${dashboardUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600;">Go to Projects</a>
       </div>
     `;
+    const html = wrapEmailHtml(content);
     const text = `Hello${greetingName},\n\nYour MitFloww account has been reactivated! Your workspace and projects have been restored.\n\nGo to your projects: ${dashboardUrl}`;
 
     await this.sendAsync({ to: params.email, subject, html, text });
@@ -263,69 +309,44 @@ export class EmailService {
 
   async sendAssetPurchaseDeliveryEmail(params: {
     buyerEmail: string;
-    buyerName?: string;
     assetTitle: string;
     amountFormatted: string;
     downloadUrl: string;
     creatorName: string;
   }): Promise<void> {
     const subject = `Your Download Link for "${params.assetTitle}"`;
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        </head>
-        <body style="margin: 0; padding: 24px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              <td align="center">
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                  <tr>
-                    <td>
-                      ${getEmailBrandHeaderHtml()}
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        Payment Successful! Access Your Download
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0;">
+        Thank you for purchasing <strong>${params.assetTitle}</strong> created by <strong>${params.creatorName}</strong>.
+      </p>
 
-                      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
-                        Payment Successful! Access Your Download
-                      </h1>
-                      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0;">
-                        Thank you for purchasing <strong>${params.assetTitle}</strong> created by <strong>${params.creatorName}</strong>.
-                      </p>
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size: 13px; color: #64748b;">Asset:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a;">${params.assetTitle}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Total Paid:</td>
+            <td align="right" style="font-size: 13px; font-weight: 700; color: #005bdd; padding-top: 8px;">${params.amountFormatted}</td>
+          </tr>
+        </table>
+      </div>
 
-                      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; margin-bottom: 24px;">
-                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                          <tr>
-                            <td style="font-size: 13px; color: #64748b;">Asset:</td>
-                            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a;">${params.assetTitle}</td>
-                          </tr>
-                          <tr>
-                            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Total Paid:</td>
-                            <td align="right" style="font-size: 13px; font-weight: 700; color: #005bdd; padding-top: 8px;">${params.amountFormatted}</td>
-                          </tr>
-                        </table>
-                      </div>
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.downloadUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600; box-shadow: 0 2px 4px rgba(0, 91, 221, 0.2);">
+          Download Your Files &rarr;
+        </a>
+      </div>
 
-                      <div style="text-align: center; margin: 28px 0;">
-                        <a href="${params.downloadUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600; box-shadow: 0 2px 4px rgba(0, 91, 221, 0.2);">
-                          Download Your Files &rarr;
-                        </a>
-                      </div>
-
-                      <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0 0 16px 0; text-align: center;">
-                        This download link is valid for 24 hours. You can access and download your purchased files within this period.
-                      </p>
-
-                      ${getEmailBrandFooterHtml()}
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
+      <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0; text-align: center;">
+        This download link is valid for 24 hours. You can access and download your purchased files within this period.
+      </p>
     `;
+    const html = wrapEmailHtml(content);
     const text = `Your download link for "${params.assetTitle}" is ready (valid for 24 hours):\n${params.downloadUrl}\n\nAmount: ${params.amountFormatted}\nCreator: ${params.creatorName}\n\nPlease download your files within 24 hours.`;
 
     await this.sendAsync({ to: params.buyerEmail, subject, html, text });
@@ -333,70 +354,61 @@ export class EmailService {
 
   async sendInvoicePaymentSuccessEmail(params: {
     clientEmail: string;
-    clientName: string;
-    projectName: string;
-    amountFormatted: string;
+    clientName?: string;
+    projectTitle: string;
     invoiceNumber: string;
+    amountFormatted: string;
+    galleryUrl?: string;
     pdfBuffer?: Buffer;
   }): Promise<void> {
-    const subject = `Payment Receipt & Invoice #${params.invoiceNumber} for "${params.projectName}"`;
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        </head>
-        <body style="margin: 0; padding: 24px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              <td align="center">
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                  <tr>
-                    <td>
-                      ${getEmailBrandHeaderHtml()}
+    const greetingName = params.clientName ? ` ${params.clientName}` : "";
+    const subject = `Payment Receipt: ${params.projectTitle} (${params.invoiceNumber})`;
 
-                      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; line-height: 1.3;">
-                        Payment Successful
-                      </h1>
-                      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
-                        Hello ${params.clientName || "Client"}, your payment for <strong>${params.projectName}</strong> has been successfully received.
-                      </p>
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        Payment Receipt
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0;">
+        Hello${greetingName}, your payment has been successfully received and confirmed.
+      </p>
 
-                      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; margin-bottom: 24px;">
-                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                          <tr>
-                            <td style="font-size: 13px; color: #64748b;">Invoice #:</td>
-                            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a;">${params.invoiceNumber}</td>
-                          </tr>
-                          <tr>
-                            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Project:</td>
-                            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-top: 8px;">${params.projectName}</td>
-                          </tr>
-                          <tr>
-                            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Total Paid:</td>
-                            <td align="right" style="font-size: 13px; font-weight: 700; color: #005bdd; padding-top: 8px;">${params.amountFormatted}</td>
-                          </tr>
-                        </table>
-                      </div>
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size: 13px; color: #64748b;">Invoice #:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a;">${params.invoiceNumber}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Project:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-top: 8px;">${params.projectTitle}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Amount Paid:</td>
+            <td align="right" style="font-size: 13px; font-weight: 700; color: #005bdd; padding-top: 8px;">${params.amountFormatted}</td>
+          </tr>
+        </table>
+      </div>
 
-                      <p style="font-size: 13px; line-height: 1.6; color: #64748b; margin: 0 0 20px 0;">
-                        Your official invoice PDF is attached to this email for your accounting records.
-                      </p>
+      ${
+        params.galleryUrl
+          ? `
+            <div style="text-align: center; margin: 28px 0;">
+              <a href="${params.galleryUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+                Access Deliverables &rarr;
+              </a>
+            </div>
+          `
+          : ""
+      }
 
-                      ${getEmailBrandFooterHtml()}
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
+      <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0; text-align: center;">
+        Your official invoice PDF is attached to this email for your accounting records.
+      </p>
     `;
-    const text = `Payment received for ${params.projectName}.\nInvoice #${params.invoiceNumber}\nAmount: ${params.amountFormatted}\nYour PDF invoice is attached.`;
+    const html = wrapEmailHtml(content);
+    const text = `Hello${greetingName},\n\nPayment confirmed for ${params.projectTitle}.\nInvoice: ${params.invoiceNumber}\nAmount: ${params.amountFormatted}${params.galleryUrl ? `\n\nAccess deliverables: ${params.galleryUrl}` : ""}\n\nYour invoice PDF is attached.`;
 
-    const options: any = {
+    const options: SendEmailOptions = {
       to: params.clientEmail,
       subject,
       html,
@@ -406,7 +418,7 @@ export class EmailService {
     if (params.pdfBuffer) {
       options.attachments = [
         {
-          filename: `Invoice-${params.invoiceNumber}.pdf`,
+          filename: `invoice-${params.invoiceNumber}.pdf`,
           content: params.pdfBuffer,
           contentType: "application/pdf",
         },
@@ -418,70 +430,51 @@ export class EmailService {
 
   async sendCreatorPaymentReceivedEmail(params: {
     creatorEmail: string;
-    creatorName: string;
-    clientName: string;
-    projectName: string;
+    creatorName?: string;
+    projectTitle: string;
+    payerName: string;
     amountFormatted: string;
     invoiceNumber: string;
+    projectId: string;
   }): Promise<void> {
-    const subject = `Payment Received: ${params.amountFormatted} for "${params.projectName}"`;
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        </head>
-        <body style="margin: 0; padding: 24px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              <td align="center">
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 520px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                  <tr>
-                    <td>
-                      ${getEmailBrandHeaderHtml()}
+    const greetingName = params.creatorName ? ` ${params.creatorName}` : "";
+    const subject = `Payment Received: ${params.amountFormatted} for "${params.projectTitle}"`;
+    const appUrl = process.env.APP_URL || "https://mitfloww.com";
+    const dashboardUrl = `${appUrl}/projects/${params.projectId}`;
 
-                      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; line-height: 1.3;">
-                        Payment Received!
-                      </h1>
-                      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
-                        Great news, ${params.creatorName}! <strong>${params.clientName}</strong> has completed their payment for <strong>${params.projectName}</strong>.
-                      </p>
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #16a34a; margin: 0 0 10px 0; line-height: 1.3;">
+        You Received a Payment!
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0;">
+        Hello${greetingName}, great news! <strong>${params.payerName}</strong> has paid for <strong>${params.projectTitle}</strong>.
+      </p>
 
-                      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; margin-bottom: 24px;">
-                        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                          <tr>
-                            <td style="font-size: 13px; color: #64748b;">Invoice #:</td>
-                            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a;">${params.invoiceNumber}</td>
-                          </tr>
-                          <tr>
-                            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Client:</td>
-                            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-top: 8px;">${params.clientName}</td>
-                          </tr>
-                          <tr>
-                            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Net Amount:</td>
-                            <td align="right" style="font-size: 13px; font-weight: 700; color: #16a34a; padding-top: 8px;">${params.amountFormatted}</td>
-                          </tr>
-                        </table>
-                      </div>
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size: 13px; color: #64748b;">Amount:</td>
+            <td align="right" style="font-size: 13px; font-weight: 700; color: #16a34a;">${params.amountFormatted}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Invoice #:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-top: 8px;">${params.invoiceNumber}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Client:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-top: 8px;">${params.payerName}</td>
+          </tr>
+        </table>
+      </div>
 
-                      <div style="text-align: center; margin: 24px 0;">
-                        <a href="${process.env.APP_URL || "https://mitfloww.com"}/projects" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 13px 28px; border-radius: 12px; font-size: 14px; font-weight: 600;">
-                          View in Dashboard &rarr;
-                        </a>
-                      </div>
-
-                      ${getEmailBrandFooterHtml()}
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${dashboardUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          View in Dashboard &rarr;
+        </a>
+      </div>
     `;
-    const text = `You received payment for ${params.projectName} from ${params.clientName}. Net Amount: ${params.amountFormatted}. Invoice #${params.invoiceNumber}.`;
+    const html = wrapEmailHtml(content);
+    const text = `Hello${greetingName},\n\nGreat news! ${params.payerName} has completed payment for "${params.projectTitle}".\n\nAmount: ${params.amountFormatted}\nInvoice: ${params.invoiceNumber}\n\nView project: ${dashboardUrl}`;
 
     await this.sendAsync({ to: params.creatorEmail, subject, html, text });
   }
@@ -492,52 +485,25 @@ export class EmailService {
     otp: string;
     hint: string;
   }): string {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        </head>
-        <body style="margin: 0; padding: 24px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              <td align="center">
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 480px; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 36px 32px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-                  <tr>
-                    <td>
-                      ${getEmailBrandHeaderHtml()}
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; line-height: 1.3;">
+        ${params.title}
+      </h1>
+      <p style="font-size: 14px; line-height: 1.5; color: #64748b; margin: 0 0 24px 0;">
+        ${params.subtitle}
+      </p>
 
-                      <!-- Heading -->
-                      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; line-height: 1.3;">
-                        ${params.title}
-                      </h1>
-                      <p style="font-size: 14px; line-height: 1.5; color: #64748b; margin: 0 0 24px 0;">
-                        ${params.subtitle}
-                      </p>
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+        <span style="font-family: 'Courier New', Courier, monospace; font-size: 32px; font-weight: 800; letter-spacing: 0.25em; color: #005bdd; display: inline-block; padding-left: 0.25em;">
+          ${params.otp}
+        </span>
+      </div>
 
-                      <!-- OTP Box -->
-                      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; text-align: center; margin-bottom: 24px;">
-                        <span style="font-family: 'Courier New', Courier, monospace, monospace; font-size: 32px; font-weight: 800; letter-spacing: 0.25em; color: #005bdd; display: inline-block; padding-left: 0.25em;">
-                          ${params.otp}
-                        </span>
-                      </div>
-
-                      <!-- Expiry & Disclaimer -->
-                      <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0 0 24px 0;">
-                        ${params.hint}
-                      </p>
-
-                      ${getEmailBrandFooterHtml()}
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
+      <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0 0 8px 0;">
+        ${params.hint}
+      </p>
     `;
+    return wrapEmailHtml(content);
   }
 }
 

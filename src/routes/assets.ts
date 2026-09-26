@@ -312,12 +312,13 @@ assetsRouter.get(
   asyncHandler(async (req, res) => {
     const token = req.params.token as string;
     const fileId = req.params.fileId as string;
-    const email = typeof req.query.email === "string" ? req.query.email : null;
+    const accessToken =
+      (typeof req.query.accessToken === "string" ? req.query.accessToken : null) ||
+      (typeof req.headers["x-access-token"] === "string" ? req.headers["x-access-token"] : null);
 
-    const file = await assetService.getPublicAssetDownloadFile(token, fileId, email);
+    const file = await assetService.getPublicAssetDownloadFile(token, fileId, accessToken);
 
     // Fast path: Redirect directly to Cloudflare R2 presigned download URL
-    // Saves 100% server RAM and network bandwidth
     if (file.storageKey) {
       try {
         const presigned = await r2Storage.getPresignedGetObjectUrl({
@@ -357,10 +358,12 @@ assetsRouter.post(
   "/public/:token/download-zip",
   asyncHandler(async (req, res) => {
     const token = req.params.token as string;
-    const email = typeof req.body?.email === "string" ? req.body.email : (typeof req.query?.email === "string" ? req.query.email : null);
+    const accessToken =
+      (typeof req.body?.accessToken === "string" ? req.body.accessToken : (typeof req.query?.accessToken === "string" ? req.query.accessToken : null)) ||
+      (typeof req.headers["x-access-token"] === "string" ? req.headers["x-access-token"] : null);
     const fileIds = Array.isArray(req.body?.fileIds) ? req.body.fileIds : undefined;
 
-    const result = await assetService.getPublicAssetZipArchive(token, email, fileIds);
+    const result = await assetService.getPublicAssetZipArchive(token, accessToken, fileIds);
 
     res.setHeader("Content-Disposition", `attachment; filename="${result.filename.replace(/"/g, "")}"`);
     res.setHeader("Content-Type", "application/zip");
@@ -375,17 +378,139 @@ assetsRouter.get(
   "/public/:token/download-zip",
   asyncHandler(async (req, res) => {
     const token = req.params.token as string;
-    const email = typeof req.query.email === "string" ? req.query.email : null;
+    const accessToken =
+      (typeof req.query?.accessToken === "string" ? req.query.accessToken : null) ||
+      (typeof req.headers["x-access-token"] === "string" ? req.headers["x-access-token"] : null);
     const fileIdsParam = typeof req.query.fileIds === "string" ? req.query.fileIds : undefined;
     const fileIds = fileIdsParam ? fileIdsParam.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
 
-    const result = await assetService.getPublicAssetZipArchive(token, email, fileIds);
+    const result = await assetService.getPublicAssetZipArchive(token, accessToken, fileIds);
 
     res.setHeader("Content-Disposition", `attachment; filename="${result.filename.replace(/"/g, "")}"`);
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Length", String(result.body.length));
     res.setHeader("Cache-Control", "no-store, max-age=0");
     return res.send(Buffer.from(result.body as any));
+  })
+);
+
+// GET /api/assets/download/:accessToken/state - Get dedicated download state by unique access token
+assetsRouter.get(
+  "/download/:accessToken/state",
+  asyncHandler(async (req, res) => {
+    const accessToken = req.params.accessToken as string;
+    const data = await assetService.getDedicatedAssetDownloadState(accessToken);
+    return sendSuccess(res, data);
+  })
+);
+
+// GET /api/assets/download/:accessToken/file/:fileId - Download single file using unique access token
+assetsRouter.get(
+  "/download/:accessToken/file/:fileId",
+  asyncHandler(async (req, res) => {
+    const accessToken = req.params.accessToken as string;
+    const fileId = req.params.fileId as string;
+
+    const file = await assetService.getDedicatedAssetDownloadFile(accessToken, fileId);
+
+    // Fast path: Redirect directly to Cloudflare R2 presigned download URL
+    if (file.storageKey) {
+      try {
+        const presigned = await r2Storage.getPresignedGetObjectUrl({
+          key: file.storageKey,
+          filename: file.filename,
+          disposition: "attachment",
+          expiresInSeconds: 900,
+        });
+        if (presigned?.url) {
+          return res.redirect(302, presigned.url);
+        }
+      } catch {
+        // Fall back to direct stream if presigning not available
+      }
+    }
+
+    res.setHeader("Content-Disposition", `attachment; filename="${file.filename.replace(/"/g, "")}"`);
+    res.setHeader("Content-Type", file.mimeType);
+    if (file.contentLength != null) {
+      res.setHeader("Content-Length", String(file.contentLength));
+    }
+
+    if (typeof (file.body as any)?.pipe === "function") {
+      return (file.body as any).pipe(res);
+    } else if (file.body && typeof (file.body as any).getReader === "function") {
+      return Readable.fromWeb(file.body as any).pipe(res);
+    } else if (Buffer.isBuffer(file.body) || file.body instanceof Uint8Array) {
+      return res.send(Buffer.from(file.body));
+    } else {
+      return res.send(file.body);
+    }
+  })
+);
+
+// POST /api/assets/download/:accessToken/download-zip - Bundle files into ZIP using access token
+assetsRouter.post(
+  "/download/:accessToken/download-zip",
+  asyncHandler(async (req, res) => {
+    const accessToken = req.params.accessToken as string;
+    const fileIds = Array.isArray(req.body?.fileIds) ? req.body.fileIds : undefined;
+
+    const result = await assetService.getDedicatedAssetZipArchive(accessToken, fileIds);
+
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename.replace(/"/g, "")}"`);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Length", String(result.body.length));
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    return res.send(Buffer.from(result.body as any));
+  })
+);
+
+// GET /api/assets/download/:accessToken/download-zip - Direct GET download for ZIP archive
+assetsRouter.get(
+  "/download/:accessToken/download-zip",
+  asyncHandler(async (req, res) => {
+    const accessToken = req.params.accessToken as string;
+    const fileIdsParam = typeof req.query.fileIds === "string" ? req.query.fileIds : undefined;
+    const fileIds = fileIdsParam ? fileIdsParam.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+
+    const result = await assetService.getDedicatedAssetZipArchive(accessToken, fileIds);
+
+    res.setHeader("Content-Disposition", `attachment; filename="${result.filename.replace(/"/g, "")}"`);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Length", String(result.body.length));
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+    return res.send(Buffer.from(result.body as any));
+  })
+);
+
+// POST /api/assets/public/:token/request-access-otp - Request access OTP for an already-paid asset
+assetsRouter.post(
+  "/public/:token/request-access-otp",
+  asyncHandler(async (req, res) => {
+    const token = req.params.token as string;
+    const email = typeof req.body?.email === "string" ? req.body.email : "";
+    if (!email.trim()) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    const result = await assetService.requestAssetAccessOtp(token, email);
+    return sendSuccess(res, result);
+  })
+);
+
+// POST /api/assets/public/:token/verify-access-otp - Verify access OTP and get dedicated download URL
+assetsRouter.post(
+  "/public/:token/verify-access-otp",
+  asyncHandler(async (req, res) => {
+    const token = req.params.token as string;
+    const email = typeof req.body?.email === "string" ? req.body.email : "";
+    const otp = typeof req.body?.otp === "string" ? req.body.otp : "";
+    if (!email.trim() || !otp.trim()) {
+      return res.status(400).json({ error: "Email and verification code are required" });
+    }
+
+    const result = await assetService.verifyAssetAccessOtp(token, email, otp);
+    return sendSuccess(res, result);
   })
 );
 

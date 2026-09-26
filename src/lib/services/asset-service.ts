@@ -21,6 +21,8 @@ import { r2Storage } from "@/lib/storage/r2";
 import { createStoredZip } from "@/lib/utils/zip";
 import { emailService } from "@/lib/email/email-service";
 
+const assetOtpMap = new Map<string, { code: string; expiresAt: number }>();
+
 async function readBodyToBytes(body: any): Promise<Uint8Array> {
   if (body == null) return new Uint8Array();
   if (body instanceof Uint8Array) return body;
@@ -766,47 +768,33 @@ export class AssetService {
       }
     }
 
-    // If active purchase exists, return purchased file delivery state regardless of public link status!
+    // If active purchase exists, return requires_otp so buyer must authenticate via OTP or use their private access token
     if (activePurchase) {
-      const files = await db
-        .select()
-        .from(assetFiles)
-        .where(
-          and(
-            eq(assetFiles.assetId, asset.id),
-            or(
-              isNull(assetFiles.deletedAt),
-              asset.deletedAt ? sql`${assetFiles.deletedAt} >= ${asset.deletedAt}` : sql`TRUE`
-            )
-          )
-        )
-        .orderBy(asc(assetFiles.name));
-
-      const purchasedAssetData = {
-        id: asset.id,
-        title: asset.title,
-        description: asset.description,
-        amountCents: asset.amountCents,
-        currency: asset.currency,
-        templateKey: asset.templateKey,
-        creatorName,
-      };
-
       return {
-        accessState: "purchased",
-        asset: purchasedAssetData,
-        assetShare: purchasedAssetData,
+        accessState: "requires_otp" as const,
+        hasActivePurchase: true,
+        asset: {
+          id: asset.id,
+          title: asset.title,
+          description: asset.description,
+          amountCents: asset.amountCents,
+          currency: asset.currency,
+          templateKey: asset.templateKey,
+          creatorName,
+        },
+        assetShare: {
+          id: asset.id,
+          title: asset.title,
+          description: asset.description,
+          amountCents: asset.amountCents,
+          currency: asset.currency,
+          templateKey: asset.templateKey,
+          creatorName,
+        },
         creator: {
           id: asset.userId,
           displayName: creatorName,
         },
-        purchase: {
-          invoiceNumber: activePurchase.invoiceNumber,
-          paidAt: activePurchase.paidAt,
-          expiresAt: activePurchase.expiresAt,
-          buyerEmail: activePurchase.buyerEmail,
-        },
-        files,
       };
     }
 
@@ -962,7 +950,7 @@ export class AssetService {
         [creator?.firstName, creator?.lastName].filter(Boolean).join(" ") ||
         "MitFloww Creator";
       const appUrl = (process.env.APP_URL || "https://mitfloww.com").replace(/\/+$/, "");
-      const downloadUrl = `${appUrl}/s/asset/${shareToken}/downloads?email=${encodeURIComponent(normalizedEmail)}`;
+      const downloadUrl = `${appUrl}/s/asset/download/${purchase.accessToken}`;
       const formattedAmount = `${(asset.currency || "USD").toUpperCase()} ${(asset.amountCents / 100).toFixed(2)}`;
 
       await emailService.sendAssetPurchaseDeliveryEmail({
@@ -987,36 +975,129 @@ export class AssetService {
     };
   }
 
-  async getPublicAssetDownloadFile(token: string, fileId: string, buyerEmail?: string | null) {
+  async getPublicAssetDownloadFile(token: string, fileId: string, accessToken?: string | null) {
+    if (!accessToken || !accessToken.trim()) {
+      throw new AppError("A secure access token is required to download files. Please use the download link sent to your email or verify with OTP.", 403, "access_token_required");
+    }
+    return this.getDedicatedAssetDownloadFile(accessToken.trim(), fileId);
+  }
+
+  async getPublicAssetZipArchive(token: string, accessToken?: string | null, fileIds?: string[]) {
+    if (!accessToken || !accessToken.trim()) {
+      throw new AppError("A secure access token is required to download files. Please use the download link sent to your email or verify with OTP.", 403, "access_token_required");
+    }
+    return this.getDedicatedAssetZipArchive(accessToken.trim(), fileIds);
+  }
+
+  async getDedicatedAssetDownloadState(accessToken: string) {
+    const [purchase] = await db
+      .select()
+      .from(assetPurchases)
+      .where(eq(assetPurchases.accessToken, accessToken))
+      .limit(1);
+
+    if (!purchase) {
+      throw new NotFoundAppError("Download link not found or invalid.");
+    }
+
     const [asset] = await db
       .select()
       .from(assets)
-      .where(eq(assets.shareToken, token))
+      .where(eq(assets.id, purchase.assetId))
       .limit(1);
 
     if (!asset) {
-      throw new NotFoundAppError("Asset link not found.");
+      throw new NotFoundAppError("Asset not found.");
     }
 
-    if (!buyerEmail || !buyerEmail.trim()) {
-      throw new AppError("Buyer email is required to download asset files.", 403, "buyer_email_required");
+    const isExpired = new Date(purchase.expiresAt).getTime() <= Date.now();
+    if (isExpired) {
+      return {
+        accessState: "expired" as const,
+        buyerEmail: purchase.buyerEmail,
+        assetTitle: asset.title,
+        expiresAt: purchase.expiresAt,
+        shareToken: asset.shareToken,
+      };
     }
 
-    const normalizedEmail = buyerEmail.trim().toLowerCase();
+    const [creator] = await db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        email: users.email,
+      })
+      .from(users)
+      .where(eq(users.id, asset.userId))
+      .limit(1);
+
+    const creatorName =
+      creator?.displayName ||
+      (creator?.firstName ? `${creator.firstName} ${creator?.lastName || ""}`.trim() : creator?.email) ||
+      "MitFloww Creator";
+
+    const files = await db
+      .select()
+      .from(assetFiles)
+      .where(
+        and(
+          eq(assetFiles.assetId, asset.id),
+          isNull(assetFiles.deletedAt)
+        )
+      )
+      .orderBy(asc(assetFiles.name));
+
+    return {
+      accessState: "purchased" as const,
+      asset: {
+        id: asset.id,
+        title: asset.title,
+        description: asset.description,
+        amountCents: asset.amountCents,
+        currency: asset.currency,
+        shareToken: asset.shareToken,
+        filesCount: files.length,
+      },
+      assetShare: {
+        id: asset.id,
+        title: asset.title,
+        description: asset.description,
+        amountCents: asset.amountCents,
+        currency: asset.currency,
+        shareToken: asset.shareToken,
+        filesCount: files.length,
+      },
+      creator: {
+        displayName: creatorName,
+      },
+      purchase: {
+        invoiceNumber: purchase.invoiceNumber,
+        paidAt: purchase.paidAt,
+        expiresAt: purchase.expiresAt,
+        buyerEmail: purchase.buyerEmail,
+        amountCents: purchase.amountCents,
+        currency: purchase.currency,
+      },
+      files,
+    };
+  }
+
+  async getDedicatedAssetDownloadFile(accessToken: string, fileId: string) {
     const [purchase] = await db
       .select()
       .from(assetPurchases)
       .where(
         and(
-          eq(assetPurchases.assetId, asset.id),
-          eq(assetPurchases.buyerEmail, normalizedEmail),
+          eq(assetPurchases.accessToken, accessToken),
           sql`${assetPurchases.expiresAt} > NOW()`
         )
       )
       .limit(1);
 
     if (!purchase) {
-      throw new AppError("A valid, unexpired purchase is required to download asset files.", 403, "purchase_required");
+      throw new AppError("A valid, unexpired access link is required to download asset files.", 403, "access_expired_or_invalid");
     }
 
     const [file] = await db
@@ -1025,11 +1106,8 @@ export class AssetService {
       .where(
         and(
           eq(assetFiles.id, fileId),
-          eq(assetFiles.assetId, asset.id),
-          or(
-            isNull(assetFiles.deletedAt),
-            asset.deletedAt ? sql`${assetFiles.deletedAt} >= ${asset.deletedAt}` : sql`TRUE`
-          )
+          eq(assetFiles.assetId, purchase.assetId),
+          isNull(assetFiles.deletedAt)
         )
       )
       .limit(1);
@@ -1048,36 +1126,30 @@ export class AssetService {
     };
   }
 
-  async getPublicAssetZipArchive(token: string, buyerEmail?: string | null, fileIds?: string[]) {
-    const [asset] = await db
-      .select()
-      .from(assets)
-      .where(eq(assets.shareToken, token))
-      .limit(1);
-
-    if (!asset) {
-      throw new NotFoundAppError("Asset link not found.");
-    }
-
-    if (!buyerEmail || !buyerEmail.trim()) {
-      throw new AppError("Buyer email is required to download asset files.", 403, "buyer_email_required");
-    }
-
-    const normalizedEmail = buyerEmail.trim().toLowerCase();
+  async getDedicatedAssetZipArchive(accessToken: string, fileIds?: string[]) {
     const [purchase] = await db
       .select()
       .from(assetPurchases)
       .where(
         and(
-          eq(assetPurchases.assetId, asset.id),
-          eq(assetPurchases.buyerEmail, normalizedEmail),
+          eq(assetPurchases.accessToken, accessToken),
           sql`${assetPurchases.expiresAt} > NOW()`
         )
       )
       .limit(1);
 
     if (!purchase) {
-      throw new AppError("A valid, unexpired purchase is required to download asset files.", 403, "purchase_required");
+      throw new AppError("A valid, unexpired access link is required to download asset files.", 403, "access_expired_or_invalid");
+    }
+
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.id, purchase.assetId))
+      .limit(1);
+
+    if (!asset) {
+      throw new NotFoundAppError("Asset not found.");
     }
 
     let filesList = await db
@@ -1086,10 +1158,7 @@ export class AssetService {
       .where(
         and(
           eq(assetFiles.assetId, asset.id),
-          or(
-            isNull(assetFiles.deletedAt),
-            asset.deletedAt ? sql`${assetFiles.deletedAt} >= ${asset.deletedAt}` : sql`TRUE`
-          )
+          isNull(assetFiles.deletedAt)
         )
       )
       .orderBy(asc(assetFiles.name));
@@ -1149,6 +1218,97 @@ export class AssetService {
       body: zipBytes,
       filename: `${sanitizedTitle}-files.zip`,
       totalFiles: deduplicatedEntries.length,
+    };
+  }
+
+  async requestAssetAccessOtp(token: string, email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.shareToken, token))
+      .limit(1);
+
+    if (!asset) {
+      throw new NotFoundAppError("Asset link not found.");
+    }
+
+    const [purchase] = await db
+      .select()
+      .from(assetPurchases)
+      .where(
+        and(
+          eq(assetPurchases.assetId, asset.id),
+          eq(assetPurchases.buyerEmail, normalizedEmail),
+          sql`${assetPurchases.expiresAt} > NOW()`
+        )
+      )
+      .orderBy(desc(assetPurchases.paidAt))
+      .limit(1);
+
+    if (!purchase) {
+      throw new NotFoundAppError("No active purchase found for this email address. Please make sure you are using the email address you purchased with.");
+    }
+
+    const otp = crypto.randomInt(100000, 1000000).toString();
+    const key = `${token}:${normalizedEmail}`;
+    assetOtpMap.set(key, {
+      code: otp,
+      expiresAt: Date.now() + 15 * 60 * 1000,
+    });
+
+    await emailService.sendAssetAccessOtpEmail(normalizedEmail, otp, asset.title);
+
+    return {
+      success: true,
+      message: "A 6-digit access code has been sent to your email address.",
+    };
+  }
+
+  async verifyAssetAccessOtp(token: string, email: string, otp: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const key = `${token}:${normalizedEmail}`;
+    const stored = assetOtpMap.get(key);
+
+    if (!stored || Date.now() > stored.expiresAt || stored.code !== otp.trim()) {
+      throw new AppError("Invalid or expired verification code. Please request a new one.", 400, "invalid_otp");
+    }
+
+    assetOtpMap.delete(key);
+
+    const [asset] = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.shareToken, token))
+      .limit(1);
+
+    if (!asset) {
+      throw new NotFoundAppError("Asset link not found.");
+    }
+
+    const [purchase] = await db
+      .select()
+      .from(assetPurchases)
+      .where(
+        and(
+          eq(assetPurchases.assetId, asset.id),
+          eq(assetPurchases.buyerEmail, normalizedEmail),
+          sql`${assetPurchases.expiresAt} > NOW()`
+        )
+      )
+      .orderBy(desc(assetPurchases.paidAt))
+      .limit(1);
+
+    if (!purchase) {
+      throw new AppError("Purchase has expired. Please purchase again or contact support.", 403, "purchase_expired");
+    }
+
+    const appUrl = (process.env.APP_URL || "https://mitfloww.com").replace(/\/+$/, "");
+    return {
+      success: true,
+      accessToken: purchase.accessToken,
+      redirectUrl: `${appUrl}/s/asset/download/${purchase.accessToken}`,
     };
   }
 }
