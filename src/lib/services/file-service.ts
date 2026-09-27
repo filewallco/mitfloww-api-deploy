@@ -26,10 +26,7 @@ import type {
   UploadSessionDTO,
   WatermarkCreditInputDTO,
 } from "@/lib/dto/file-upload-sessions";
-import type {
-  MultipartUploadAbortDTO,
-  MultipartUploadAbortReason,
-} from "@/lib/dto/file-multipart";
+import { MultipartUploadAbortReason, type MultipartUploadAbortDTO } from "@/lib/dto/file-multipart";
 import type {
   DeletedFileDTO,
   DeletedFileVersionDTO,
@@ -171,7 +168,7 @@ function buildStorageKey(
 }
 
 function resolveAbortStatus(reason: MultipartUploadAbortReason) {
-  return reason === "failed"
+  return reason === MultipartUploadAbortReason.Failed
     ? FileUploadStatus.Failed
     : FileUploadStatus.Pending;
 }
@@ -6329,7 +6326,7 @@ export class FileService {
 
     // Check if worker already reported a terminal outcome
     if (workerStatus) {
-      if (workerStatus.status === "completed" && workerStatus.output) {
+      if (workerStatus.status === FileProcessingStatus.Completed && workerStatus.output) {
         await this.applyProcessingCallback({
           jobId: local.jobId,
           fileId: local.fileId,
@@ -6340,7 +6337,7 @@ export class FileService {
         return (await this.getProcessingJobByJobId(local.jobId).catch(() => local)) as T;
       }
 
-      if (workerStatus.status === "failed") {
+      if (workerStatus.status === FileProcessingStatus.Failed) {
         await this.applyProcessingCallback({
           jobId: local.jobId,
           fileId: local.fileId,

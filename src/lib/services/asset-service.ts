@@ -5,6 +5,7 @@ import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   assets,
+  AssetStatus,
   assetPreviewFiles,
   assetFiles,
   assetPurchases,
@@ -365,7 +366,7 @@ export class AssetService {
       updates.templateKey = input.templateKey;
     }
     if (input.status !== undefined) {
-      if (input.status === "active" && !existing.publishedAt) {
+      if (input.status === AssetStatus.Active && !existing.publishedAt) {
         throw new ValidationAppError("Assets can only become active when published.");
       }
       updates.status = input.status;
@@ -812,7 +813,7 @@ export class AssetService {
       throw new NotFoundAppError("This Asset is no longer available.");
     }
 
-    if (!asset.publishedAt || asset.status !== "active") {
+    if (!asset.publishedAt || asset.status !== AssetStatus.Active) {
       throw new NotFoundAppError("This Asset has not been published yet.");
     }
 
@@ -877,12 +878,12 @@ export class AssetService {
         and(
           eq(assets.shareToken, shareToken),
           isNull(assets.deletedAt),
-          eq(assets.status, "active")
+          eq(assets.status, AssetStatus.Active)
         )
       )
       .limit(1);
 
-    if (!asset || !asset.publishedAt || asset.status !== "active") {
+    if (!asset || !asset.publishedAt || asset.status !== AssetStatus.Active) {
       throw new NotFoundAppError("Asset is not active or available for purchase.");
     }
 

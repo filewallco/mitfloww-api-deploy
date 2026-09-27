@@ -319,7 +319,7 @@ export class DrizzleProjectRepository implements ProjectRepository {
 
     if (params.paymentStatus !== undefined) {
       const pStatus = String(params.paymentStatus).toLowerCase().trim();
-      if (pStatus === "active") {
+      if (pStatus === ProjectStatus.Active) {
         conditions.push(
           and(
             eq(projects.status, ProjectStatus.Active),
@@ -332,7 +332,7 @@ export class DrizzleProjectRepository implements ProjectRepository {
             ),
           )!,
         );
-      } else if (pStatus === "pending") {
+      } else if (pStatus === ProjectPaymentStatus.Pending) {
         conditions.push(
           and(
             ne(projects.paymentStatus, ProjectPaymentStatus.Paid),
@@ -345,7 +345,7 @@ export class DrizzleProjectRepository implements ProjectRepository {
             ),
           )!,
         );
-      } else if (pStatus === "paid") {
+      } else if (pStatus === ProjectPaymentStatus.Paid) {
         conditions.push(
           or(
             eq(projects.paymentStatus, ProjectPaymentStatus.Paid),

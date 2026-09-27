@@ -171,10 +171,10 @@ export const CreditReservationStatusDb = {
 } as const;
 
 export function toCreditReservationStatusDbValue(status: unknown): CreditReservationStatusDbValue {
-  if (status === CreditReservationStatus.Active || status === 0 || status === "active") return CreditReservationStatusDb.Active;
-  if (status === CreditReservationStatus.Captured || status === 1 || status === "captured") return CreditReservationStatusDb.Captured;
-  if (status === CreditReservationStatus.Released || status === 2 || status === "released") return CreditReservationStatusDb.Released;
-  if (status === CreditReservationStatus.Expired || status === 3 || status === "expired") return CreditReservationStatusDb.Expired;
+  if (status === CreditReservationStatus.Active || status === CreditReservationStatusDb.Active) return CreditReservationStatusDb.Active;
+  if (status === CreditReservationStatus.Captured || status === CreditReservationStatusDb.Captured) return CreditReservationStatusDb.Captured;
+  if (status === CreditReservationStatus.Released || status === CreditReservationStatusDb.Released) return CreditReservationStatusDb.Released;
+  if (status === CreditReservationStatus.Expired || status === CreditReservationStatusDb.Expired) return CreditReservationStatusDb.Expired;
   return CreditReservationStatusDb.Active;
 }
 

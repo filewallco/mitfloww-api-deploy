@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { eq, not, and } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { invoiceSettings, projects, users } from "@/lib/db/schema";
+import { ProjectPaymentStatus } from "@/lib/dto/projects";
 import { ne } from "drizzle-orm";
 import { DrizzleFileRepository } from "@/lib/repositories/file-repository";
 import type { InvoiceSettingsRecord, NewInvoiceSettingsRecord, CustomInvoiceTemplate } from "@/lib/db/schema";
@@ -479,7 +480,7 @@ export class InvoiceService {
     const subtotal = baseAmount + extraRevisionAmount;
 
     const advancePaymentPaid = (project.advancePaymentEnabled &&
-      project.advancePaymentStatus === "paid" &&
+      project.advancePaymentStatus === ProjectPaymentStatus.Paid &&
       project.advanceAmountCents > 0)
       ? Number(project.advanceAmountCents) / 100
       : 0;

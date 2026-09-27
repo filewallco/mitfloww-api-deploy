@@ -1,5 +1,5 @@
 import { db } from "@/lib/db/client";
-import { projects, transactions } from "@/lib/db/schema";
+import { projects, transactions, TransactionPaymentStatus } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
 import type { TransactionRecord } from "@/lib/db/schema";
 import { ensureProjectInvoiceNumber } from "./invoice-service";
@@ -18,19 +18,19 @@ export class TransactionService {
   async getTransactionMetrics(userId: string) {
     const userTransactions = await this.listUserTransactions(userId);
     const totalNetEarningsCents = userTransactions.reduce(
-      (sum, t) => sum + (t.paymentStatus === "paid" ? t.netAmountCents : 0),
+      (sum, t) => sum + (t.paymentStatus === TransactionPaymentStatus.Paid ? t.netAmountCents : 0),
       0
     );
     const totalGrossPaidCents = userTransactions.reduce(
-      (sum, t) => sum + (t.paymentStatus === "paid" ? t.amountCents : 0),
+      (sum, t) => sum + (t.paymentStatus === TransactionPaymentStatus.Paid ? t.amountCents : 0),
       0
     );
     const totalCommissionCents = userTransactions.reduce(
-      (sum, t) => sum + (t.paymentStatus === "paid" ? t.commissionCents : 0),
+      (sum, t) => sum + (t.paymentStatus === TransactionPaymentStatus.Paid ? t.commissionCents : 0),
       0
     );
     const pendingPayoutsCents = userTransactions.reduce(
-      (sum, t) => sum + (t.paymentStatus === "pending" ? t.netAmountCents : 0),
+      (sum, t) => sum + (t.paymentStatus === TransactionPaymentStatus.Pending ? t.netAmountCents : 0),
       0
     );
     const count = userTransactions.length;

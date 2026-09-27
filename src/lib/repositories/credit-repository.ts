@@ -17,7 +17,7 @@ import {
   type CreditPlanKey,
   type CreditReservationParams,
   type CreditReservationSnapshot,
-  type CreditReservationStatus,
+  CreditReservationStatus,
   type CreditDeductionParams,
   type CreditGrantParams,
   type CreditHistoryPaginationParams,
@@ -865,7 +865,7 @@ export class DrizzleCreditRepository implements CreditRepository {
         };
       }
 
-      if (reservation.status !== "active") {
+      if (reservation.status !== CreditReservationStatus.Active) {
         throw new CreditReservationInvalidStateError();
       }
 
@@ -967,7 +967,7 @@ export class DrizzleCreditRepository implements CreditRepository {
       );
       const existingLedger = await this.findLedgerEntryByIdempotencyKey(replayKey);
 
-      if (reservation.status === "released" && existingLedger) {
+      if (reservation.status === CreditReservationStatus.Released && existingLedger) {
         return {
           account: await this.getRequiredAccountById(reservation.accountId),
           idempotentReplay: true,
@@ -976,7 +976,7 @@ export class DrizzleCreditRepository implements CreditRepository {
         };
       }
 
-      if (reservation.status !== "active") {
+      if (reservation.status !== CreditReservationStatus.Active) {
         throw new CreditReservationInvalidStateError();
       }
 

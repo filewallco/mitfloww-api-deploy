@@ -29,10 +29,10 @@ export const TestimonialStatusDb = {
 } as const;
 
 export function toTestimonialStatusDbValue(status: unknown): TestimonialStatusDbValue {
-  if (status === TestimonialStatus.Draft || status === 0 || status === "draft") return TestimonialStatusDb.Draft;
-  if (status === TestimonialStatus.Saved || status === 1 || status === "saved") return TestimonialStatusDb.Saved;
-  if (status === TestimonialStatus.Published || status === 2 || status === "published") return TestimonialStatusDb.Published;
-  if (status === TestimonialStatus.Archived || status === 3 || status === "archived") return TestimonialStatusDb.Archived;
+  if (status === TestimonialStatus.Draft || status === TestimonialStatusDb.Draft) return TestimonialStatusDb.Draft;
+  if (status === TestimonialStatus.Saved || status === TestimonialStatusDb.Saved) return TestimonialStatusDb.Saved;
+  if (status === TestimonialStatus.Published || status === TestimonialStatusDb.Published) return TestimonialStatusDb.Published;
+  if (status === TestimonialStatus.Archived || status === TestimonialStatusDb.Archived) return TestimonialStatusDb.Archived;
   return TestimonialStatusDb.Draft;
 }
 

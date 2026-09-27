@@ -3,6 +3,7 @@ import { getRequestLocale } from "@/middleware/locale";
 import { projectService } from "@/lib/services/project-service";
 import { fileService } from "@/lib/services/file-service";
 import { invoiceService } from "@/lib/services/invoice-service";
+import { ProjectPaymentStatus } from "@/lib/dto/projects";
 import { fileRevisionNoteService } from "@/lib/services/file-revision-note-service";
 import { getProjectShareSessionCookieName } from "@/lib/security/project-share-session";
 import { requireAuthorizedShareProject } from "@/lib/api/client-share";
@@ -130,7 +131,7 @@ shareLinksRouter.get("/:token/invoice/pdf", asyncHandler(async (req, res) => {
   const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
   const project = await requireAuthorizedShareProject(req, params.token);
 
-  if (project.paymentStatus !== "paid") {
+  if (project.paymentStatus !== ProjectPaymentStatus.Paid) {
     return res.status(402).json({ error: "Invoice is available only after payment is completed." });
   }
 
