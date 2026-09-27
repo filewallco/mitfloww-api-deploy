@@ -171,17 +171,25 @@ export class EmailService {
     await this.sendAsync({ to: email, subject, html, text });
   }
 
-  async sendPasswordResetOtpEmail(email: string, otp: string): Promise<void> {
-    const subject = `${otp} is your password reset code`;
-    const html = this.buildOtpEmailHtml({
-      title: "Reset your password",
-      subtitle: "We received a request to reset the password for your MitFloww account.",
-      otp,
-      hint: "This code expires in 5 minutes. If you did not request a password reset, you can safely ignore this email.",
-    });
-    const text = `Your MitFloww password reset code is: ${otp}. It expires in 5 minutes.`;
+  async sendPasswordResetEmail(params: {
+    email: string;
+    resetUrl: string;
+    name?: string;
+  }): Promise<void> {
+    const greetingName = params.name ? ` ${params.name}` : "";
+    const subject = "Reset your MitFloww password";
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 12px 0;">Reset your password</h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">Hello${greetingName}, we received a request to reset your MitFloww password.</p>
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.resetUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-size: 14px; font-weight: 600;">Reset Password &rarr;</a>
+      </div>
+      <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0;">This link expires in 30 minutes and can only be used after opening it from this email. If you did not request this, you can safely ignore this message.</p>
+    `;
+    const html = wrapEmailHtml(content);
+    const text = `Hello${greetingName},\n\nReset your MitFloww password using this link (valid for 30 minutes):\n${params.resetUrl}\n\nIf you did not request this, you can safely ignore this message.`;
 
-    await this.sendAsync({ to: email, subject, html, text });
+    await this.sendAsync({ to: params.email, subject, html, text });
   }
 
   async sendAssetAccessOtpEmail(email: string, otp: string, assetTitle: string): Promise<void> {
@@ -227,7 +235,7 @@ export class EmailService {
       </p>
     `;
     const html = wrapEmailHtml(content);
-    const text = `Security Alert: ${title}\n\n${details}`;
+    const text = `Security Alert: ${title}\n\n${details}\n\nIf this was not you, please log in immediately and change your password, or use the "Log out of all devices" option in your account settings.`;
 
     await this.sendAsync({ to: email, subject, html, text });
   }

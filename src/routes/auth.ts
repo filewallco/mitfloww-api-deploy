@@ -17,14 +17,14 @@ function getRequestMeta(req: any) {
 // ----------------------------------------------------
 // Validation Schemas
 // ----------------------------------------------------
-const requestOtpSchema = z.object({
+const requestEmailSchema = z.object({
   email: z.string().trim().email("Please enter a valid email address"),
 });
 
 const verifySignupSchema = z.object({
   email: z.string().trim().email("Please enter a valid email address"),
   otp: z.string().trim().length(6, "Verification code must be 6 digits"),
-  password: z.string().min(8, "Password must be at least 8 characters").optional(),
+  password: z.string().min(6, "Password must be at least 6 characters").optional(),
 });
 
 const loginPasswordSchema = z.object({
@@ -41,10 +41,9 @@ const googleAuthSchema = z.object({
   idToken: z.string().trim().min(1, "Google ID token is required"),
 });
 
-const verifyResetPasswordSchema = z.object({
-  email: z.string().trim().email("Please enter a valid email address"),
-  otp: z.string().trim().length(6, "Verification code must be 6 digits"),
-  newPassword: z.string().min(8, "Password must be at least 8 characters"),
+const resetPasswordSchema = z.object({
+  token: z.string().trim().min(1, "Password reset token is required"),
+  newPassword: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 const updateOnboardingSchema = z.object({
@@ -61,7 +60,7 @@ const updateOnboardingSchema = z.object({
 authRouter.post(
   "/signup/request-otp",
   asyncHandler(async (req, res) => {
-    const parsed = requestOtpSchema.safeParse(req.body);
+    const parsed = requestEmailSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid email" });
     }
@@ -160,7 +159,7 @@ authRouter.post(
 authRouter.post(
   "/login/request-otp",
   asyncHandler(async (req, res) => {
-    const parsed = requestOtpSchema.safeParse(req.body);
+    const parsed = requestEmailSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid email" });
     }
@@ -266,44 +265,39 @@ authRouter.get(
 );
 
 /**
- * Password Reset: Request OTP
+ * Password Reset: Email reset link
  */
 authRouter.post(
-  "/forgot-password/request-otp",
+  "/forgot-password/request-link",
   asyncHandler(async (req, res) => {
-    const parsed = requestOtpSchema.safeParse(req.body);
+    const parsed = requestEmailSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid email" });
     }
 
-    const result = await authService.requestPasswordResetOtp(parsed.data.email);
+    const result = await authService.requestPasswordResetLink(parsed.data.email);
     return res.json(result);
   }),
 );
 
 /**
- * Password Reset: Verify OTP & Set New Password
+ * Password Reset: Verify link token & Set New Password
  */
 authRouter.post(
-  "/forgot-password/verify",
+  "/forgot-password/reset",
   asyncHandler(async (req, res) => {
-    const parsed = verifyResetPasswordSchema.safeParse(req.body);
+    const parsed = resetPasswordSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" });
     }
 
     const result = await authService.verifyPasswordReset({
-      email: parsed.data.email,
-      otp: parsed.data.otp,
+      token: parsed.data.token,
       newPassword: parsed.data.newPassword,
-      meta: getRequestMeta(req),
     });
 
-    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
-
     return res.json({
-      accessToken: result.accessToken,
-      user: result.user,
+      user: result,
       message: "Password updated successfully.",
     });
   }),

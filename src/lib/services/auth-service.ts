@@ -1,6 +1,6 @@
 import { createScopedLogger } from "@/lib/logger";
 import crypto from "node:crypto";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, isNull, lte, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   authIdentities,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { AppError } from "@/lib/errors/app-error";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { getPasswordValidationError } from "@/lib/auth/password";
 import { otpService } from "@/lib/auth/otp";
 import { sessionService } from "@/lib/auth/session";
 import { verifyGoogleIdToken } from "@/lib/auth/google";
@@ -31,6 +32,73 @@ export type AuthResult = {
 };
 
 const scopedLogger = createScopedLogger("auth-service");
+const PASSWORD_RESET_TOKEN_EXPIRY_MS = 30 * 60 * 1000;
+const PASSWORD_RESET_SECRET =
+  process.env.PASSWORD_RESET_SECRET ||
+  process.env.SESSION_SECRET ||
+  "mitfloww_password_reset_secret_2026";
+
+type PasswordResetTokenPayload = {
+  userId: string;
+  issuedAt: number;
+  expiresAt: number;
+  nonce: string;
+};
+
+function createPasswordResetToken(userId: string): string {
+  const issuedAt = Date.now();
+  const payload: PasswordResetTokenPayload = {
+    userId,
+    issuedAt,
+    expiresAt: issuedAt + PASSWORD_RESET_TOKEN_EXPIRY_MS,
+    nonce: crypto.randomBytes(16).toString("hex"),
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto
+    .createHmac("sha256", PASSWORD_RESET_SECRET)
+    .update(encodedPayload)
+    .digest("base64url");
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifyPasswordResetToken(token: string): PasswordResetTokenPayload | null {
+  const tokenParts = token.split(".");
+  if (tokenParts.length !== 2) return null;
+  const [encodedPayload, signature] = tokenParts;
+
+  const expectedSignature = crypto
+    .createHmac("sha256", PASSWORD_RESET_SECRET)
+    .update(encodedPayload)
+    .digest("base64url");
+
+  if (
+    signature.length !== expectedSignature.length ||
+    !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
+  ) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
+    ) as PasswordResetTokenPayload;
+
+    if (
+      !payload.userId ||
+      !Number.isFinite(payload.issuedAt) ||
+      !Number.isFinite(payload.expiresAt) ||
+      !payload.nonce ||
+      payload.issuedAt > Date.now() ||
+      Date.now() > payload.expiresAt
+    ) {
+      return null;
+    }
+
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 export class AuthService {
   /**
@@ -203,8 +271,9 @@ export class AuthService {
     // Hash password if provided
     let passwordHash: string | null = null;
     if (input.password) {
-      if (input.password.length < 8) {
-        throw new AppError("Password must be at least 8 characters long.", 400, "password_too_short");
+      const passwordError = getPasswordValidationError(input.password);
+      if (passwordError) {
+        throw new AppError(passwordError, 400, "invalid_password");
       }
       passwordHash = await hashPassword(input.password);
     }
@@ -627,9 +696,9 @@ export class AuthService {
   }
 
   /**
-   * Password Reset Step 1: Request Reset OTP.
+   * Password Reset Step 1: Email a signed, expiring reset link.
    */
-  async requestPasswordResetOtp(email: string): Promise<{ success: boolean; message: string }> {
+  async requestPasswordResetLink(email: string): Promise<{ success: boolean; message: string }> {
     const normalizedEmail = email.toLowerCase().trim();
     if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
       throw new AppError("Please enter a valid email address.", 400, "invalid_email");
@@ -637,7 +706,7 @@ export class AuthService {
 
     const genericResponse = {
       success: true,
-      message: "If an account exists with this email, a reset code has been sent.",
+      message: "If an account exists with this email, a password reset link has been sent.",
     };
 
     const [user] = await db
@@ -651,78 +720,80 @@ export class AuthService {
       return genericResponse;
     }
 
-    const { otp } = await otpService.createChallenge(normalizedEmail, "PASSWORD_RESET");
-    await emailService.sendPasswordResetOtpEmail(normalizedEmail, otp);
+    const resetToken = createPasswordResetToken(user.id);
+    const appUrl = (process.env.APP_URL || "https://mitfloww.com").replace(/\/+$/, "");
+    const resetUrl = `${appUrl}/login?mode=reset-password&token=${encodeURIComponent(resetToken)}`;
+    await emailService.sendPasswordResetEmail({
+      email: normalizedEmail,
+      name: user.displayName || user.firstName || undefined,
+      resetUrl,
+    });
 
     return genericResponse;
   }
 
   /**
-   * Password Reset Step 2: Verify OTP and update password.
+   * Password Reset Step 2: Verify the link token and update the password.
    */
   async verifyPasswordReset(input: {
-    email: string;
-    otp: string;
+    token: string;
     newPassword: string;
-    meta?: { userAgent?: string; ipAddress?: string };
-  }): Promise<AuthResult> {
-    const normalizedEmail = input.email.toLowerCase().trim();
-
-    if (!input.newPassword || input.newPassword.length < 8) {
-      throw new AppError("Password must be at least 8 characters long.", 400, "password_too_short");
+  }): Promise<UserRecord> {
+    const passwordError = getPasswordValidationError(input.newPassword);
+    if (passwordError) {
+      throw new AppError(passwordError, 400, "invalid_password");
     }
 
-    const verifyResult = await otpService.verifyOtp(normalizedEmail, "PASSWORD_RESET", input.otp);
-    if (!verifyResult.isValid) {
-      if (verifyResult.error === "EXPIRED") {
-        throw new AppError("The reset code has expired. Please request a new one.", 400, "otp_expired");
-      }
-      if (verifyResult.error === "MAX_ATTEMPTS_EXCEEDED") {
-        throw new AppError("Too many incorrect attempts. Please request a new code.", 429, "max_attempts_exceeded");
-      }
-      throw new AppError("Invalid reset code. Please check and try again.", 400, "invalid_otp");
+    const tokenPayload = verifyPasswordResetToken(input.token);
+    if (!tokenPayload) {
+      throw new AppError("This password reset link is invalid or expired. Please request a new one.", 400, "invalid_reset_token");
     }
 
     const [user] = await db
       .select()
       .from(users)
-      .where(and(eq(users.email, normalizedEmail), isNull(users.deletedAt)))
+      .where(and(eq(users.id, tokenPayload.userId), isNull(users.deletedAt)))
       .limit(1);
 
     if (!user) {
       throw new AppError("User account not found.", 404, "user_not_found");
     }
 
+    // Any account update, including a previous password reset, invalidates older links.
+    if (user.updatedAt.getTime() > tokenPayload.issuedAt) {
+      throw new AppError("This password reset link is invalid or expired. Please request a new one.", 400, "invalid_reset_token");
+    }
+
     const newHash = await hashPassword(input.newPassword);
 
     // Update password
+    const updatedAt = new Date();
     const [updatedUser] = await db
       .update(users)
       .set({
         passwordHash: newHash,
-        updatedAt: new Date(),
+        updatedAt,
       })
-      .where(eq(users.id, user.id))
+      // The compare-and-set condition prevents two old reset links from
+      // succeeding concurrently after the first password change.
+      .where(and(eq(users.id, user.id), lte(users.updatedAt, new Date(tokenPayload.issuedAt))))
       .returning();
 
-    // Revoke all existing sessions for security
-    await sessionService.revokeAllSessions(user.id);
+    if (!updatedUser) {
+      throw new AppError("This password reset link is invalid or expired. Please request a new one.", 400, "invalid_reset_token");
+    }
 
-    // Issue fresh session
-    const { accessToken, refreshToken } = await sessionService.createSession(user.id, input.meta);
+    // Revoke all existing sessions for security. The user must sign in again with the new password.
+    await sessionService.revokeAllSessions(user.id);
 
     // Send security alert email
     await emailService.sendSecurityAlertEmail(
-      updatedUser.email!,
+      updatedUser.email || "",
       "Password Changed",
       "Your MitFloww account password was successfully updated. All other active sessions have been signed out.",
     );
 
-    return {
-      accessToken,
-      refreshToken,
-      user: updatedUser,
-    };
+    return updatedUser;
   }
 
   /**

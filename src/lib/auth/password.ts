@@ -1,6 +1,44 @@
 import crypto from "node:crypto";
 import { hash, verify, Algorithm } from "@node-rs/argon2";
 
+export const PASSWORD_MIN_LENGTH = 6;
+export const PASSWORD_MAX_LENGTH = 100;
+const ALLOWED_PASSWORD_REGEX = /^[A-Za-z0-9@$&!#%*?_-]+$/;
+
+/**
+ * Validates passwords used by signup and password reset flows.
+ * Returns a user-safe validation message, or null when the password is valid.
+ */
+export function getPasswordValidationError(password: string): string | null {
+  if (!password) return "Please enter a password.";
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return "Password must be at least 6 characters long.";
+  }
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    return "Password cannot exceed 100 characters.";
+  }
+  if (!ALLOWED_PASSWORD_REGEX.test(password)) {
+    return "Password may contain only letters, numbers, and @ $ & ! # % * ? _ -.";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Password must include at least one uppercase letter.";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Password must include at least one lowercase letter.";
+  }
+  if (!/[0-9]/.test(password)) {
+    return "Password must include at least one digit.";
+  }
+  if (!/[@$&!#%*?_-]/.test(password)) {
+    return "Password must include at least one symbol.";
+  }
+  return null;
+}
+
+export function isValidPassword(password: string): boolean {
+  return getPasswordValidationError(password) === null;
+}
+
 export type PasswordVerificationResult = {
   isValid: boolean;
   needsRehash: boolean;

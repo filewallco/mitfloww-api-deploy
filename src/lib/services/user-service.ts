@@ -17,6 +17,7 @@ import {
 import type { CompanyRecord, CreatorWorkProfileRecord, UserRecord } from "@/lib/db/schema";
 import { ProjectPaymentStatus, toProjectPaymentStatusDbValue } from "@/lib/dto/projects";
 import { AppError } from "@/lib/errors/app-error";
+import { getPasswordValidationError } from "@/lib/auth/password";
 import { r2Storage } from "@/lib/storage/r2";
 import {
   buildCompanyLogoStorageKey,
@@ -493,6 +494,11 @@ export class UserService {
     firstName?: string;
     lastName?: string;
   }): Promise<UserRecord> {
+    const passwordError = getPasswordValidationError(input.password);
+    if (passwordError) {
+      throw new AppError(passwordError, 400, "invalid_password");
+    }
+
     const existing = await db
       .select()
       .from(users)
@@ -579,6 +585,11 @@ export class UserService {
     usernameOrEmail: string;
     newPassword: string;
   }): Promise<UserRecord> {
+    const passwordError = getPasswordValidationError(input.newPassword);
+    if (passwordError) {
+      throw new AppError(passwordError, 400, "invalid_password");
+    }
+
     const lookup = input.usernameOrEmail.toLowerCase().trim();
     const [user] = await db
       .select()
