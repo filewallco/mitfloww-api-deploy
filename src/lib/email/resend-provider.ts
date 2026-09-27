@@ -1,4 +1,7 @@
 import type { EmailProvider, SendEmailOptions, SendEmailResult } from "./email-provider";
+import { createScopedLogger } from "@/lib/logger";
+
+const log = createScopedLogger("EmailProvider:Resend");
 
 export class ResendEmailProvider implements EmailProvider {
   readonly name = "resend";
@@ -21,15 +24,17 @@ export class ResendEmailProvider implements EmailProvider {
     // Local / development mock fallback if no API key is provided
     if (!this.apiKey) {
       if (process.env.NODE_ENV !== "production") {
-        console.info(
-          `[EmailProvider:Resend (Dev Mock)] -> To: ${to.join(", ")} | Subject: ${options.subject}`,
-        );
+        log.info(`[Dev Mock] Dispatching email to ${to.join(", ")} | Subject: "${options.subject}"`, {
+          to,
+          subject: options.subject,
+        });
         return {
           success: true,
           messageId: `dev-mock-${Date.now()}`,
         };
       }
 
+      log.warn("RESEND_API_KEY is not configured in production environment.", { to, subject: options.subject });
       return {
         success: false,
         error: "RESEND_API_KEY is not configured.",
@@ -67,19 +72,34 @@ export class ResendEmailProvider implements EmailProvider {
 
       if (!response.ok) {
         const errorMsg = data?.message || `HTTP error ${response.status} from Resend`;
-        console.error("[EmailProvider:Resend] Error sending email:", errorMsg);
+        log.error("Resend API rejected email dispatch", {
+          statusCode: response.status,
+          error: errorMsg,
+          to,
+          subject: options.subject,
+        });
         return {
           success: false,
           error: errorMsg,
         };
       }
 
+      log.info(`Email dispatched successfully via Resend (ID: ${data.id})`, {
+        messageId: data.id,
+        to,
+        subject: options.subject,
+      });
+
       return {
         success: true,
         messageId: data.id,
       };
     } catch (err: any) {
-      console.error("[EmailProvider:Resend] Network error:", err?.message || err);
+      log.error("Network failure contacting Resend API", {
+        error: err?.message || err,
+        to,
+        subject: options.subject,
+      });
       return {
         success: false,
         error: err?.message || "Failed to dispatch email via Resend API",

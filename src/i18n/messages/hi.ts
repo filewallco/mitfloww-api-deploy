@@ -225,23 +225,6 @@ export const hiMessages = {
     testimonialsTitle: "प्रशंसापत्र",
     testimonialsDescription: "जल्द ही आ रहा है।",
   },
-  healthPage: {
-    eyebrow: "ऑपरेशन्स",
-    title: "MitFloww DB हेल्थ चेक",
-    subtitle: "ऐप डेटाबेस पर तेज हेल्थ चेक चलाएं और कच्चे API रिस्पॉन्स देखें।",
-    openAdmin: "एडमिन डैशबोर्ड खोलें",
-    pingDb: "DB पिंग करें",
-    checking: "जांच हो रही है...",
-    runCrud: "CRUD टेस्ट चलाएं",
-    running: "चल रहा है...",
-    healthCardTitle: "/api/health",
-    dbCardTitle: "/api/health/db",
-    healthEmpty: "डेटाबेस कनेक्शन जांचने के लिए Ping DB पर क्लिक करें।",
-    dbEmpty:
-      "टेस्ट रिकॉर्ड बनाने, पढ़ने और हटाने के लिए Run CRUD Test पर क्लिक करें।",
-    healthError: "/api/health कॉल नहीं हो सका",
-    dbError: "/api/health/db कॉल नहीं हो सका",
-  },
   dashboardPage: {
     title: "डैशबोर्ड",
     subtitle: "आपके क्लाइंट वर्कफ्लो का अवलोकन।",

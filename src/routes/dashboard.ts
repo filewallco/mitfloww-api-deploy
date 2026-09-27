@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import { Router } from "express";
 import { getRequestLocale } from "@/middleware/locale";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
@@ -10,6 +11,8 @@ import { creditService } from "@/lib/services/credit-service";
 import { notificationService } from "@/lib/services/notification-service";
 import { clientService } from "@/lib/services/client-service";
 import { assetService } from "@/lib/services/asset-service";
+
+const scopedLogger = createScopedLogger("dashboard");
 
 export const dashboardRouter = Router();
 
@@ -33,7 +36,7 @@ dashboardRouter.get(
       assetShares,
     ] = await Promise.all([
       userService.getProfile(actor.id).catch((err) => {
-        console.warn("Dashboard profile error:", err);
+        scopedLogger.warn("Failed to load dashboard profile", { err });
         return null;
       }),
       projectService
@@ -49,27 +52,27 @@ dashboardRouter.get(
           viewerLocale
         )
         .catch((err) => {
-          console.warn("Dashboard projects error:", err);
+          scopedLogger.warn("Failed to load dashboard projects", { err });
           return { items: [] };
         }),
       transactionService.listUserTransactions(actor.id).catch((err) => {
-        console.warn("Dashboard transactions error:", err);
+        scopedLogger.warn("Failed to load dashboard transactions", { err });
         return [];
       }),
       transactionService.getTransactionMetrics(actor.id).catch((err) => {
-        console.warn("Dashboard transaction metrics error:", err);
+        scopedLogger.warn("Failed to load dashboard transaction metrics", { err });
         return null;
       }),
       projectService.getPaidProjectsWithReviews(actor.id).catch((err) => {
-        console.warn("Dashboard reviews error:", err);
+        scopedLogger.warn("Failed to load dashboard reviews", { err });
         return [];
       }),
       storageService.getStorageBalance().catch((err) => {
-        console.warn("Dashboard storage error:", err);
+        scopedLogger.warn("Failed to load dashboard storage", { err });
         return null;
       }),
       creditService.getCreditBalance().catch((err) => {
-        console.warn("Dashboard credits error:", err);
+        scopedLogger.warn("Failed to load dashboard credits", { err });
         return null;
       }),
       notificationService
@@ -79,15 +82,15 @@ dashboardRouter.get(
           actor.id
         )
         .catch((err) => {
-          console.warn("Dashboard notifications error:", err);
+          scopedLogger.warn("Failed to load dashboard notifications", { err });
           return { items: [] };
         }),
       clientService.listClientMasters(actor.id).catch((err) => {
-        console.warn("Dashboard client masters error:", err);
+        scopedLogger.warn("Failed to load dashboard client masters", { err });
         return [];
       }),
       assetService.listUserAssets(actor.id, {}).catch((err) => {
-        console.warn("Dashboard assets error:", err);
+        scopedLogger.warn("Failed to load dashboard assets", { err });
         return [];
       }),
     ]);

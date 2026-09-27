@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 interface ExchangeRateResponse {
   result?: string;
   base_code?: string;
@@ -10,6 +11,8 @@ export interface CachedRates {
   rates: Record<string, number>;
   lastUpdated: number;
 }
+
+const scopedLogger = createScopedLogger("currency-service");
 
 class CurrencyRateService {
   private cache: CachedRates | null = null;
@@ -76,7 +79,7 @@ class CurrencyRateService {
         }
       }
     } catch (err) {
-      console.warn("CurrencyRateService: Failed to fetch external exchange rates, using fallback:", err);
+      scopedLogger.warn("Failed to fetch external exchange rates, using fallback", { err });
     }
 
     if (this.cache) {

@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 
 export type TranslationProviderContext = {
   entityType: string;
@@ -20,6 +21,8 @@ export interface TranslationProvider {
   translateBatch(input: TranslateTextInput[]): Promise<TranslateTextResult[]>;
 }
 
+const scopedLogger = createScopedLogger("translation");
+
 function logTranslationProviderError(
   message: string,
   input: {
@@ -32,10 +35,9 @@ function logTranslationProviderError(
     textLength?: number;
   },
 ) {
-  console.error(message, {
+  scopedLogger.error(message, {
     context: input.context,
-    error:
-      input.error instanceof Error ? input.error.message : input.error,
+    err: input.error,
     sourceLocale: input.sourceLocale,
     status: input.status,
     statusText: input.statusText,

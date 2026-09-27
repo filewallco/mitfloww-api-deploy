@@ -16,7 +16,6 @@ export type NotFoundPageMessageNamespace = MessageNamespace & {
 export type AppMessages = {
   common: MessageNamespace;
   metadata: MessageNamespace;
-  healthPage: MessageNamespace;
   adminPage: MessageNamespace;
   dashboardPage: MessageNamespace;
   analyticsPage: MessageNamespace;
@@ -247,23 +246,6 @@ export const enMessages: AppMessages = {
     teamDescription: "Team information coming soon.",
     testimonialsTitle: "Testimonials",
     testimonialsDescription: "Testimonials coming soon.",
-  },
-  healthPage: {
-    eyebrow: "Operations",
-    title: "MitFloww DB Health Check",
-    subtitle:
-      "Run quick health checks against the app database and inspect the raw API responses.",
-    openAdmin: "Open Admin Dashboard",
-    pingDb: "Ping DB",
-    checking: "Checking...",
-    runCrud: "Run CRUD Test",
-    running: "Running...",
-    healthCardTitle: "/api/health",
-    dbCardTitle: "/api/health/db",
-    healthEmpty: "Click Ping DB to test the database connection.",
-    dbEmpty: "Click Run CRUD Test to create, read, and delete a test record.",
-    healthError: "Failed to call /api/health",
-    dbError: "Failed to call /api/health/db",
   },
   dashboardPage: {
     title: "Dashboard",

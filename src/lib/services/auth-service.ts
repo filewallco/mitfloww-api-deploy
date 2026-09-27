@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import crypto from "node:crypto";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -29,6 +30,8 @@ export type AuthResult = {
   name?: string;
 };
 
+const scopedLogger = createScopedLogger("auth-service");
+
 export class AuthService {
   /**
    * Step 1 of Signup: Request email verification OTP.
@@ -56,6 +59,7 @@ export class AuthService {
 
     const { otp } = await otpService.createChallenge(normalizedEmail, "SIGNUP_VERIFICATION");
     await emailService.sendSignupOtpEmail(normalizedEmail, otp);
+    scopedLogger.info("Signup OTP requested", { emailDomain: normalizedEmail.split("@")[1] });
 
     return {
       success: true,
@@ -91,6 +95,7 @@ export class AuthService {
     );
 
     if (!verifyResult.isValid) {
+      scopedLogger.warn("Signup OTP verification failed", { reason: verifyResult.error || "invalid_code" });
       if (verifyResult.error === "EXPIRED") {
         throw new AppError("The verification code has expired. Please request a new one.", 400, "otp_expired");
       }
@@ -185,6 +190,7 @@ export class AuthService {
     );
 
     if (!verifyResult.isValid) {
+      scopedLogger.warn("Login OTP verification failed", { reason: verifyResult.error || "invalid_code" });
       if (verifyResult.error === "EXPIRED") {
         throw new AppError("The verification code has expired. Please request a new one.", 400, "otp_expired");
       }
@@ -349,6 +355,7 @@ export class AuthService {
 
     const { accessToken, refreshToken } = await sessionService.createSession(user.id, input.meta);
 
+    scopedLogger.info("Password login successful", { userId: user.id });
     return {
       accessToken,
       refreshToken,
@@ -384,6 +391,7 @@ export class AuthService {
 
     const { otp } = await otpService.createChallenge(normalizedEmail, "LOGIN");
     await emailService.sendLoginOtpEmail(normalizedEmail, otp);
+    scopedLogger.info("Login OTP requested", { emailDomain: normalizedEmail.split("@")[1] });
 
     return genericResponse;
   }

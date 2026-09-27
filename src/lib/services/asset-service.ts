@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import { storageService } from "@/lib/services/storage-service";
 import crypto from "node:crypto";
 import { Readable } from "node:stream";
@@ -118,6 +119,8 @@ export interface ListAssetsQuery {
   search?: string;
   sort?: "newest" | "oldest" | "title-asc" | "amount-desc";
 }
+
+const scopedLogger = createScopedLogger("asset-service");
 
 export class AssetService {
   async listUserAssets(userId: string, query?: ListAssetsQuery) {
@@ -554,7 +557,7 @@ export class AssetService {
     try {
       await r2Storage.deleteFile({ key: storageKey });
     } catch (err) {
-      console.warn("Error deleting staged R2 file:", err);
+      scopedLogger.warn("Error deleting staged R2 file", { err, storageKey });
     }
 
     return { success: true };
@@ -665,7 +668,7 @@ export class AssetService {
             },
           });
         } catch (err) {
-          console.warn("Failed to commit storage for asset file:", err);
+          scopedLogger.warn("Failed to commit storage for asset file", { err, assetId: id, fileId: file.id });
         }
       }
     }
@@ -712,7 +715,7 @@ export class AssetService {
           },
         });
       } catch (err) {
-        console.warn("Failed to release storage for asset file:", err);
+        scopedLogger.warn("Failed to release storage for asset file", { err, assetId: id, fileId });
       }
     }
 
@@ -720,7 +723,7 @@ export class AssetService {
       try {
         await r2Storage.deleteFile({ key: file.storageKey });
       } catch (err) {
-        console.warn("Error deleting R2 file:", err);
+        scopedLogger.warn("Error deleting asset file from R2", { err, storageKey: file.storageKey });
       }
     }
 
@@ -953,7 +956,7 @@ export class AssetService {
         creatorName,
       });
     } catch (emailErr) {
-      console.error("[AssetService] Failed to send asset delivery email:", emailErr);
+      scopedLogger.error("Failed to send asset delivery email", { err: emailErr, buyerEmail: normalizedEmail, assetId: asset.id });
     }
 
     return {

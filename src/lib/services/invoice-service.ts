@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import { randomBytes } from "node:crypto";
 import { eq, not, and } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -169,6 +170,8 @@ export async function ensureProjectInvoiceNumber(
 
   return uniqueInvoiceNumber;
 }
+
+const scopedLogger = createScopedLogger("invoice-service");
 
 export class InvoiceService {
   async getInvoiceSettings(userId: string): Promise<InvoiceSettingsRecord> {
@@ -527,7 +530,7 @@ export class InvoiceService {
           }
         }
       } catch (err) {
-        console.warn("Could not load company logo from R2 for invoice:", err);
+        scopedLogger.warn("Could not load company logo from R2 for invoice", { err });
       }
     }
 
@@ -547,7 +550,7 @@ export class InvoiceService {
     try {
       await transactionService.recordProjectTransaction(project.id);
     } catch (txErr) {
-      console.warn("Could not record transaction on invoice generation:", txErr);
+      scopedLogger.warn("Could not record transaction on invoice generation", { err: txErr });
     }
     const finalAmount = balanceAmount > 0 ? balanceAmount : subtotal;
     const clientName = project.clientName || "Valued Client";
@@ -712,7 +715,7 @@ export class InvoiceService {
           }
         }
       } catch (err) {
-        console.warn("Could not load company logo from R2 for sample invoice:", err);
+        scopedLogger.warn("Could not load company logo from R2 for sample invoice", { err });
       }
     }
 

@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 import dns from "node:dns";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -38,7 +39,7 @@ export const pool =
 
 pool.on("error", (err) => {
   // Catch errors on idle clients so they are purged from the pool cleanly
-  console.warn("[Database Pool] Idle client warning:", err.message || err);
+  logger.warn("[DatabasePool] Idle client error encountered", { error: err.message || String(err) });
 });
 
 if (process.env.NODE_ENV !== "production") {

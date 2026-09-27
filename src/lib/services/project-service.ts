@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
   import { resolveActiveActor } from "@/lib/auth/active-actor";
   import { creditService } from "@/lib/services/credit-service";
   import { CREDIT_PLANS } from "@/lib/credits";
@@ -458,7 +459,9 @@
     titleText: TranslatedTextDTO;
   };
 
-  export class ProjectService {
+  const scopedLogger = createScopedLogger("project-service");
+
+export class ProjectService {
     constructor(
       private readonly repository: ProjectRepository,
       private readonly fileRepository: FileRepository,
@@ -1032,7 +1035,7 @@
                 allowApproved: true,
                 awaitStorageDelete: false,
               }).catch((err) => {
-                console.warn("[project-service] Background file deletion failed for file:", file.id, err);
+                scopedLogger.warn("Background file deletion failed for file", { fileId: file.id, err });
               });
             }
           }
@@ -1060,15 +1063,12 @@
                   await fileService.deleteFileStorageObjects(fileWithVersions).catch(() => {});
                 }
               } catch (error) {
-                console.warn(
-                  "[project-service] Cleanup of previously deleted file storage failed (continuing)",
-                  { fileId: file.id, error },
-                );
+                scopedLogger.warn("Cleanup of previously deleted file storage failed (continuing)", { fileId: file.id, err: error });
               }
             }
           }
         } catch (bgError) {
-          console.error("[project-service] Error during background project file cleanup:", bgError);
+          scopedLogger.error("Error during background project file cleanup", { err: bgError, projectId: existing.id });
         }
       })();
 

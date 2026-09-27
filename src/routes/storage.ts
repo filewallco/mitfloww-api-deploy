@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import { Router } from "express";
 import mime from "mime-types";
 import { storage } from "@/lib/storage";
@@ -13,6 +14,8 @@ const storageAddOnSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(128),
   storageAddOnKey: z.enum(STORAGE_ADD_ON_KEYS),
 });
+
+const scopedLogger = createScopedLogger("storage-route");
 
 export const storageRouter = Router();
 
@@ -84,7 +87,7 @@ storageRouter.get("/:action", asyncHandler(async (req, res) => {
     if (err.statusCode === 404) {
       return res.status(404).json({ error: "Not found." });
     }
-    console.error("Storage download error:", err);
+    scopedLogger.error("Storage download error", { err, bucket: req.query.bucket, key: req.query.key });
     return res.status(500).json({ error: "Internal error." });
   }
 }));
@@ -121,7 +124,7 @@ storageRouter.put("/:action", asyncHandler(async (req, res) => {
 
       return res.status(200).end();
     } catch (err) {
-      console.error("Local storage upload error:", err);
+      scopedLogger.error("Local storage upload error", { err, bucket, key });
       return res.status(500).json({ error: "Internal error." });
     }
   }
@@ -158,7 +161,7 @@ storageRouter.put("/:action", asyncHandler(async (req, res) => {
       res.setHeader("ETag", `"${result.etag}"`);
       return res.status(200).end();
     } catch (err) {
-      console.error("Local storage multipart part error:", err);
+      scopedLogger.error("Local storage multipart part error", { err, bucket, key, uploadId: req.query.uploadId });
       return res.status(500).json({ error: "Internal error." });
     }
   }

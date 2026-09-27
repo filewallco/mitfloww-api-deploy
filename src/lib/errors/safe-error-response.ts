@@ -1,3 +1,4 @@
+import { logger, getRequestId } from "@/lib/logger";
 import { randomUUID } from "crypto";
 import { ZodError } from "zod";
 import { CREDIT_ERROR_CODES } from "@/lib/credits/errors";
@@ -141,7 +142,7 @@ const SAFE_ERROR_MAPPINGS: Record<string, SafeErrorMapping> = {
  * of API responses, and leaves full exception logging to the server only.
  */
 export function describeSafeError(error: unknown): SafeErrorDescriptor {
-  const requestId = createRequestId();
+  const requestId = getRequestId() || createRequestId();
 
   if (error instanceof ZodError) {
     return {
@@ -199,7 +200,7 @@ export function toSafeErrorResponse(error: unknown): {
   const descriptor = describeSafeError(error);
 
   if (shouldLogRawError(error, descriptor.messageKey)) {
-    console.error(`[${descriptor.requestId}] API request failed`, error);
+    logger.error("API request failed", { requestId: descriptor.requestId, code: descriptor.code, statusCode: descriptor.statusCode, err: error });
   }
 
   return {
@@ -236,7 +237,7 @@ export function toSafeErrorPayload(
   const status = options?.status ?? descriptor.statusCode;
 
   if (shouldLogRawError(error, messageKey)) {
-    console.error(`[${requestId}] API request failed`, error);
+    logger.error("API request failed", { requestId, code, statusCode: status, err: error });
   }
 
   const body: ApiErrorResponse = {

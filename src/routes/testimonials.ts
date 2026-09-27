@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import { Router } from "express";
 import { z } from "zod";
 import { testimonialService } from "@/lib/services/testimonial-service";
@@ -10,6 +11,8 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { r2Storage } from "@/lib/storage/r2";
 import { findTestimonialTemplateById } from "@/lib/testimonials/testimonial-templates";
 import sharp from "sharp";
+
+const scopedLogger = createScopedLogger("testimonials-route");
 
 export const testimonialsRouter = Router();
 
@@ -110,7 +113,7 @@ testimonialsRouter.post("/upload", asyncHandler(async (req, res) => {
       contentType = "image/webp";
       extension = "webp";
     } catch (err) {
-      console.warn("Sharp image compression fallback to original buffer:", err);
+      scopedLogger.warn("Sharp image compression fallback to original buffer", { err, mimeType: file.mimeType });
     }
   } else {
     extension = "svg";
@@ -154,7 +157,7 @@ testimonialsRouter.delete("/upload", asyncHandler(async (req, res) => {
   try {
     await r2Storage.deleteFile({ key });
   } catch (err) {
-    console.warn("Non-fatal: failed to delete file from R2:", err);
+    scopedLogger.warn("Failed to delete testimonial media from R2 (non-fatal)", { err, key });
   }
 
   return res.json({ status: "success", deletedKey: key });

@@ -1,7 +1,6 @@
 import { pgSchema } from "drizzle-orm/pg-core";
 import { createCreditTables } from "./credits";
 import { createFileTables } from "./files";
-import { createHealthTables } from "./health";
 import { createInvoiceTables } from "./invoices";
 import { createNotificationTables } from "./notifications";
 import { createProjectTables } from "./projects";
@@ -56,7 +55,6 @@ export const { notifications } = createNotificationTables(fw, {
   files,
   projects,
 });
-export const { healthChecks } = createHealthTables(fw);
 export const { users, companies, creatorWorkProfiles } = createUserTables(fw);
 export const { authIdentities, sessions, otpChallenges } = createAuthTables(fw, { users });
 export const { invoiceSettings } = createInvoiceTables(fw, { users });

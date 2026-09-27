@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import { Router } from "express";
 import { Readable } from "stream";
 import { z } from "zod";
@@ -26,6 +27,8 @@ import {
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
 import { NotFoundAppError, AppError } from "@/lib/errors/app-error";
 import { ProjectPaymentStatus } from "@/lib/dto/projects";
+
+const scopedLogger = createScopedLogger("projects-route");
 
 export const projectsRouter = Router();
 
@@ -311,18 +314,13 @@ projectsRouter.post("/:id/request-testimonial-email", asyncHandler(async (req, r
 
   const reviewUrl = `${baseUrl || "http://localhost:3000"}/s/${encodeURIComponent(shareComposer.shareDraft.shareToken)}/review`;
 
-  console.log("\n======================================================");
-  console.log("[Email Service] Testimonial Request Email (MOCK)");
-  console.log(`To: ${clientEmail}`);
-  console.log(`From: ${actor.name || actor.email || "Freelancer"}`);
-  console.log(`Subject: How was your experience working on "${project.title}"?`);
-  console.log("Message:");
-  console.log(`Hi ${project.clientName || "there"},`);
-  console.log(`Thank you for completing payment for "${project.title}". We would love to get your feedback on working together.`);
-  console.log("Please share your review using this link:");
-  console.log(reviewUrl);
-  console.log(`(Link expires in ${actor.clientShareLinkExpiryDays} days)`);
-  console.log("======================================================\n");
+  scopedLogger.info("Testimonial request email dispatched (mock)", {
+    recipient: clientEmail,
+    projectId: project.id,
+    projectTitle: project.title,
+    actorId: actor.id,
+    expiryDays: actor.clientShareLinkExpiryDays,
+  });
 
   return sendSuccess(res, {
     clientEmail,

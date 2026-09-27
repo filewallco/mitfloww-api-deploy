@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import type { EmailProvider, SendEmailOptions, SendEmailResult } from "./email-provider";
 import { ResendEmailProvider } from "./resend-provider";
 import {
@@ -91,6 +92,8 @@ function wrapEmailHtml(contentHtml: string): string {
   `.trim();
 }
 
+const scopedLogger = createScopedLogger("email-service");
+
 export class EmailService {
   private provider: EmailProvider;
 
@@ -135,10 +138,10 @@ export class EmailService {
         attachments,
       });
       if (!res.success) {
-        console.warn(`[EmailService] Failed sending to ${options.to}:`, res.error);
+        scopedLogger.warn("Failed sending email", { to: options.to, error: res.error, subject: options.subject });
       }
     } catch (err) {
-      console.error(`[EmailService] Unexpected error sending to ${options.to}:`, err);
+      scopedLogger.error("Unexpected error sending email", { to: options.to, err, subject: options.subject });
     }
   }
 

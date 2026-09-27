@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import puppeteer, { type Browser } from "puppeteer";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fs from "node:fs";
@@ -101,6 +102,8 @@ export function resolveChromeExecutablePath(): string | undefined {
 
   return undefined;
 }
+
+const scopedLogger = createScopedLogger("invoice-pdf-service");
 
 export class InvoicePdfService {
   private browserPromise: Promise<Browser> | null = null;
@@ -606,10 +609,7 @@ export class InvoicePdfService {
         await page.close().catch(() => {});
       }
     } catch (browserError) {
-      console.warn(
-        "[InvoicePdfService] Puppeteer launch failed (expected on Vercel/serverless). Generating with pdf-lib fallback:",
-        (browserError as any)?.message || String(browserError)
-      );
+      scopedLogger.warn("Puppeteer launch failed (expected on serverless). Generating with pdf-lib fallback", { err: browserError });
       return await this.generatePdfLibFallback(data, lineItems);
     }
   }

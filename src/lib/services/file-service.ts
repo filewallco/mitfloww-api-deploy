@@ -1,3 +1,4 @@
+import { createScopedLogger } from "@/lib/logger";
 import { db } from '@/lib/db/client';
 import { and, desc, eq } from 'drizzle-orm';
 import { fileVersions, projectPaymentSnapshots, projectUnlockedFileVersions } from '@/lib/db/schema';
@@ -968,6 +969,8 @@ function toFileReviewVersionDTO(input: {
 const thumbnailLruCache = new Map<string, Buffer>();
 const MAX_THUMBNAIL_CACHE_ENTRIES = 300;
 
+const scopedLogger = createScopedLogger("file-service");
+
 export class FileService {
   constructor(
     private readonly repository: FileRepository,
@@ -1179,13 +1182,7 @@ export class FileService {
       try {
         await this.deleteFileStorageObjects(existingRecord);
       } catch (error) {
-        console.error(
-          "[file-service] R2 deletion failed during deleteFile.",
-          {
-            fileId: id,
-            error,
-          },
-        );
+        scopedLogger.error("R2 deletion failed during deleteFile", { fileId: id, err: error });
         throw error;
       }
     } else {
@@ -1193,13 +1190,7 @@ export class FileService {
         try {
           await this.deleteFileStorageObjects(existingRecord);
         } catch (error) {
-          console.error(
-            "[file-service] R2 deletion failed during deleteFile. DB deletion will proceed to prevent orphaned records.",
-            {
-              fileId: id,
-              error,
-            },
-          );
+          scopedLogger.error("R2 deletion failed during async deleteFile (DB deletion proceeded)", { fileId: id, err: error });
         }
       })();
     }
@@ -1378,10 +1369,10 @@ export class FileService {
       try {
         await this.deleteRevisionStorageObjects(targetVersion);
       } catch (error) {
-        console.error("[file-service] R2 deletion failed during deleteFileVersion. DB deletion will proceed to prevent orphaned records.", {
+        scopedLogger.error("R2 deletion failed during deleteFileVersion (DB deletion proceeded)", {
           fileId: input.fileId,
           versionId: targetVersion.id,
-          error,
+          err: error,
         });
       }
     })();
@@ -3673,7 +3664,7 @@ export class FileService {
             uploadId: null,
           });
         } catch (error) {
-          console.error("[cleanup-orphaned-uploads] Failed to delete object", error);
+          scopedLogger.error("Failed to delete orphaned object during cleanup", { err: error, storageKey: object.key });
           items.push({
             action: "skip",
             error: getSafeCleanupFailureMessage("delete_object"),
@@ -3741,10 +3732,11 @@ export class FileService {
             uploadId: upload.uploadId,
           });
         } catch (error) {
-          console.error(
-            "[cleanup-orphaned-uploads] Failed to abort multipart upload",
-            error,
-          );
+          scopedLogger.error("Failed to abort multipart upload during cleanup", {
+            err: error,
+            storageKey: upload.key,
+            uploadId: upload.uploadId,
+          });
           items.push({
             action: "skip",
             error: getSafeCleanupFailureMessage("abort_multipart"),
@@ -5734,7 +5726,7 @@ export class FileService {
           ?.httpStatusCode
         : undefined;
 
-    console.warn("Upload cleanup failed", {
+    scopedLogger.warn("Upload cleanup failed", {
       action,
       bucket: input.bucket,
       errorCode,
@@ -5816,10 +5808,10 @@ export class FileService {
         continuationToken = listResult.nextContinuationToken ?? undefined;
       } while (continuationToken);
     } catch (error) {
-      console.warn("[storage] Prefix cleanup failed", {
+      scopedLogger.warn("Prefix cleanup failed", {
         bucket,
         prefix,
-        error: error instanceof Error ? error.message : String(error),
+        err: error,
       });
     }
   }
@@ -5865,7 +5857,7 @@ export class FileService {
       typeof input.errorMessage === "string" &&
       input.errorMessage.trim().length > 0
     ) {
-      console.error("[processing-callback] Worker processing failed", {
+      scopedLogger.error("Worker processing failed via callback", {
         errorCode: input.errorCode ?? null,
         errorMessage: input.errorMessage,
         fileId: input.fileId,
@@ -6254,7 +6246,7 @@ export class FileService {
 
     if (jobId) {
       await cancelWorkerJob(jobId).catch((err) => {
-        console.warn("[file-service] Worker cancel request warning", { jobId, err });
+        scopedLogger.warn("Worker cancel request warning", { jobId, err });
       });
     }
 
@@ -6265,13 +6257,10 @@ export class FileService {
           key: version.processedStorageKey,
         })
         .catch((err) => {
-          console.warn(
-            "[file-service] Failed to delete partial processed R2 object during cancel",
-            {
-              key: version.processedStorageKey,
-              err,
-            },
-          );
+          scopedLogger.warn("Failed to delete partial processed R2 object during cancel", {
+            key: version.processedStorageKey,
+            err,
+          });
         });
     }
 
@@ -6402,7 +6391,7 @@ export class FileService {
       return local;
     }
 
-    console.warn("[stale-recovery] Reconciling stale processing version", {
+    scopedLogger.warn("Reconciling stale processing version", {
       versionId: version.id,
       jobId: local.jobId,
       status: version.processingStatus,
@@ -6443,9 +6432,9 @@ export class FileService {
         errorMessage: retried.errorMessage,
       }))) as T;
     } catch (err) {
-      console.error("[stale-recovery] Retry failed", {
+      scopedLogger.error("Stale recovery retry failed", {
         versionId: version.id,
-        error: err,
+        err,
       });
       return local;
     }
@@ -6480,9 +6469,9 @@ export class FileService {
         );
         reconciledCount++;
       } catch (err) {
-        console.error("[stale-recovery] Error reconciling version", {
+        scopedLogger.error("Error reconciling stale version", {
           versionId: version.id,
-          error: err,
+          err,
         });
       }
     }

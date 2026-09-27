@@ -1,8 +1,11 @@
+import { createScopedLogger } from "@/lib/logger";
 
 import type { AppLocale } from "@/i18n/config";
 import type { OnDemandTranslationResultDTO } from "@/lib/dto/i18n";
 import { detectDynamicTextLocale } from "@/lib/i18n/dynamic-locale";
 import { translationProvider } from "@/lib/translation/provider";
+
+const scopedLogger = createScopedLogger("on-demand-translate");
 
 export function detectTextLocale(text: string): AppLocale {
   return detectDynamicTextLocale(text);
@@ -68,8 +71,8 @@ export async function translateOnDemand(input: {
       translatedText: result.translatedText,
     };
   } catch (error) {
-    console.error("[translation] On-demand translation failed", {
-      error: error instanceof Error ? error.message : error,
+    scopedLogger.error("On-demand translation failed", {
+      err: error,
       sourceLocale,
       targetLocale: input.targetLocale,
       textLength: input.text.length,
