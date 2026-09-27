@@ -562,7 +562,8 @@ export class InvoiceService {
     const ownerName =
       [user.firstName, user.lastName].filter(Boolean).join(" ") ||
       user.displayName ||
-      "Freelancer Name";
+      user.email ||
+      "";
 
     const addressParts = [
       user.city,
@@ -571,9 +572,7 @@ export class InvoiceService {
       user.postcode,
     ].filter(Boolean);
 
-    const address = addressParts.length > 0
-      ? addressParts.join(", ")
-      : "Bangalore, Kerala, India";
+    const address = addressParts.join(", ");
 
     const pdfData: InvoicePdfData = {
       isSample: false,
@@ -604,18 +603,18 @@ export class InvoiceService {
         };
       }),
       company: {
-        name: company?.name || ownerName || "DilCo Design Company",
-        tagline: company?.tagline || "DESIGNING IDEAS, DELIVERING IMPACT",
-        email: user.email || company?.email || "example@gmail.com",
-        phone: user.phone || "95678 12345",
+        name: company?.name || ownerName,
+        tagline: company?.tagline || "",
+        email: user.email || company?.email || "",
+        phone: user.phone || "",
         address,
-        website: company?.website || "www.example.com",
+        website: company?.website || "",
         logoBuffer,
       },
       user: {
         name: ownerName,
         email: user.email,
-        phone: user.phone || "95678 12345",
+        phone: user.phone || "",
         address,
       },
       settings: {
@@ -725,7 +724,8 @@ export class InvoiceService {
     const ownerName =
       [user.firstName, user.lastName].filter(Boolean).join(" ") ||
       user.displayName ||
-      "Freelancer Name";
+      user.email ||
+      "";
 
     const addressParts = [
       user.city,
@@ -734,9 +734,7 @@ export class InvoiceService {
       user.postcode,
     ].filter(Boolean);
 
-    const address = addressParts.length > 0
-      ? addressParts.join(", ")
-      : "Bangalore, Kerala, India";
+    const address = addressParts.join(", ");
 
     const pdfData: InvoicePdfData = {
       isSample: true,
@@ -767,18 +765,18 @@ export class InvoiceService {
         { description: "<project_name> - Project Deliverables", qty: 1, rate: 0, amount: 0 },
       ],
       company: {
-        name: company?.name || ownerName || "DilCo Design Company",
-        tagline: company?.tagline || "DESIGNING IDEAS, DELIVERING IMPACT",
-        email: user.email || company?.email || "example@gmail.com",
-        phone: user.phone || "95678 12345",
+        name: company?.name || ownerName,
+        tagline: company?.tagline || "",
+        email: user.email || company?.email || "",
+        phone: user.phone || "",
         address,
-        website: company?.website || "www.example.com",
+        website: company?.website || "",
         logoBuffer,
       },
       user: {
         name: ownerName,
         email: user.email,
-        phone: user.phone || "95678 12345",
+        phone: user.phone || "",
         address,
       },
       settings: {

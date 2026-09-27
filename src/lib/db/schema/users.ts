@@ -108,7 +108,7 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
     userId: varchar("user_id", { length: 255 })
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    name: varchar("name", { length: 150 }).notNull().default("DilCo Design Company"),
+    name: varchar("name", { length: 150 }).notNull(),
     tagline: varchar("tagline", { length: 255 }),
     industry: varchar("industry", { length: 100 }),
     website: varchar("website", { length: 255 }),

@@ -25,8 +25,7 @@
           "name": "name",
           "type": "varchar(150)",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'DilCo Design Company'"
+          "notNull": true
         },
         "tagline": {
           "name": "tagline",
@@ -2522,8 +2521,7 @@
           "name": "user_id",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'default-owner'"
+          "notNull": true
         },
         "title": {
           "name": "title",

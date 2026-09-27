@@ -1,7 +1,7 @@
 CREATE TABLE "mitfloww"."companies" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" varchar(255) NOT NULL,
-	"name" varchar(150) DEFAULT 'DilCo Design Company' NOT NULL,
+	"name" varchar(150) NOT NULL,
 	"tagline" varchar(255),
 	"industry" varchar(100),
 	"website" varchar(255),
@@ -18,7 +18,7 @@ CREATE TABLE "mitfloww"."companies" (
 ALTER TABLE "mitfloww"."file_versions" DROP CONSTRAINT "file_versions_processing_status_check";--> statement-breakpoint
 ALTER TABLE "mitfloww"."users" ALTER COLUMN "avatar_url" SET DATA TYPE varchar(1024);--> statement-breakpoint
 ALTER TABLE "mitfloww"."health_checks" ADD COLUMN "deleted_at" timestamp with time zone;--> statement-breakpoint
-ALTER TABLE "mitfloww"."projects" ADD COLUMN "user_id" varchar(255) DEFAULT 'default-owner' NOT NULL;--> statement-breakpoint
+ALTER TABLE "mitfloww"."projects" ADD COLUMN "user_id" varchar(255) NOT NULL;--> statement-breakpoint
 ALTER TABLE "mitfloww"."revision_comment_replies" ADD COLUMN "deleted_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "mitfloww"."users" ADD COLUMN "username" varchar(100);--> statement-breakpoint
 ALTER TABLE "mitfloww"."users" ADD COLUMN "password_hash" varchar(255);--> statement-breakpoint

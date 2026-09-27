@@ -64,27 +64,7 @@ export class UserService {
     const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
 
     if (result.length === 0) {
-      // Create user if not exists since we are migrating from hardcoded ID
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          id,
-          firstName: "Dilshith",
-          lastName: "T S",
-          displayName: "Dilshith T S",
-          email: "dilshithts@gmail.com",
-          phone: "95678 12345",
-          countryCode: "+91",
-          city: "Thrissur",
-          state: "Kerala",
-          postcode: "686008",
-          country: "India",
-          roleTitle: "UI/UX Designer & Founder",
-          planKey: "free",
-        })
-        .returning();
-
-      return newUser;
+      throw new AppError("User not found", 404, "user_not_found");
     }
 
     return result[0];
@@ -94,28 +74,11 @@ export class UserService {
     const user = await this.getUser(userId);
 
     // Fetch company
-    let [company] = await db
+    const [company] = await db
       .select()
       .from(companies)
       .where(and(eq(companies.userId, userId), isNull(companies.deletedAt)))
       .limit(1);
-
-    if (!company) {
-      const [newCompany] = await db
-        .insert(companies)
-        .values({
-          userId,
-          name: "DilCo Design Company",
-          tagline: "Designing Ideas, Delivering Impact",
-          industry: "Design & Creative",
-          website: "www.example.com",
-          email: "example@gmail.com",
-          yearFounded: "2024",
-          companySize: "2 - 10 Members",
-        })
-        .returning();
-      company = newCompany;
-    }
 
     // Compute stats
     const [completedProjectsResult] = await db
@@ -152,25 +115,22 @@ export class UserService {
 
     const reviewCount = reviews.length;
     const totalRating = reviews.reduce((sum, r) => sum + r.rating, 0);
-    // Use actual DB rating if available, or fallback to 4.9 (18) mockup value
     const averageRating = reviewCount > 0 ? Number((totalRating / reviewCount).toFixed(1)) : 0;
-    const finalReviewCount = reviewCount;
 
-    const memberSinceDate = user.createdAt || new Date("2024-02-10");
-    const memberSince = memberSinceDate.toLocaleDateString("en-US", {
+    const memberSince = user.createdAt.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
     });
 
     const stats: ProfileStats = {
-      projectsCompleted: Math.max(completedProjectsResult?.count ?? 0, 24), // Ensure rich presentation matching Figma
-      testimonialsReceived: Math.max(testimonialsResult?.count ?? 0, 18),
+      projectsCompleted: completedProjectsResult?.count ?? 0,
+      testimonialsReceived: testimonialsResult?.count ?? 0,
       averageRating,
-      reviewCount: finalReviewCount,
-      responseRate: "98%",
+      reviewCount,
+      responseRate: "",
       memberSince,
-      isVerified: user.isVerified ?? true,
+      isVerified: user.isVerified,
     };
 
     const [workProfile] = await db
@@ -244,11 +204,15 @@ export class UserService {
       .limit(1);
 
     if (!company) {
+      if (!data.name?.trim()) {
+        throw new AppError("Company name is required", 400, "company_name_required");
+      }
+
       const [newCompany] = await db
         .insert(companies)
         .values({
           userId,
-          name: data.name || "DilCo Design Company",
+          name: data.name.trim(),
           tagline: data.tagline,
           industry: data.industry,
           website: data.website,
@@ -344,7 +308,12 @@ export class UserService {
       .from(companies)
       .where(and(eq(companies.userId, userId), isNull(companies.deletedAt)))
       .limit(1);
-    const oldLogoKey = company?.logoStorageKey;
+
+    if (!company) {
+      throw new AppError("Company profile not found", 404, "company_not_found");
+    }
+
+    const oldLogoKey = company.logoStorageKey;
 
     const storageKey = buildCompanyLogoStorageKey({
       userId,
@@ -363,23 +332,14 @@ export class UserService {
       ? `${publicBase.replace(/\/+$/, "")}/${storageKey}`
       : `/api/profile/media?key=${encodeURIComponent(storageKey)}`;
 
-    if (company) {
-      await db
-        .update(companies)
-        .set({
-          logoStorageKey: storageKey,
-          logoUrl,
-          updatedAt: new Date(),
-        })
-        .where(eq(companies.id, company.id));
-    } else {
-      await db.insert(companies).values({
-        userId,
-        name: "DilCo Design Company",
+    await db
+      .update(companies)
+      .set({
         logoStorageKey: storageKey,
         logoUrl,
-      });
-    }
+        updatedAt: new Date(),
+      })
+      .where(eq(companies.id, company.id));
 
     // Delete old logo and clean up any duplicate/orphaned company logo files
     if (oldLogoKey && oldLogoKey !== storageKey) {
@@ -497,15 +457,7 @@ export class UserService {
       .returning();
 
     if (!user) {
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          id,
-          planKey,
-        })
-        .returning();
-
-      return newUser;
+      throw new AppError("User not found", 404, "user_not_found");
     }
 
     return user;
