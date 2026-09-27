@@ -147,7 +147,7 @@ export const createProjectTables = (fw: PgSchema) => {
     {
       id: uuid("id").defaultRandom().primaryKey(),
       publicId: varchar("public_id", { length: 255 }).notNull(),
-      userId: varchar("user_id", { length: 255 }).notNull().default("default-owner"),
+      userId: varchar("user_id", { length: 255 }).notNull(),
       title: varchar("title", { length: 80 }).notNull(),
       titleSourceLocale: varchar("title_source_locale", { length: 16 })
         .notNull()

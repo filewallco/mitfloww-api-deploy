@@ -227,8 +227,3 @@ export function fromCreditScopeTypeDbValue(value: unknown): CreditScopeType {
   }
 }
 
-/**
- * The repo is still running without a real auth/user model, so credits use a
- * temporary single-owner fallback until account ownership exists.
- */
-export const DEFAULT_CREDIT_OWNER_ID = "default-owner";

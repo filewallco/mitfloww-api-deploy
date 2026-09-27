@@ -410,7 +410,7 @@ export class InvoiceService {
       throw new NotFoundAppError("Project not found.");
     }
 
-    const userId = project.userId || "default-owner";
+    const userId = project.userId;
 
     const profile = await userService.getProfile(userId);
     const settings = await this.getInvoiceSettings(userId);

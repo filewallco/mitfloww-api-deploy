@@ -66,7 +66,6 @@ import {
 import { type FileStorage, storage } from "@/lib/storage";
 import {
   buildManagedUploadStorageKey,
-  DEFAULT_OWNER_ID,
   getRevisionStoragePrefixFromKey,
   isManagedUploadStorageKey,
   MANAGED_UPLOAD_OWNER,
@@ -5118,7 +5117,7 @@ export class FileService {
         fileId: randomUUID(),
         projectId: project.id,
         revisionNumber: 1,
-        userId: project.userId || DEFAULT_OWNER_ID,
+        userId: project.userId || actor.id,
       };
     }
 
@@ -5165,7 +5164,7 @@ export class FileService {
       fileId: fileWithVersions.file.id,
       projectId: project.id,
       revisionNumber: nextRevisionNumber,
-      userId: project.userId || DEFAULT_OWNER_ID,
+      userId: project.userId || actor.id,
     };
   }
 

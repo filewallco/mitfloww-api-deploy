@@ -2,7 +2,6 @@ export const USERS_STORAGE_KEY_PREFIX = "users";
 export const MANAGED_UPLOAD_STORAGE_KEY_PREFIX = "projects";
 export const LEGACY_MANAGED_UPLOAD_STORAGE_KEY_PREFIX = "users";
 export const LEGACY_ADMIN_STORAGE_KEY_PREFIX = "admin";
-export const DEFAULT_OWNER_ID = "default-owner";
 export const MANAGED_UPLOAD_OWNER = "admin";
 
 function stripFileExtension(fileName: string) {
@@ -74,7 +73,14 @@ export function buildFileRootStoragePrefix(input: {
   userId?: string | null;
 }) {
   const userSegment =
-    toStorageSegment(input.userId || input.userEmail || "") || DEFAULT_OWNER_ID;
+    (() => {
+    const rawUser = input.userId || input.userEmail || "";
+    const userSegment = toStorageSegment(rawUser);
+    if (!userSegment) {
+      throw new Error("User identifier is required to build file root storage prefix.");
+    }
+    return userSegment;
+  })();
   const projectSegment = toStorageSegment(input.projectId) || "project";
   const fileSegment = toStorageSegment(input.fileId) || "file";
 
@@ -90,7 +96,10 @@ export function buildUserProfileAvatarStorageKey(input: {
   extension: string;
   timestamp?: number;
 }) {
-  const userSegment = toStorageSegment(input.userId) || DEFAULT_OWNER_ID;
+  const userSegment = toStorageSegment(input.userId);
+  if (!userSegment) {
+    throw new Error("User ID is required to build storage key.");
+  }
   const ext = input.extension.startsWith(".") ? input.extension : `.${input.extension}`;
   const ts = input.timestamp ?? Date.now();
   return `${USERS_STORAGE_KEY_PREFIX}/${userSegment}/userprofile/avatar_${ts}${ext}`;
@@ -105,7 +114,10 @@ export function buildCompanyLogoStorageKey(input: {
   extension: string;
   timestamp?: number;
 }) {
-  const userSegment = toStorageSegment(input.userId) || DEFAULT_OWNER_ID;
+  const userSegment = toStorageSegment(input.userId);
+  if (!userSegment) {
+    throw new Error("User ID is required to build storage key.");
+  }
   const ext = input.extension.startsWith(".") ? input.extension : `.${input.extension}`;
   const ts = input.timestamp ?? Date.now();
   return `${USERS_STORAGE_KEY_PREFIX}/${userSegment}/userprofile/company_logo_${ts}${ext}`;

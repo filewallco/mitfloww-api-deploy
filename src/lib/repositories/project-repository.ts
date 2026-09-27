@@ -36,7 +36,7 @@ export type CreateProjectRecordInput = Omit<
   ProjectRecord,
   "createdAt" | "deletedAt" | "updatedAt" | "id" | "userId"
 > & {
-  userId?: string;
+  userId: string;
 } &
   Partial<Pick<ProjectRecord, "id">>;
 
