@@ -20,6 +20,8 @@ import {
   files,
   projectClientReviews,
   projects,
+  FileFinalDraftReportStatusDb,
+  FileProcessingStatusDb,
   type ProjectClientReviewRecord,
   type ProjectRecord,
 } from "@/lib/db/schema";
@@ -124,8 +126,8 @@ const projectFileMetrics = db
       cast(count(distinct ${files.id}) as int) > 0
       AND cast(count(distinct case when ${files.approvedVersionId} is not null then ${files.id} end) as int) = cast(count(distinct ${files.id}) as int)
       AND cast(count(distinct case when ${files.finalDraftVersionId} is not null then ${files.id} end) as int) = cast(count(distinct ${files.id}) as int)
-      AND cast(count(distinct case when ${files.finalDraftReportStatus} in ('reported', 'under_review') then ${files.id} end) as int) = 0
-      AND cast(count(distinct case when ${files.finalDraftVersionId} is not null and ${finalDraftVersions.processingStatus} is distinct from 'completed' then ${files.id} end) as int) = 0
+      AND cast(count(distinct case when ${files.finalDraftReportStatus} in (${FileFinalDraftReportStatusDb.Reported}, ${FileFinalDraftReportStatusDb.UnderReview}) then ${files.id} end) as int) = 0
+      AND cast(count(distinct case when ${files.finalDraftVersionId} is not null and ${finalDraftVersions.processingStatus} is distinct from ${FileProcessingStatusDb.Completed} then ${files.id} end) as int) = 0
     `.as("isPendingPayment"),
   })
   .from(files)

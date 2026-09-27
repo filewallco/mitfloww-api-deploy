@@ -102,7 +102,7 @@ export interface UpdateAssetInput {
   description?: string | null;
   amountCents?: number;
   templateKey?: "minimal-modern" | "neon-cyber" | "clean-studio" | "bold-editorial";
-  status?: "active" | "deactivated";
+  status?: "draft" | "active";
   previewFiles?: Array<{
     name: string;
     mimeType: string;
@@ -113,7 +113,7 @@ export interface UpdateAssetInput {
 }
 
 export interface ListAssetsQuery {
-  status?: "all" | "active" | "deactivated";
+  status?: "all" | "draft" | "active";
   search?: string;
   sort?: "newest" | "oldest" | "title-asc" | "amount-desc";
 }
@@ -319,7 +319,7 @@ export class AssetService {
         amountCents: input.amountCents,
         currency: (input.currency || DEFAULT_PROJECT_CURRENCY).toUpperCase(),
         templateKey,
-        status: "active",
+        status: "draft",
         shareToken,
         shareExpiresAt,
       })
@@ -365,6 +365,9 @@ export class AssetService {
       updates.templateKey = input.templateKey;
     }
     if (input.status !== undefined) {
+      if (input.status === "active" && !existing.publishedAt) {
+        throw new ValidationAppError("Assets can only become active when published.");
+      }
       updates.status = input.status;
     }
 
@@ -440,6 +443,7 @@ export class AssetService {
     await db
       .update(assets)
       .set({
+        status: "active",
         publishedAt: now,
         updatedAt: now,
       })
@@ -808,25 +812,7 @@ export class AssetService {
       throw new NotFoundAppError("This Asset is no longer available.");
     }
 
-    if (asset.status === "deactivated") {
-      const deactivatedAssetData = {
-        id: asset.id,
-        title: asset.title,
-        creatorName,
-      };
-
-      return {
-        accessState: "deactivated",
-        asset: deactivatedAssetData,
-        assetShare: deactivatedAssetData,
-        creator: {
-          id: asset.userId,
-          displayName: creatorName,
-        },
-      };
-    }
-
-    if (!asset.publishedAt) {
+    if (!asset.publishedAt || asset.status !== "active") {
       throw new NotFoundAppError("This Asset has not been published yet.");
     }
 
@@ -896,7 +882,7 @@ export class AssetService {
       )
       .limit(1);
 
-    if (!asset || !asset.publishedAt) {
+    if (!asset || !asset.publishedAt || asset.status !== "active") {
       throw new NotFoundAppError("Asset is not active or available for purchase.");
     }
 

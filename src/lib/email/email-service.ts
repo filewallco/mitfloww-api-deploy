@@ -21,22 +21,59 @@ function wrapEmailHtml(contentHtml: string): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="color-scheme" content="light" />
+    <meta name="supported-color-schemes" content="light" />
     <style>
+      :root {
+        color-scheme: light;
+        supported-color-schemes: light;
+      }
       body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
       table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
       img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
-      body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+      body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; min-width: 100%; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+
+      /* Force logo strip to always be 100% white, never inverting across any theme or dark mode */
+      .logo-strip, .logo-strip td {
+        background-color: #ffffff !important;
+        background: #ffffff !important;
+        background-image: linear-gradient(#ffffff, #ffffff) !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        .logo-strip, .logo-strip td {
+          background-color: #ffffff !important;
+          background: #ffffff !important;
+          background-image: linear-gradient(#ffffff, #ffffff) !important;
+        }
+      }
+      /* Gmail app dark mode override */
+      u + .body .logo-strip, u + .body .logo-strip td {
+        background-color: #ffffff !important;
+        background: #ffffff !important;
+        background-image: linear-gradient(#ffffff, #ffffff) !important;
+      }
+      /* Outlook dark mode override */
+      [data-ogsc] .logo-strip, [data-ogsc] .logo-strip td,
+      [data-ogsb] .logo-strip, [data-ogsb] .logo-strip td {
+        background-color: #ffffff !important;
+        background: #ffffff !important;
+        background-image: linear-gradient(#ffffff, #ffffff) !important;
+      }
     </style>
   </head>
-  <body style="margin: 0; padding: 0; width: 100% !important; min-width: 100%; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
-    <!-- Full-width sharp white strip with MitFloww logo -->
-    ${getEmailBrandHeaderHtml()}
-
-    <!-- Main Content Container (Full width responsive, no rounded card box) -->
+  <body class="body" style="margin: 0; padding: 0; width: 100% !important; min-width: 100%; background-color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+    <!-- Main Content Container with width-fitting Brand Header Strip -->
     <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width: 100%; min-width: 100%; background-color: #ffffff; border-collapse: collapse;">
       <tr>
-        <td align="center" style="padding: 0 16px;">
+        <td align="center" style="padding: 24px 16px 0 16px;">
           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%; margin: 0 auto; border-collapse: collapse;">
+            <!-- Width-fitting White Brand Header Strip -->
+            <tr>
+              <td style="padding: 0 0 24px 0;">
+                ${getEmailBrandHeaderHtml()}
+              </td>
+            </tr>
+            <!-- Email Body Content -->
             <tr>
               <td style="color: #0f172a; font-size: 15px; line-height: 1.6; text-align: left;">
                 ${contentHtml}

@@ -15,35 +15,37 @@ import {
 } from "drizzle-orm/pg-core";
 import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
 
-export const ASSET_STATUSES = ["active", "deactivated"] as const;
+export const ASSET_STATUSES = ["draft", "active"] as const;
 export type AssetStatus = (typeof ASSET_STATUSES)[number];
+
 export const AssetStatus = {
-  Active: ASSET_STATUSES[0],
-  Deactivated: ASSET_STATUSES[1],
+  Draft: ASSET_STATUSES[0],
+  Active: ASSET_STATUSES[1],
 } as const satisfies Record<string, AssetStatus>;
 
 export const ASSET_STATUS_DB_VALUES = [0, 1] as const;
 export type AssetStatusDbValue = (typeof ASSET_STATUS_DB_VALUES)[number];
+
 export const AssetStatusDb = {
-  Active: 0,
-  Deactivated: 1,
-} as const;
+  Draft: 0,
+  Active: 1,
+} as const satisfies Record<string, AssetStatusDbValue>;
 
 export function toAssetStatusDbValue(status: unknown): AssetStatusDbValue {
-  if (status === AssetStatus.Active || status === 0 || status === "active") return AssetStatusDb.Active;
-  if (status === AssetStatus.Deactivated || status === 1 || status === "deactivated") return AssetStatusDb.Deactivated;
-  return AssetStatusDb.Active;
+  if (status === AssetStatus.Draft || status === 0 || status === "draft") return AssetStatusDb.Draft;
+  if (status === AssetStatus.Active || status === 1 || status === "active") return AssetStatusDb.Active;
+  return AssetStatusDb.Draft;
 }
 
 export function fromAssetStatusDbValue(value: unknown): AssetStatus {
   const numeric = typeof value === "number" ? value : Number(value);
   switch (numeric) {
+    case AssetStatusDb.Draft:
+      return AssetStatus.Draft;
     case AssetStatusDb.Active:
       return AssetStatus.Active;
-    case AssetStatusDb.Deactivated:
-      return AssetStatus.Deactivated;
     default:
-      return AssetStatus.Active;
+      return AssetStatus.Draft;
   }
 }
 
@@ -65,7 +67,7 @@ const assetStatus = customType<{
 });
 
 const DEFAULT_ASSET_STATUS =
-  toAssetStatusDbValue(AssetStatus.Active) as unknown as AssetStatus;
+  toAssetStatusDbValue(AssetStatus.Draft) as unknown as AssetStatus;
 
 export const ASSET_TEMPLATES = [
   "minimal-modern",

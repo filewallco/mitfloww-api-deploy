@@ -52,10 +52,10 @@ export function getEmailBrandHeaderHtml(): string {
   const siteUrl = "https://www.mitfloww.com";
 
   return `
-    <!-- Full-width sharp white strip banner for header logo (Dark Mode Safe) -->
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width: 100% !important; min-width: 100%; background-color: #ffffff !important; background: #ffffff !important; margin: 0 0 28px 0; padding: 0; border: none; border-collapse: collapse; table-layout: fixed;">
+    <!-- Branded pure-white logo strip banner (Width-fitting, theme-invariant, dark-mode safe) -->
+    <table class="logo-strip" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width: 100% !important; max-width: 600px; background-color: #ffffff !important; background: #ffffff !important; background-image: linear-gradient(#ffffff, #ffffff) !important; border: 1px solid #e2e8f0; border-radius: 12px; margin: 0 auto; padding: 0; border-collapse: separate !important; table-layout: fixed; box-sizing: border-box;">
       <tr>
-        <td align="center" valign="middle" bgcolor="#ffffff" style="background-color: #ffffff !important; background: #ffffff !important; padding: 24px 16px; text-align: center; border: none;">
+        <td align="center" valign="middle" bgcolor="#ffffff" style="background-color: #ffffff !important; background: #ffffff !important; background-image: linear-gradient(#ffffff, #ffffff) !important; padding: 22px 16px; text-align: center; border-radius: 12px; border: none;">
           <a href="${siteUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: inline-block; border: none; outline: none;">
             <img
               src="${logoUrl}"
