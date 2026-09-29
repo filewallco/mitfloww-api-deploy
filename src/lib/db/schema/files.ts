@@ -1,6 +1,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -938,10 +939,16 @@ export const createFileTables = (
       commentId: uuid("comment_id")
         .notNull()
         .references(() => revisionComments.id, { onDelete: "cascade" }),
+      parentReplyId: uuid("parent_reply_id").references(
+        (): AnyPgColumn => revisionCommentReplies.id,
+        { onDelete: "cascade" },
+      ),
       body: text("body").notNull(),
       sourceLocale: varchar("source_locale", { length: 16 })
         .notNull()
         .default("und"),
+      createdBy: varchar("created_by", { length: 255 }),
+      updatedBy: varchar("updated_by", { length: 255 }),
       deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
@@ -951,10 +958,12 @@ export const createFileTables = (
         .defaultNow(),
     },
     (table) => [
-      uniqueIndex("revision_comment_replies_comment_id_unique").on(
-        table.commentId,
-      ),
       index("revision_comment_replies_comment_id_idx").on(table.commentId),
+      index("revision_comment_replies_parent_reply_id_idx").on(table.parentReplyId),
+      index("revision_comment_replies_comment_id_created_at_idx").on(
+        table.commentId,
+        table.createdAt,
+      ),
       index("revision_comment_replies_deleted_at_idx").on(table.deletedAt),
     ],
   );

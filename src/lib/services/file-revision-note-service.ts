@@ -1,4 +1,6 @@
 import { emailService } from "@/lib/email/email-service";
+import { createScopedLogger } from "@/lib/logger";
+const scopedLogger = createScopedLogger("file-revision-note-service");
 import { users } from "@/lib/db/schema";
 import {
   FileRevisionReplyEmailStatus,
@@ -113,6 +115,23 @@ function toItemDTO(
 function toFileRevisionNoteDTO(
   record: FileRevisionNoteWithReplyRecord,
 ): FileRevisionNoteDTO {
+  const allReplies = record.replies ?? (record.reply ? [record.reply] : []);
+  const mappedReplies = allReplies.map((rep) => ({
+    body: rep.body,
+    bodyText: createTranslatedTextDTO({
+      originalText: rep.body,
+      sourceLocale: rep.sourceLocale,
+    }),
+    commentId: rep.commentId,
+    createdAt: rep.createdAt.toISOString(),
+    createdBy: rep.createdBy ?? "admin",
+    id: rep.id,
+    latestReportStatus: null,
+    parentReplyId: rep.parentReplyId ?? null,
+    reportedByCurrentUser: false,
+    updatedAt: rep.updatedAt.toISOString(),
+  }));
+
   return {
     body: record.comment.body,
     bodyText: createTranslatedTextDTO({
@@ -127,21 +146,8 @@ function toFileRevisionNoteDTO(
     markers: record.markers.map(toMarkerDTO),
     items: record.items.map(toItemDTO),
     projectId: record.comment.projectId,
-    reply: record.reply
-      ? {
-          body: record.reply.body,
-          bodyText: createTranslatedTextDTO({
-            originalText: record.reply.body,
-            sourceLocale: record.reply.sourceLocale,
-          }),
-          createdAt: record.reply.createdAt.toISOString(),
-          createdBy: "admin",
-          id: record.reply.id,
-          updatedAt: record.reply.updatedAt.toISOString(),
-          latestReportStatus: null,
-          reportedByCurrentUser: false,
-        }
-      : null,
+    reply: mappedReplies[0] ?? null,
+    replies: mappedReplies,
     latestReportStatus: null,
     reportedByCurrentUser: false,
     status: record.comment.status,
@@ -210,6 +216,7 @@ export class FileRevisionNoteService {
       throw new NotFoundAppError("File version not found.");
     }
 
+    const project = await this.projectRepository.findById(file.projectId);
     const note = await this.revisionNoteRepository.createComment({
       body: input.note,
       createdBy: "admin",
@@ -223,6 +230,27 @@ export class FileRevisionNoteService {
       updatedAt: new Date(),
       updatedBy: "admin",
     });
+
+    if (project) {
+      void this.emailService
+        .sendRevisionNoteCommentEmail({
+          authorRole: "creator",
+          comment: input.note,
+          fileId: input.fileId,
+          fileName: file.name,
+          hasMarkers: (input.markers?.length ?? 0) > 0,
+          noteId: note.comment.id,
+          projectId: file.projectId,
+          projectTitle: project.title,
+        })
+        .catch((err) => {
+          scopedLogger.error("Failed to send creator revision note comment email", {
+            error: err?.message || String(err),
+            fileId: input.fileId,
+            noteId: note.comment.id,
+          });
+        });
+    }
 
     return this.toFileRevisionNoteDTO(note, input.viewerLocale);
   }
@@ -310,6 +338,25 @@ export class FileRevisionNoteService {
       fileId: input.fileId,
       projectId: project.id,
     });
+
+    void this.emailService
+      .sendRevisionNoteCommentEmail({
+        authorRole: "client",
+        comment: input.note,
+        fileId: input.fileId,
+        fileName: fileWithVersions.file.name,
+        hasMarkers: (input.markers?.length ?? 0) > 0,
+        noteId: note.comment.id,
+        projectId: project.id,
+        projectTitle: project.title,
+      })
+      .catch((err) => {
+        scopedLogger.error("Failed to send client revision note comment email", {
+          error: err?.message || String(err),
+          fileId: input.fileId,
+          noteId: note.comment.id,
+        });
+      });
 
     return this.toFileRevisionNoteDTO(note, input.viewerLocale);
   }
@@ -627,22 +674,36 @@ export class FileRevisionNoteService {
     reply: string;
     sourceLocale: string;
     viewerLocale: string;
+    parentReplyId?: string | null;
+    authorRole?: "client" | "creator";
   }): Promise<FileRevisionNoteReplyResultDTO> {
     const context = await this.getReplyContext(input);
 
-    if (context.note.reply) {
-      throw new AppError(
-        "This revision comment already has a reply.",
-        409,
-        "file_revision_note_reply_exists",
-      );
-    }
-
     this.assertCommentIsPending(context.note);
 
+    let parentReplyId = input.parentReplyId ?? null;
+    if (parentReplyId) {
+      const parentReply = await this.revisionNoteRepository.findReplyById(
+        parentReplyId,
+      );
+      if (parentReply) {
+        if (parentReply.commentId !== input.noteId) {
+          throw new ValidationAppError(
+            "parentReplyId does not belong to this comment thread.",
+          );
+        }
+      } else {
+        // Parent reply was deleted; safely fallback to top-level reply in this thread
+        parentReplyId = null;
+      }
+    }
+
+    const authorRole = input.authorRole ?? "creator";
     const savedReply = await this.revisionNoteRepository.createReply({
       body: input.reply,
       commentId: input.noteId,
+      parentReplyId: parentReplyId,
+      createdBy: authorRole,
       sourceLocale: detectDynamicTextLocale(input.reply),
       updatedAt: new Date(),
     });
@@ -652,6 +713,7 @@ export class FileRevisionNoteService {
     }
 
     return this.finalizeReplyWithEmail({
+      authorRole,
       fileId: input.fileId,
       fileName: context.file.name,
       note: savedReply,
@@ -667,8 +729,10 @@ export class FileRevisionNoteService {
     fileVersionId: string;
     noteId: string;
     reply: string;
+    replyId?: string | null;
     sourceLocale: string;
     viewerLocale: string;
+    authorRole?: "client" | "creator";
   }): Promise<FileRevisionNoteReplyResultDTO> {
     const context = await this.getReplyContext(input);
 
@@ -686,9 +750,11 @@ export class FileRevisionNoteService {
     const savedReply = await this.revisionNoteRepository.updateReply(
       input.noteId,
       {
+        replyId: input.replyId ?? undefined,
         body: input.reply,
         sourceLocale: detectDynamicTextLocale(input.reply),
         updatedAt: new Date(),
+        updatedBy: input.authorRole ?? "creator",
       },
     );
 
@@ -697,6 +763,7 @@ export class FileRevisionNoteService {
     }
 
     return this.finalizeReplyWithEmail({
+      authorRole: input.authorRole ?? "creator",
       fileId: input.fileId,
       fileName: context.file.name,
       note: savedReply,
@@ -711,22 +778,58 @@ export class FileRevisionNoteService {
     fileId: string;
     fileVersionId: string;
     noteId: string;
+    replyId?: string | null;
     viewerLocale: string;
+    authorRole?: "client" | "creator";
   }): Promise<FileRevisionNoteMutationResultDTO> {
     const context = await this.getReplyContext(input);
-
-    if (!context.note.reply) {
-      throw new AppError(
-        "This revision comment does not have a reply to delete.",
-        409,
-        "file_revision_note_reply_missing",
-      );
-    }
+    const authorRole = input.authorRole ?? "creator";
 
     this.assertCommentIsPending(context.note);
-    await this.assertReplyNotReported(context.note.reply.id, "delete");
 
-    const updatedNote = await this.revisionNoteRepository.deleteReply(input.noteId);
+    let targetReplyId: string;
+
+    if (input.replyId) {
+      const reply = await this.revisionNoteRepository.findReplyById(input.replyId);
+      if (!reply || reply.commentId !== input.noteId) {
+        throw new NotFoundAppError("Reply not found in this comment thread.");
+      }
+
+      // Authorization: A user must NOT be able to delete another user's reply
+      if (authorRole === "client" && reply.createdBy !== "client") {
+        throw new AppError("Clients can only delete their own replies.", 403, "forbidden");
+      }
+      if (authorRole === "creator" && reply.createdBy === "client") {
+        throw new AppError("You cannot delete client replies.", 403, "forbidden");
+      }
+
+      await this.assertReplyNotReported(reply.id, "delete");
+      targetReplyId = reply.id;
+    } else {
+      const reply = context.note.reply;
+      if (!reply) {
+        throw new AppError(
+          "This revision comment does not have a reply to delete.",
+          409,
+          "file_revision_note_reply_missing",
+        );
+      }
+
+      if (authorRole === "client" && reply.createdBy !== "client") {
+        throw new AppError("Clients can only delete their own replies.", 403, "forbidden");
+      }
+      if (authorRole === "creator" && reply.createdBy === "client") {
+        throw new AppError("You cannot delete client replies.", 403, "forbidden");
+      }
+
+      await this.assertReplyNotReported(reply.id, "delete");
+      targetReplyId = reply.id;
+    }
+
+    const updatedNote = await this.revisionNoteRepository.deleteReply(
+      input.noteId,
+      targetReplyId,
+    );
 
     if (!updatedNote) {
       throw new NotFoundAppError("Revision comment not found.");
@@ -856,6 +959,7 @@ export class FileRevisionNoteService {
   }
 
   private async finalizeReplyWithEmail(input: {
+    authorRole: "client" | "creator";
     fileId: string;
     fileName: string;
     note: FileRevisionNoteWithReplyRecord;
@@ -864,33 +968,27 @@ export class FileRevisionNoteService {
     reply: string;
     viewerLocale: string;
   }): Promise<FileRevisionNoteReplyResultDTO> {
-    let emailResult:
-      | Awaited<ReturnType<FileRevisionNoteEmailService["sendRevisionNoteReplyEmail"]>>
-      | null = null;
-
-    try {
-      emailResult = await this.emailService.sendRevisionNoteReplyEmail({
+    // Non-blocking asynchronous email dispatch so comment/reply creation returns immediately (<30ms)
+    void this.emailService
+      .sendRevisionNoteReplyEmail({
+        authorRole: input.authorRole,
         fileId: input.fileId,
         fileName: input.fileName,
         noteId: input.note.comment.id,
         projectId: input.projectId,
         projectTitle: input.projectTitle,
         reply: input.reply,
+      })
+      .catch((err) => {
+        scopedLogger.error("Failed to send revision note reply email", {
+          error: err?.message || String(err),
+          fileId: input.fileId,
+          noteId: input.note.comment.id,
+        });
       });
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : "Reply email failed.";
-
-      emailResult = {
-        error: message,
-        status: FileRevisionReplyEmailStatus.Failed,
-      };
-    }
 
     return {
-      emailStatus: emailResult.status,
+      emailStatus: FileRevisionReplyEmailStatus.Sent,
       note: await this.toFileRevisionNoteDTO(input.note, input.viewerLocale),
     };
   }
@@ -921,7 +1019,8 @@ export class FileRevisionNoteService {
     }
 
     const commentIds = records.map((r) => r.comment.id);
-    const replyIds = records.map((r) => r.reply?.id).filter((id): id is string => id != null);
+    const allRecordReplies = records.flatMap((r) => r.replies ?? (r.reply ? [r.reply] : []));
+    const replyIds = allRecordReplies.map((r) => r.id).filter((id): id is string => id != null);
 
     const reports = await db
       .select()
@@ -938,15 +1037,32 @@ export class FileRevisionNoteService {
       const dto = toFileRevisionNoteDTO(record);
 
       const commentReports = reports.filter((r) => r.commentId === record.comment.id);
-      const replyReports = record.reply ? reports.filter((r) => r.replyId === record.reply!.id) : [];
-
       dto.latestReportStatus = commentReports[0]?.status ?? null;
       dto.reportedByCurrentUser = viewerId ? commentReports.some((r) => r.reporterId === viewerId) : false;
 
-      if (dto.reply) {
-        dto.reply.latestReportStatus = replyReports[0]?.status ?? null;
-        dto.reply.reportedByCurrentUser = viewerId ? replyReports.some((r) => r.reporterId === viewerId) : false;
-      }
+      const recordReplies = record.replies ?? (record.reply ? [record.reply] : []);
+      dto.replies = recordReplies.map((rep) => {
+        const repReports = reports.filter((r) => r.replyId === rep.id);
+        return {
+          body: rep.body,
+          bodyText: createTranslatedTextDTO({
+            originalText: rep.body,
+            sourceLocale: rep.sourceLocale,
+          }),
+          commentId: rep.commentId,
+          createdAt: rep.createdAt.toISOString(),
+          createdBy: rep.createdBy ?? "admin",
+          id: rep.id,
+          latestReportStatus: repReports[0]?.status ?? null,
+          parentReplyId: rep.parentReplyId ?? null,
+          reportedByCurrentUser: viewerId
+            ? repReports.some((r) => r.reporterId === viewerId)
+            : false,
+          updatedAt: rep.updatedAt.toISOString(),
+        };
+      });
+
+      dto.reply = dto.replies[0] ?? null;
 
       return dto;
     });

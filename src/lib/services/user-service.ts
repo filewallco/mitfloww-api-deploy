@@ -13,6 +13,8 @@ import {
   testimonials,
   users,
   UserStatus,
+  type NotificationPreferences,
+  DEFAULT_NOTIFICATION_PREFERENCES,
 } from "@/lib/db/schema";
 import type { CompanyRecord, CreatorWorkProfileRecord, UserRecord } from "@/lib/db/schema";
 import { ProjectPaymentStatus, toProjectPaymentStatusDbValue } from "@/lib/dto/projects";
@@ -462,6 +464,31 @@ export class UserService {
     }
 
     return user;
+  }
+
+  async getNotificationPreferences(userId: string): Promise<NotificationPreferences> {
+    const user = await this.getUser(userId);
+    return user.notificationPreferences || DEFAULT_NOTIFICATION_PREFERENCES;
+  }
+
+  async updateNotificationPreferences(
+    userId: string,
+    preferences: NotificationPreferences,
+  ): Promise<NotificationPreferences> {
+    const [user] = await db
+      .update(users)
+      .set({
+        notificationPreferences: preferences,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!user) {
+      throw new AppError("User not found", 404, "user_not_found");
+    }
+
+    return user.notificationPreferences || DEFAULT_NOTIFICATION_PREFERENCES;
   }
 
   async updateUserSettings(

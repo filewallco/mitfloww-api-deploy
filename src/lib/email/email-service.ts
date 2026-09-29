@@ -1,4 +1,7 @@
 import { createScopedLogger } from "@/lib/logger";
+import { db } from "@/lib/db/client";
+import { users } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import type { EmailProvider, SendEmailOptions, SendEmailResult } from "./email-provider";
 import { ResendEmailProvider } from "./resend-provider";
 import {
@@ -224,6 +227,13 @@ export class EmailService {
   }
 
   async sendSecurityAlertEmail(email: string, title: string, details: string): Promise<void> {
+    try {
+      const [u] = await db.select({ prefs: users.notificationPreferences }).from(users).where(eq(users.email, email.toLowerCase().trim())).limit(1);
+      if (u?.prefs?.email?.securityAlerts === false) {
+        scopedLogger.info("Skipping security alert email due to user preferences", { email, title });
+        return;
+      }
+    } catch {}
     const subject = `Security Alert: ${title}`;
     const content = `
       <h1 style="font-size: 20px; font-weight: 700; color: #dc2626; margin-top: 0; margin-bottom: 12px;">${title}</h1>
@@ -643,6 +653,19 @@ export class EmailService {
     isReply: boolean;
     reviewUrl: string;
   }): Promise<void> {
+    try {
+      const [u] = await db.select({ prefs: users.notificationPreferences }).from(users).where(eq(users.email, params.recipientEmail.toLowerCase().trim())).limit(1);
+      if (u?.prefs?.email) {
+        if (params.isReply && u.prefs.email.clientReply === false) {
+          scopedLogger.info("Skipping client reply email due to user preferences", { to: params.recipientEmail });
+          return;
+        }
+        if (!params.isReply && u.prefs.email.clientComment === false) {
+          scopedLogger.info("Skipping client comment email due to user preferences", { to: params.recipientEmail });
+          return;
+        }
+      }
+    } catch {}
     const greetingName = params.recipientName ? ` ${params.recipientName}` : "";
     const actionLabel = params.isReply ? "replied to a comment" : "left a new comment";
     const subject = params.isReply

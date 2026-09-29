@@ -160,9 +160,46 @@ export class SessionService {
       .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)))
       .orderBy(desc(sessions.lastUsedAt));
 
-    return userSessions.map((sess) => {
+    // Deduplicate active sessions by unique device signature (device + browser + IP)
+    const seenDevices = new Map<string, typeof userSessions[0]>();
+    const duplicateIdsToRevoke: string[] = [];
+
+    // Prioritize keeping the current active session
+    let currentSessionId: string | null = null;
+    if (currentHash) {
+      const match = userSessions.find((s) => s.refreshTokenHash === currentHash);
+      if (match) {
+        currentSessionId = match.id;
+        const key = `${match.userAgent || "ua"}::${match.ipAddress || "ip"}`;
+        seenDevices.set(key, match);
+      }
+    }
+
+    for (const sess of userSessions) {
+      const key = `${sess.userAgent || "ua"}::${sess.ipAddress || "ip"}`;
+      if (!seenDevices.has(key)) {
+        seenDevices.set(key, sess);
+      } else if (seenDevices.get(key)!.id !== sess.id) {
+        duplicateIdsToRevoke.push(sess.id);
+      }
+    }
+
+    // Clean up duplicate session records in the background
+    if (duplicateIdsToRevoke.length > 0) {
+      void Promise.all(
+        duplicateIdsToRevoke.map((id) =>
+          db.update(sessions).set({ revokedAt: new Date() }).where(eq(sessions.id, id))
+        )
+      ).catch(() => {});
+    }
+
+    const uniqueSessions = Array.from(seenDevices.values());
+
+    return uniqueSessions.map((sess) => {
       const parsed = parseUserAgent(sess.userAgent);
-      const isCurrent = Boolean(currentHash && sess.refreshTokenHash === currentHash);
+      const isCurrent = Boolean(
+        currentSessionId ? sess.id === currentSessionId : currentHash && sess.refreshTokenHash === currentHash
+      );
       return {
         id: sess.id,
         device: parsed.device,
@@ -219,6 +256,21 @@ export class SessionService {
     const rawRefreshToken = crypto.randomBytes(32).toString("hex");
     const refreshTokenHash = hashRefreshToken(rawRefreshToken);
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS);
+
+    // Revoke any prior session for the same user on the identical device and IP to prevent duplicates
+    if (meta?.userAgent && meta?.ipAddress) {
+      await db
+        .update(sessions)
+        .set({ revokedAt: new Date() })
+        .where(
+          and(
+            eq(sessions.userId, userId),
+            eq(sessions.userAgent, meta.userAgent),
+            eq(sessions.ipAddress, meta.ipAddress),
+            isNull(sessions.revokedAt),
+          ),
+        );
+    }
 
     const [session] = await db
       .insert(sessions)

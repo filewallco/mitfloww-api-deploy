@@ -346,6 +346,8 @@ filesRouter.post("/:id/revision-notes/:noteId/reply", asyncHandler(async (req, r
     fileVersionId: input.fileVersionId,
     noteId: params.noteId,
     reply: input.reply,
+    parentReplyId: input.parentReplyId,
+    authorRole: "creator",
     sourceLocale: requestLocale,
     viewerLocale: requestLocale,
   });
@@ -362,6 +364,8 @@ filesRouter.patch("/:id/revision-notes/:noteId/reply", asyncHandler(async (req, 
     fileVersionId: input.fileVersionId,
     noteId: params.noteId,
     reply: input.reply,
+    replyId: req.query.replyId ? String(req.query.replyId) : undefined,
+    authorRole: "creator",
     sourceLocale: requestLocale,
     viewerLocale: requestLocale,
   });
@@ -377,6 +381,8 @@ filesRouter.delete("/:id/revision-notes/:noteId/reply", asyncHandler(async (req,
     fileId: params.id,
     fileVersionId: query.fileVersionId,
     noteId: params.noteId,
+    replyId: query.replyId,
+    authorRole: "creator",
     viewerLocale,
   });
   return sendSuccess(res, data);

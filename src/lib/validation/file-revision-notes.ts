@@ -89,6 +89,7 @@ export const fileRevisionNotesQuerySchema = z
 export const fileRevisionNoteMutationQuerySchema = z
   .object({
     fileVersionId: z.string().uuid("fileVersionId must be a valid UUID."),
+    replyId: z.string().uuid("replyId must be a valid UUID.").optional().nullable(),
   })
   .strict();
 
@@ -180,6 +181,7 @@ export const replyToFileRevisionNoteBodySchema = z
   .object({
     fileVersionId: z.string().uuid("fileVersionId must be a valid UUID."),
     reply: trimmedRequiredString("reply", FILE_REVISION_NOTE_MAX_LENGTH),
+    parentReplyId: z.string().uuid("parentReplyId must be a valid UUID.").optional().nullable(),
   })
   .strict();
 

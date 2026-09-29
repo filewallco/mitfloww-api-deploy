@@ -1,7 +1,41 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, customType, integer, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, check, customType, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type { CreditPlanKey } from "@/lib/credits";
+
+export interface NotificationPreferences {
+  email: {
+    clientReply: boolean;
+    clientComment: boolean;
+    clientApproveFile: boolean;
+    securityAlerts: boolean;
+    promotional: boolean;
+  };
+  inApp: {
+    clientReply: boolean;
+    clientComment: boolean;
+    clientApproveFile: boolean;
+    securityAlerts: boolean;
+    promotional: boolean;
+  };
+}
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  email: {
+    clientReply: true,
+    clientComment: true,
+    clientApproveFile: true,
+    securityAlerts: true,
+    promotional: true,
+  },
+  inApp: {
+    clientReply: true,
+    clientComment: true,
+    clientApproveFile: true,
+    securityAlerts: true,
+    promotional: true,
+  },
+};
 
 export const USER_STATUSES = ["active", "suspended", "deactivated"] as const;
 export type UserStatus = (typeof USER_STATUSES)[number];
@@ -92,6 +126,9 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
     clientShareLinkExpiryDays: integer("client_share_link_expiry_days")
       .notNull()
       .default(1),
+    notificationPreferences: jsonb("notification_preferences")
+      .$type<NotificationPreferences>()
+      .default(DEFAULT_NOTIFICATION_PREFERENCES),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()

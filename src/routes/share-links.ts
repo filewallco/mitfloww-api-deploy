@@ -424,6 +424,8 @@ shareLinksRouter.post("/:token/files/:fileId/revision-notes/:noteId/reply", asyn
     fileVersionId: input.fileVersionId,
     noteId: params.noteId,
     reply: input.reply,
+    parentReplyId: input.parentReplyId,
+    authorRole: "client",
     sourceLocale: requestLocale,
     viewerLocale: requestLocale,
   });
@@ -440,6 +442,8 @@ shareLinksRouter.patch("/:token/files/:fileId/revision-notes/:noteId/reply", asy
     fileVersionId: input.fileVersionId,
     noteId: params.noteId,
     reply: input.reply,
+    replyId: req.query.replyId ? String(req.query.replyId) : undefined,
+    authorRole: "client",
     sourceLocale: requestLocale,
     viewerLocale: requestLocale,
   });
@@ -455,6 +459,8 @@ shareLinksRouter.delete("/:token/files/:fileId/revision-notes/:noteId/reply", as
     fileId: params.fileId,
     fileVersionId: query.fileVersionId,
     noteId: params.noteId,
+    replyId: query.replyId,
+    authorRole: "client",
     viewerLocale,
   });
   return sendSuccess(res, data);

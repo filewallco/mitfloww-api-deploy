@@ -121,10 +121,14 @@ export class AuthService {
       if (!currentPassword) {
         throw new AppError("Current password is required.", 400, "current_password_required");
       }
-      const isMatch = await verifyPassword(currentPassword, user.passwordHash);
-      if (!isMatch) {
+      const { isValid } = await verifyPassword(currentPassword, user.passwordHash);
+      if (!isValid) {
         throw new AppError("Current password is incorrect.", 400, "invalid_current_password");
       }
+    }
+
+    if (currentPassword && newPassword && currentPassword === newPassword) {
+      throw new AppError("New password must be different from current password.", 400, "new_password_same_as_current");
     }
 
     const validationError = getPasswordValidationError(newPassword);

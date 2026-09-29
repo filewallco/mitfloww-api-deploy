@@ -128,7 +128,9 @@ export type {
   UserRecord,
   CreatorWorkProfileRecord,
   NewCreatorWorkProfileRecord,
+  NotificationPreferences,
 } from "./users";
+export { DEFAULT_NOTIFICATION_PREFERENCES } from "./users";
 export type {
   TransactionRecord,
   NewTransactionRecord,

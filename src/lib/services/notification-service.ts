@@ -23,7 +23,9 @@ import type {
   MarkAllNotificationsReadResultDTO,
   NotificationDTO,
 } from "@/lib/dto/notifications";
-import type { NotificationRecord } from "@/lib/db/schema";
+import { users, type NotificationRecord } from "@/lib/db/schema";
+import { db } from "@/lib/db/client";
+import { eq } from "drizzle-orm";
 import type { NotificationListQueryParams } from "@/lib/validation/notifications";
 
 type NotificationTranslationDependencies = {
@@ -262,10 +264,36 @@ export class NotificationService {
         ? Promise.resolve(null)
         : this.repository.count({ unreadOnly: true, userId }),
     ]);
-    const items = await this.resolveNotificationDTOs(
+    let items = await this.resolveNotificationDTOs(
       result.records,
       viewerLocale,
     );
+
+    // Filter in-app notifications if user turned any categories off in settings
+    if (userId) {
+      try {
+        const [userRow] = await db
+          .select({ prefs: users.notificationPreferences })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+
+        const inApp = userRow?.prefs?.inApp;
+        if (inApp) {
+          items = items.filter((item) => {
+            const isReply = (item.metadata as any)?.isReply === true || (item.metadata as any)?.parentReplyId != null;
+            if (isReply && inApp.clientReply === false) return false;
+            if (!isReply && (item.title?.toLowerCase().includes("comment") || (item.metadata as any)?.isComment === true) && inApp.clientComment === false) return false;
+            if ((item.title?.toLowerCase().includes("approved") || item.title?.toLowerCase().includes("approval")) && inApp.clientApproveFile === false) return false;
+            if ((item.title?.toLowerCase().includes("security") || item.title?.toLowerCase().includes("session") || item.title?.toLowerCase().includes("login")) && inApp.securityAlerts === false) return false;
+            if ((item.title?.toLowerCase().includes("promo") || item.title?.toLowerCase().includes("offer") || item.title?.toLowerCase().includes("mitfloww update")) && inApp.promotional === false) return false;
+            return true;
+          });
+        }
+      } catch {
+        // Fallback to showing unfiltered items if preference lookup fails
+      }
+    }
 
     const responseData = {
       items,

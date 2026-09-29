@@ -20,6 +20,7 @@ export type FileRevisionNoteWithReplyRecord = {
   items: RevisionCommentItemRecord[];
   markers: RevisionCommentMarkerRecord[];
   reply: RevisionCommentReplyRecord | null;
+  replies: RevisionCommentReplyRecord[];
   revisionNumber: number | null;
 };
 
@@ -77,6 +78,8 @@ export type UpdateFileRevisionCommentWithItemsRecordInput = {
 export type CreateFileRevisionCommentReplyRecordInput = {
   body: string;
   commentId: string;
+  parentReplyId?: string | null;
+  createdBy?: string | null;
   createdAt?: Date;
   sourceLocale: string;
   updatedAt: Date;
@@ -86,6 +89,7 @@ export type UpdateFileRevisionCommentReplyRecordInput = Partial<{
   body: string;
   sourceLocale: string;
   updatedAt: Date;
+  updatedBy: string | null;
 }>;
 
 export interface FileRevisionNoteRepository {
@@ -100,7 +104,8 @@ export interface FileRevisionNoteRepository {
     markerId: string;
     updatedAt: Date;
   }): Promise<FileRevisionNoteWithReplyRecord | null>;
-  deleteReply(commentId: string): Promise<FileRevisionNoteWithReplyRecord | null>;
+  deleteReply(commentId: string, replyId?: string): Promise<FileRevisionNoteWithReplyRecord | null>;
+  findReplyById(replyId: string): Promise<RevisionCommentReplyRecord | null>;
   findById(
     id: string,
     options?: { includeDeleted?: boolean },
@@ -128,7 +133,7 @@ export interface FileRevisionNoteRepository {
   }): Promise<FileRevisionNoteWithReplyRecord | null>;
   updateReply(
     commentId: string,
-    input: UpdateFileRevisionCommentReplyRecordInput,
+    input: UpdateFileRevisionCommentReplyRecordInput & { replyId?: string },
   ): Promise<FileRevisionNoteWithReplyRecord | null>;
 }
 
@@ -192,20 +197,52 @@ async function getItemsByCommentIds(commentIds: string[]) {
   return itemsByCommentId;
 }
 
+async function getRepliesByCommentIds(commentIds: string[]) {
+  if (commentIds.length === 0) {
+    return new Map<string, RevisionCommentReplyRecord[]>();
+  }
+
+  const rows = await db
+    .select()
+    .from(revisionCommentReplies)
+    .where(
+      and(
+        inArray(revisionCommentReplies.commentId, commentIds),
+        isNull(revisionCommentReplies.deletedAt),
+      ),
+    )
+    .orderBy(revisionCommentReplies.createdAt, revisionCommentReplies.id);
+
+  const repliesByCommentId = new Map<string, RevisionCommentReplyRecord[]>();
+
+  for (const reply of rows) {
+    const existing = repliesByCommentId.get(reply.commentId) ?? [];
+    existing.push(reply);
+    repliesByCommentId.set(reply.commentId, existing);
+  }
+
+  return repliesByCommentId;
+}
+
 async function withChildren(rows: RevisionNoteBaseRow[]) {
   const commentIds = rows.map((row) => row.comment.id);
-  const [markersByCommentId, itemsByCommentId] = await Promise.all([
+  const [markersByCommentId, itemsByCommentId, repliesByCommentId] = await Promise.all([
     getMarkersByCommentIds(commentIds),
     getItemsByCommentIds(commentIds),
+    getRepliesByCommentIds(commentIds),
   ]);
 
-  return rows.map((row) => ({
-    comment: row.comment,
-    items: itemsByCommentId.get(row.comment.id) ?? [],
-    markers: markersByCommentId.get(row.comment.id) ?? [],
-    reply: row.reply,
-    revisionNumber: row.revisionNumber,
-  })) satisfies FileRevisionNoteWithReplyRecord[];
+  return rows.map((row) => {
+    const commentReplies = repliesByCommentId.get(row.comment.id) ?? [];
+    return {
+      comment: row.comment,
+      items: itemsByCommentId.get(row.comment.id) ?? [],
+      markers: markersByCommentId.get(row.comment.id) ?? [],
+      reply: commentReplies[0] ?? row.reply ?? null,
+      replies: commentReplies,
+      revisionNumber: row.revisionNumber,
+    };
+  }) satisfies FileRevisionNoteWithReplyRecord[];
 }
 
 async function mapRevisionNoteRecord(row: RevisionNoteBaseRow | undefined) {
@@ -228,20 +265,13 @@ export class DrizzleFileRevisionNoteRepository
     const [row] = await db
       .select({
         comment: revisionComments,
-        reply: revisionCommentReplies,
+        reply: sql<RevisionCommentReplyRecord | null>`null`,
         revisionNumber: fileVersions.revisionNumber,
       })
       .from(revisionComments)
       .innerJoin(
         fileVersions,
         eq(revisionComments.fileVersionId, fileVersions.id),
-      )
-      .leftJoin(
-        revisionCommentReplies,
-        and(
-          eq(revisionCommentReplies.commentId, revisionComments.id),
-          isNull(revisionCommentReplies.deletedAt),
-        ),
       )
       .where(
         options?.includeDeleted
@@ -260,20 +290,13 @@ export class DrizzleFileRevisionNoteRepository
     const rows = await db
       .select({
         comment: revisionComments,
-        reply: revisionCommentReplies,
+        reply: sql<RevisionCommentReplyRecord | null>`null`,
         revisionNumber: fileVersions.revisionNumber,
       })
       .from(revisionComments)
       .innerJoin(
         fileVersions,
         eq(revisionComments.fileVersionId, fileVersions.id),
-      )
-      .leftJoin(
-        revisionCommentReplies,
-        and(
-          eq(revisionCommentReplies.commentId, revisionComments.id),
-          isNull(revisionCommentReplies.deletedAt),
-        ),
       )
       .where(
         and(
@@ -657,34 +680,34 @@ export class DrizzleFileRevisionNoteRepository
     return this.findById(input.commentId);
   }
 
+  async findReplyById(
+    replyId: string,
+  ): Promise<RevisionCommentReplyRecord | null> {
+    const [record] = await db
+      .select()
+      .from(revisionCommentReplies)
+      .where(
+        and(
+          eq(revisionCommentReplies.id, replyId),
+          isNull(revisionCommentReplies.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    return record ?? null;
+  }
+
   async createReply(
     input: CreateFileRevisionCommentReplyRecordInput,
   ): Promise<FileRevisionNoteWithReplyRecord | null> {
-    const [existing] = await db
-      .select()
-      .from(revisionCommentReplies)
-      .where(eq(revisionCommentReplies.commentId, input.commentId))
-      .limit(1);
-
-    if (existing) {
-      await db
-        .update(revisionCommentReplies)
-        .set({
-          body: input.body,
-          deletedAt: null,
-          sourceLocale: input.sourceLocale,
-          updatedAt: input.updatedAt,
-        })
-        .where(eq(revisionCommentReplies.id, existing.id));
-
-      return this.findById(input.commentId);
-    }
-
     const [record] = await db
       .insert(revisionCommentReplies)
       .values({
         body: input.body,
         commentId: input.commentId,
+        parentReplyId: input.parentReplyId ?? null,
+        createdBy: input.createdBy ?? null,
+        updatedBy: input.createdBy ?? null,
         createdAt: input.createdAt ?? input.updatedAt,
         sourceLocale: input.sourceLocale,
         updatedAt: input.updatedAt,
@@ -700,14 +723,16 @@ export class DrizzleFileRevisionNoteRepository
 
   async updateReply(
     commentId: string,
-    input: UpdateFileRevisionCommentReplyRecordInput,
+    input: UpdateFileRevisionCommentReplyRecordInput & { replyId?: string },
   ): Promise<FileRevisionNoteWithReplyRecord | null> {
+    const { replyId, ...updateData } = input;
     const [record] = await db
       .update(revisionCommentReplies)
-      .set(input)
+      .set(updateData)
       .where(
         and(
           eq(revisionCommentReplies.commentId, commentId),
+          replyId ? eq(revisionCommentReplies.id, replyId) : undefined,
           isNull(revisionCommentReplies.deletedAt),
         ),
       )
@@ -720,7 +745,10 @@ export class DrizzleFileRevisionNoteRepository
     return this.findById(commentId);
   }
 
-  async deleteReply(commentId: string): Promise<FileRevisionNoteWithReplyRecord | null> {
+  async deleteReply(
+    commentId: string,
+    replyId?: string,
+  ): Promise<FileRevisionNoteWithReplyRecord | null> {
     const deletedAt = new Date();
     await db
       .update(revisionCommentReplies)
@@ -731,6 +759,7 @@ export class DrizzleFileRevisionNoteRepository
       .where(
         and(
           eq(revisionCommentReplies.commentId, commentId),
+          replyId ? eq(revisionCommentReplies.id, replyId) : undefined,
           isNull(revisionCommentReplies.deletedAt),
         ),
       );

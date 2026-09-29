@@ -72,10 +72,12 @@ export type FileRevisionNoteItemDTO = {
 export type FileRevisionNoteReplyDTO = {
   body: string;
   bodyText: TranslatedTextDTO;
+  commentId: string;
   createdAt: string;
   createdBy: string | null;
   id: string;
   latestReportStatus: FileRevisionNoteReportStatus | null;
+  parentReplyId: string | null;
   reportedByCurrentUser: boolean;
   updatedAt: string;
 };
@@ -93,6 +95,7 @@ export type FileRevisionNoteDTO = {
   latestReportStatus: FileRevisionNoteReportStatus | null;
   projectId: string;
   reply: FileRevisionNoteReplyDTO | null;
+  replies: FileRevisionNoteReplyDTO[];
   reportedByCurrentUser: boolean;
   status: FileRevisionNoteStatus;
   updatedAt: string;
