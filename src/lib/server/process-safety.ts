@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import type { Pool } from "pg";
-import { logger } from "@/lib/logger";
+import { logger, closeLogDbSink, closeLogFileSink } from "@/lib/logger";
 
 interface ProcessSafetyOptions {
   server?: Server;
@@ -92,7 +92,14 @@ export function setupProcessSafety(options: ProcessSafetyOptions = {}) {
         }
       }
 
-      // 3. Drain PostgreSQL connection pool
+      // 3. Drain PostgreSQL connection pool and log sinks
+      try {
+        await closeLogDbSink();
+        await closeLogFileSink();
+      } catch (err: any) {
+        logger.warn("[ProcessSafety] Error closing log sinks", { error: err?.message || err });
+      }
+
       if (options.pool) {
         try {
           await options.pool.end();

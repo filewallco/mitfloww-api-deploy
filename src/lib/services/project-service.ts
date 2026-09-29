@@ -1828,7 +1828,7 @@ export class ProjectService {
           });
         }
       } catch (err) {
-        console.error("[EmailNotification] Failed sending deliverables requested email", err);
+        scopedLogger.error("[EmailNotification] Failed sending deliverables requested email", { err });
       }
 
       return {

@@ -1,4 +1,5 @@
 import { persistApiLogToDatabase } from "./db-sink";
+import { persistApiLogToFile } from "./file-sink";
 import { getRequestContext } from "./context";
 import { sanitizeLogValue } from "./sanitizer";
 
@@ -25,6 +26,7 @@ export interface LogMetadata {
   userId?: string;
   durationMs?: number;
   error?: unknown;
+  err?: unknown;
   [key: string]: unknown;
 }
 
@@ -76,25 +78,65 @@ export class Logger {
     // Deep sanitize metadata
     const sanitizedMeta = sanitizeLogValue(consolidatedMeta) as Record<string, unknown>;
 
-    // Asynchronously persist operational log to database
+    // Extract error details if present under error, err, or explicit fields
+    const rawError = sanitizedMeta.error || sanitizedMeta.err;
+    const errorMessage =
+      rawError instanceof Error
+        ? rawError.message
+        : typeof rawError === "object" && rawError !== null && "message" in rawError
+          ? String((rawError as any).message)
+          : (sanitizedMeta.errorMessage as string) || null;
+
+    const stackTrace =
+      rawError instanceof Error
+        ? rawError.stack
+        : typeof rawError === "object" && rawError !== null && "stack" in rawError
+          ? String((rawError as any).stack)
+          : null;
+
+    const requestId = reqContext?.requestId || (sanitizedMeta.requestId as string) || null;
+    const component = (sanitizedMeta.component as string) || null;
+    const userId = reqContext?.userId || (sanitizedMeta.userId as string) || null;
+
+    // 1. Asynchronously persist operational log to database (mitfloww.api_logs)
     persistApiLogToDatabase({
       timestamp,
       level,
-      event: (sanitizedMeta.event as string) || (sanitizedMeta.component ? `${sanitizedMeta.component}.${level}` : 'api_event'),
+      event: (sanitizedMeta.event as string) || (component ? `${component}.${level}` : "api_event"),
       message,
-      requestId: reqContext?.requestId || (sanitizedMeta.requestId as string) || null,
+      requestId,
       correlationId: reqContext?.correlationId || (sanitizedMeta.correlationId as string) || null,
-      userId: reqContext?.userId || (sanitizedMeta.userId as string) || null,
+      userId,
       method: reqContext?.method || (sanitizedMeta.method as string) || null,
       path: reqContext?.path || (sanitizedMeta.path as string) || null,
-      statusCode: typeof sanitizedMeta.statusCode === 'number' ? sanitizedMeta.statusCode : null,
-      durationMs: typeof sanitizedMeta.durationMs === 'number' ? sanitizedMeta.durationMs : null,
-      component: (sanitizedMeta.component as string) || null,
+      statusCode: typeof sanitizedMeta.statusCode === "number" ? sanitizedMeta.statusCode : null,
+      durationMs: typeof sanitizedMeta.durationMs === "number" ? sanitizedMeta.durationMs : null,
+      component,
       errorCode: (sanitizedMeta.errorCode as string) || (sanitizedMeta.code as string) || null,
-      errorMessage: sanitizedMeta.error instanceof Error ? sanitizedMeta.error.message : (sanitizedMeta.errorMessage as string) || null,
-      stackTrace: sanitizedMeta.error instanceof Error ? sanitizedMeta.error.stack : null,
+      errorMessage,
+      stackTrace,
       metadata: sanitizedMeta,
     });
+
+    // 2. Persist operational and error logs to file sink (logs/api-YYYY-MM-DD.log & logs/api-error-YYYY-MM-DD.log)
+    persistApiLogToFile({
+      timestamp,
+      level,
+      message,
+      component,
+      requestId,
+      userId,
+      metadata: sanitizedMeta,
+    });
+
+    // 3. Console output:
+    // By default, console logging is disabled per user preference to keep the terminal silent
+    // and route all operational and error logs exclusively to the log files and database.
+    // Set LOG_TO_CONSOLE=true in .env if explicit terminal console output is desired.
+    const shouldLogToConsole = process.env.LOG_TO_CONSOLE === "true";
+    if (!shouldLogToConsole) {
+      return;
+    }
 
     if (process.env.NODE_ENV === "production") {
       // Structured JSON log output for cloud / Datadog / CloudWatch / stdout parsers
@@ -112,11 +154,11 @@ export class Logger {
         process.stdout.write(json + "\n");
       }
     } else {
-      // Pretty developer output in local terminal
+      // Pretty developer output in local terminal (when LOG_TO_CONSOLE=true is explicitly set)
       const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
-      const componentStr = sanitizedMeta.component ? ` [${sanitizedMeta.component}]` : "";
-      const reqIdStr = sanitizedMeta.requestId ? ` [${sanitizedMeta.requestId}]` : "";
-      const userStr = sanitizedMeta.userId ? ` [user:${sanitizedMeta.userId}]` : "";
+      const componentStr = component ? ` [${component}]` : "";
+      const reqIdStr = requestId ? ` [${requestId}]` : "";
+      const userStr = userId ? ` [user:${userId}]` : "";
 
       const colorCode =
         level === "fatal" || level === "error"
