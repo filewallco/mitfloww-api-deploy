@@ -2468,10 +2468,6 @@ export class FileService {
       isFinalDraft: input.isFinalDraft,
       sizeBytes: input.sizeBytes,
     });
-    await storageService.assertCanAllocateStorage({
-      requiredBytes: input.sizeBytes,
-    });
-
     if (!this.storage.getPresignedMultipartPartUrl) {
       throw new AppError(
         "Presigning is not supported by the configured storage.",
@@ -2570,10 +2566,6 @@ export class FileService {
       isFinalDraft: input.isFinalDraft,
       sizeBytes: input.sizeBytes,
     });
-    await storageService.assertCanAllocateStorage({
-      requiredBytes: input.sizeBytes,
-    });
-
     if (!shouldUseMultipartUpload(input.sizeBytes)) {
       throw new AppError(
         "Multipart upload is only available for files above the configured threshold.",

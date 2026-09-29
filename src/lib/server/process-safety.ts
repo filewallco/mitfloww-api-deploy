@@ -27,6 +27,21 @@ export function setupProcessSafety(options: ProcessSafetyOptions = {}) {
 
   // 2. Uncaught Exception Handler
   process.on("uncaughtException", async (error: Error) => {
+    const isTransientConnectionError =
+      error.message?.includes("Connection terminated") ||
+      error.message?.includes("timeout exceeded when trying to connect") ||
+      (error as any)?.code === "ECONNRESET" ||
+      (error as any)?.code === "EPIPE" ||
+      (error as any)?.code === "57P01"; // admin_shutdown / connection drop
+
+    if (isTransientConnectionError) {
+      logger.error("[ProcessSafety] Transient database/socket error caught in uncaughtException (preventing server crash)", {
+        name: error.name,
+        message: error.message,
+      });
+      return;
+    }
+
     logger.fatal("[ProcessSafety] Uncaught Exception encountered! Initiating graceful recovery shutdown...", {
       name: error.name,
       message: error.message,

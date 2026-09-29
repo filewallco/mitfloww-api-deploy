@@ -31,11 +31,18 @@ export const pool =
         ? { rejectUnauthorized: false }
         : undefined,
     max: poolMax,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 15000,
+    idleTimeoutMillis: 20000,
+    connectionTimeoutMillis: 30000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000,
   });
+
+pool.on("connect", (client) => {
+  client.on("error", (err) => {
+    // Catch errors on individual clients so unexpected connection drops by Neon/PgBouncer do not trigger uncaughtException
+    logger.warn("[DatabasePool] Client connection drop/error caught safely", { error: err.message || String(err) });
+  });
+});
 
 pool.on("error", (err) => {
   // Catch errors on idle clients so they are purged from the pool cleanly
