@@ -2,7 +2,6 @@ import { emailService } from "@/lib/email/email-service";
 import { users } from "@/lib/db/schema";
 import { DELETED_RESOURCE_RETENTION_DAYS } from "@/config/retention";
 import { assets } from "@/lib/db/schema";
-import { r2Storage } from "@/lib/storage/r2";
 import { Router } from "express";
 import { db } from "@/lib/db/client";
 import {

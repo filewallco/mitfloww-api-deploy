@@ -19,7 +19,7 @@ import {
 import { creditService } from "@/lib/services/credit-service";
 import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
 import { AppError, NotFoundAppError, ValidationAppError } from "@/lib/errors/app-error";
-import { r2Storage } from "@/lib/storage/r2";
+import { storage } from "@/lib/storage";
 import { createStoredZip } from "@/lib/utils/zip";
 import { emailService } from "@/lib/email/email-service";
 
@@ -65,7 +65,7 @@ async function readBodyToBytes(body: any): Promise<Uint8Array> {
 
 function computeAssetMediaUrl(storageKey?: string | null, storedUrl?: string | null): string | null {
   if (storageKey) {
-    const publicBase = process.env.R2_PUBLIC_BASE_URL;
+    const publicBase = process.env.STORAGE_PROVIDER !== "local" ? process.env.R2_PUBLIC_BASE_URL : undefined;
     if (publicBase) {
       return `${publicBase.replace(/\/+$/, "")}/${storageKey}`;
     }
@@ -529,7 +529,7 @@ export class AssetService {
     const storageKey = `users/${userId}/assets/${id}/files/${fileId}-${sanitizedName}`;
     const contentType = (mimeType || "application/octet-stream").toLowerCase();
 
-    await r2Storage.uploadFile({
+    await storage.uploadFile({
       key: storageKey,
       body: buffer,
       contentType,
@@ -555,7 +555,7 @@ export class AssetService {
     }
 
     try {
-      await r2Storage.deleteFile({ key: storageKey });
+      await storage.deleteFile({ key: storageKey });
     } catch (err) {
       scopedLogger.warn("Error deleting staged R2 file", { err, storageKey });
     }
@@ -589,7 +589,7 @@ export class AssetService {
     const storageKey = `users/${userId}/assets/${id}/files/${fileId}-${sanitizedName}`;
     const contentType = (mimeType || "application/octet-stream").toLowerCase();
 
-    await r2Storage.uploadFile({
+    await storage.uploadFile({
       key: storageKey,
       body: buffer,
       contentType,
@@ -721,7 +721,7 @@ export class AssetService {
 
     if (file.storageKey) {
       try {
-        await r2Storage.deleteFile({ key: file.storageKey });
+        await storage.deleteFile({ key: file.storageKey });
       } catch (err) {
         scopedLogger.warn("Error deleting asset file from R2", { err, storageKey: file.storageKey });
       }
@@ -1111,7 +1111,7 @@ export class AssetService {
       throw new NotFoundAppError("File not found.");
     }
 
-    const storageResult = await r2Storage.getFile({ key: file.storageKey });
+    const storageResult = await storage.getFile({ key: file.storageKey });
     return {
       body: storageResult.body,
       filename: file.originalName || file.name || "file",
@@ -1169,7 +1169,7 @@ export class AssetService {
 
     const entries = await Promise.all(
       filesList.map(async (f) => {
-        const fileData = await r2Storage.getFile({ key: f.storageKey });
+        const fileData = await storage.getFile({ key: f.storageKey });
         const bytes = await readBodyToBytes(fileData.body);
         const rawName = (f.originalName || f.name || "file").trim();
         let baseName = rawName.replace(/[\/\\]/g, "_").replace(/[<>:"|?*]/g, "_").trim() || "file";

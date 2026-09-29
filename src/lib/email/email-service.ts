@@ -250,6 +250,64 @@ export class EmailService {
     await this.sendAsync({ to: email, subject, html, text });
   }
 
+  async sendFileProcessingCompletedEmail(params: {
+    recipientEmail: string;
+    recipientName?: string;
+    fileName: string;
+    projectTitle: string;
+    fileUrl: string;
+  }): Promise<void> {
+    try {
+      const [u] = await db
+        .select({ prefs: users.notificationPreferences })
+        .from(users)
+        .where(eq(users.email, params.recipientEmail.toLowerCase().trim()))
+        .limit(1);
+      if (u?.prefs?.email?.fileProcessingCompleted === false) {
+        scopedLogger.info("Skipping file processing completed email due to user preferences", {
+          email: params.recipientEmail,
+          fileName: params.fileName,
+        });
+        return;
+      }
+    } catch {}
+
+    const greetingName = params.recipientName ? ` ${params.recipientName}` : "";
+    const subject = `File Processing Completed: "${params.fileName}" (${params.projectTitle})`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        File Processing Completed
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, your deliverable <strong>${params.fileName}</strong> in project <strong>${params.projectTitle}</strong> has finished processing and is ready for client review and sharing.
+      </p>
+
+      <div style="background-color: #f8fafc; border-left: 4px solid #10b981; border-radius: 0 12px 12px 0; padding: 16px 20px; margin-bottom: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-bottom: 6px;">Deliverable:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-bottom: 6px;">${params.fileName}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b;">Project:</td>
+            <td align="right" style="font-size: 13px; font-weight: 500; color: #334155;">${params.projectTitle}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.fileUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          View Deliverable &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\nYour deliverable "${params.fileName}" in project "${params.projectTitle}" has finished processing and is ready for client review and sharing.\n\nView deliverable: ${params.fileUrl}`;
+
+    await this.sendAsync({ to: params.recipientEmail, subject, html, text });
+  }
+
   async sendAccountDeactivatedEmail(params: {
     email: string;
     name?: string;

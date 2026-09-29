@@ -8,7 +8,7 @@ import { AppError } from "@/lib/errors/app-error";
 import type { UpdateTestimonialInput } from "@/lib/repositories/testimonial-repository";
 import { asyncHandler } from "@/lib/api/route";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
-import { r2Storage } from "@/lib/storage/r2";
+import { storage } from "@/lib/storage";
 import { findTestimonialTemplateById } from "@/lib/testimonials/testimonial-templates";
 import sharp from "sharp";
 
@@ -121,13 +121,13 @@ testimonialsRouter.post("/upload", asyncHandler(async (req, res) => {
 
   const storageKey = `users/${actor.id}/testimonials/${Date.now()}-${sanitizedBase}.${extension}`;
 
-  await r2Storage.uploadFile({
+  await storage.uploadFile({
     key: storageKey,
     body: uploadBuffer,
     contentType,
   });
 
-  const publicBase = process.env.R2_PUBLIC_BASE_URL;
+  const publicBase = process.env.STORAGE_PROVIDER !== "local" ? process.env.R2_PUBLIC_BASE_URL : undefined;
   const url = publicBase
     ? `${publicBase.replace(/\/+$/, "")}/${storageKey}`
     : `/api/profile/media?key=${encodeURIComponent(storageKey)}`;
@@ -155,7 +155,7 @@ testimonialsRouter.delete("/upload", asyncHandler(async (req, res) => {
   }
 
   try {
-    await r2Storage.deleteFile({ key });
+    await storage.deleteFile({ key });
   } catch (err) {
     scopedLogger.warn("Failed to delete testimonial media from R2 (non-fatal)", { err, key });
   }

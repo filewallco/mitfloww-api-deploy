@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { Readable } from "node:stream";
+import mime from "mime-types";
 import { AppError } from "@/lib/errors/app-error";
 import type {
   AbortMultipartUploadRequest,
@@ -113,7 +114,7 @@ export class LocalStorage implements FileStorage {
       return {
         bucket,
         contentLength: stats.size,
-        contentType: null, // FS doesn't store content type natively
+        contentType: (mime.lookup(input.key) as string) || null,
         etag: null,
         exists: true,
         key: input.key,
@@ -141,7 +142,7 @@ export class LocalStorage implements FileStorage {
         bucket,
         body: stream as unknown as Readable, // Node.js stream vs standard stream mismatch is common
         contentLength: stats.size,
-        contentType: null,
+        contentType: (mime.lookup(input.key) as string) || null,
         etag: null,
         key: input.key,
       };
@@ -358,10 +359,63 @@ export class LocalStorage implements FileStorage {
     return { aborted: true, bucket, key: input.key, skipped: false, uploadId: input.uploadId };
   }
 
-  // Listings (Not frequently used in frontend, mainly worker/admin, returning empty for simplicity unless needed)
   async listFiles(input: ListFilesRequest): Promise<ListFilesResult> {
-    // Basic implementation
-    return { bucket: input.bucket || this.getDefaultBucket(), nextContinuationToken: null, objects: [] };
+    const bucket = input.bucket || this.getDefaultBucket();
+    const prefix = input.prefix ? input.prefix.replace(/\\/g, "/") : "";
+    const rootDir = path.join(this.basePath, bucket);
+    const objects: Array<{ key: string; lastModified: Date | null; sizeBytes: number | null }> = [];
+
+    const scanDir = async (dir: string): Promise<void> => {
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await scanDir(fullPath);
+        } else if (entry.isFile()) {
+          const relativeKey = path.relative(rootDir, fullPath).replace(/\\/g, "/");
+          if (!prefix || relativeKey.startsWith(prefix)) {
+            try {
+              const stats = await fs.stat(fullPath);
+              objects.push({
+                key: relativeKey,
+                lastModified: stats.mtime,
+                sizeBytes: stats.size,
+              });
+            } catch {}
+          }
+        }
+      }
+    };
+
+    let startDir = rootDir;
+    if (prefix) {
+      const prefixDir = prefix.endsWith("/") ? prefix : path.dirname(prefix);
+      if (prefixDir && prefixDir !== ".") {
+        startDir = path.join(rootDir, prefixDir);
+      }
+    }
+
+    try {
+      await scanDir(startDir);
+    } catch {
+      if (startDir !== rootDir) {
+        try {
+          await scanDir(rootDir);
+        } catch {}
+      }
+    }
+
+    return {
+      bucket,
+      nextContinuationToken: null,
+      objects,
+    };
   }
 
   async listMultipartUploads(input: ListMultipartUploadsRequest): Promise<ListMultipartUploadsResult> {

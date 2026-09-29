@@ -20,7 +20,7 @@ import type { CompanyRecord, CreatorWorkProfileRecord, UserRecord } from "@/lib/
 import { ProjectPaymentStatus, toProjectPaymentStatusDbValue } from "@/lib/dto/projects";
 import { AppError } from "@/lib/errors/app-error";
 import { getPasswordValidationError } from "@/lib/auth/password";
-import { r2Storage } from "@/lib/storage/r2";
+import { storage } from "@/lib/storage";
 import {
   buildCompanyLogoStorageKey,
   buildUserProfileAvatarStorageKey,
@@ -258,13 +258,13 @@ export class UserService {
       timestamp: Date.now(),
     });
 
-    await r2Storage.uploadFile({
+    await storage.uploadFile({
       key: storageKey,
       body: validated.buffer,
       contentType: validated.mimeType,
     });
 
-    const publicBase = process.env.R2_PUBLIC_BASE_URL;
+    const publicBase = process.env.STORAGE_PROVIDER !== "local" ? process.env.R2_PUBLIC_BASE_URL : undefined;
     const avatarUrl = publicBase
       ? `${publicBase.replace(/\/+$/, "")}/${storageKey}`
       : `/api/profile/media?key=${encodeURIComponent(storageKey)}`;
@@ -281,16 +281,16 @@ export class UserService {
     // Delete old avatar and clean up any orphaned avatar files
     if (oldAvatarKey && oldAvatarKey !== storageKey) {
       try {
-        await r2Storage.deleteFile({ key: oldAvatarKey });
+        await storage.deleteFile({ key: oldAvatarKey });
       } catch {
         // Non-fatal
       }
     }
     try {
-      const existingFiles = await r2Storage.listFiles({ prefix: `users/${userId}/userprofile/avatar_` });
+      const existingFiles = await storage.listFiles({ prefix: `users/${userId}/userprofile/avatar_` });
       for (const obj of existingFiles.objects) {
         if (obj.key !== storageKey) {
-          await r2Storage.deleteFile({ key: obj.key }).catch(() => {});
+          await storage.deleteFile({ key: obj.key }).catch(() => {});
         }
       }
     } catch {
@@ -324,13 +324,13 @@ export class UserService {
       timestamp: Date.now(),
     });
 
-    await r2Storage.uploadFile({
+    await storage.uploadFile({
       key: storageKey,
       body: validated.buffer,
       contentType: validated.mimeType,
     });
 
-    const publicBase = process.env.R2_PUBLIC_BASE_URL;
+    const publicBase = process.env.STORAGE_PROVIDER !== "local" ? process.env.R2_PUBLIC_BASE_URL : undefined;
     const logoUrl = publicBase
       ? `${publicBase.replace(/\/+$/, "")}/${storageKey}`
       : `/api/profile/media?key=${encodeURIComponent(storageKey)}`;
@@ -347,22 +347,22 @@ export class UserService {
     // Delete old logo and clean up any duplicate/orphaned company logo files
     if (oldLogoKey && oldLogoKey !== storageKey) {
       try {
-        await r2Storage.deleteFile({ key: oldLogoKey });
+        await storage.deleteFile({ key: oldLogoKey });
       } catch {
         // Non-fatal
       }
     }
     try {
-      const existingCompanyFiles = await r2Storage.listFiles({ prefix: `users/${userId}/company/` });
+      const existingCompanyFiles = await storage.listFiles({ prefix: `users/${userId}/company/` });
       for (const obj of existingCompanyFiles.objects) {
         if (obj.key !== storageKey) {
-          await r2Storage.deleteFile({ key: obj.key }).catch(() => {});
+          await storage.deleteFile({ key: obj.key }).catch(() => {});
         }
       }
-      const existingProfileLogos = await r2Storage.listFiles({ prefix: `users/${userId}/userprofile/company_logo_` });
+      const existingProfileLogos = await storage.listFiles({ prefix: `users/${userId}/userprofile/company_logo_` });
       for (const obj of existingProfileLogos.objects) {
         if (obj.key !== storageKey) {
-          await r2Storage.deleteFile({ key: obj.key }).catch(() => {});
+          await storage.deleteFile({ key: obj.key }).catch(() => {});
         }
       }
     } catch {
@@ -381,7 +381,7 @@ export class UserService {
 
     if (company && company.logoStorageKey) {
       try {
-        await r2Storage.deleteFile({ key: company.logoStorageKey });
+        await storage.deleteFile({ key: company.logoStorageKey });
       } catch {
         // Non-fatal
       }
@@ -449,7 +449,7 @@ export class UserService {
   }
 
   async getMediaStream(storageKey: string) {
-    return await r2Storage.getFile({ key: storageKey });
+    return await storage.getFile({ key: storageKey });
   }
 
   async updateUserPlan(id: string, planKey: CreditPlanKey): Promise<UserRecord> {
@@ -468,7 +468,18 @@ export class UserService {
 
   async getNotificationPreferences(userId: string): Promise<NotificationPreferences> {
     const user = await this.getUser(userId);
-    return user.notificationPreferences || DEFAULT_NOTIFICATION_PREFERENCES;
+    const prefs = user.notificationPreferences;
+    if (!prefs) return DEFAULT_NOTIFICATION_PREFERENCES;
+    return {
+      email: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.email,
+        ...(prefs.email || {}),
+      },
+      inApp: {
+        ...DEFAULT_NOTIFICATION_PREFERENCES.inApp,
+        ...(prefs.inApp || {}),
+      },
+    };
   }
 
   async updateNotificationPreferences(

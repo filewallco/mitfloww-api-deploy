@@ -285,6 +285,7 @@ export class NotificationService {
             if (isReply && inApp.clientReply === false) return false;
             if (!isReply && (item.title?.toLowerCase().includes("comment") || (item.metadata as any)?.isComment === true) && inApp.clientComment === false) return false;
             if ((item.title?.toLowerCase().includes("approved") || item.title?.toLowerCase().includes("approval")) && inApp.clientApproveFile === false) return false;
+            if ((item.category === "file_processing_succeeded" || item.title?.toLowerCase().includes("processing")) && inApp.fileProcessingCompleted === false) return false;
             if ((item.title?.toLowerCase().includes("security") || item.title?.toLowerCase().includes("session") || item.title?.toLowerCase().includes("login")) && inApp.securityAlerts === false) return false;
             if ((item.title?.toLowerCase().includes("promo") || item.title?.toLowerCase().includes("offer") || item.title?.toLowerCase().includes("mitfloww update")) && inApp.promotional === false) return false;
             return true;

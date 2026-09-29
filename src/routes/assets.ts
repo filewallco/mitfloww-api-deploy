@@ -10,7 +10,8 @@ import {
   uploadAssetFilesSchema,
 } from "@/lib/validation/assets";
 import { Readable } from "node:stream";
-import { r2Storage } from "@/lib/storage/r2";
+import { storage } from "@/lib/storage";
+import mime from "mime-types";
 import { AppError } from "@/lib/errors/app-error";
 
 export const assetsRouter = Router();
@@ -76,13 +77,13 @@ assetsRouter.post(
         ? `users/${actor.id}/assets/${assetId}/previews/${Date.now()}-${sanitizedBase}`
         : `users/${actor.id}/assets/previews/${Date.now()}-${sanitizedBase}`;
 
-      await r2Storage.uploadFile({
+      await storage.uploadFile({
         key: storageKey,
         body: buffer,
         contentType: mimeType,
       });
 
-      const publicBase = process.env.R2_PUBLIC_BASE_URL;
+      const publicBase = process.env.STORAGE_PROVIDER !== "local" ? process.env.R2_PUBLIC_BASE_URL : undefined;
       const previewUrl = publicBase
         ? `${publicBase.replace(/\/+$/, "")}/${storageKey}`
         : `/api/profile/media?key=${encodeURIComponent(storageKey)}`;
@@ -283,7 +284,7 @@ assetsRouter.get(
       return res.status(400).json({ error: "Missing key query parameter." });
     }
 
-    const result = await r2Storage.getFile({ key: storageKey });
+    const result = await storage.getFile({ key: storageKey });
     if (!result || !result.body) {
       return res.status(404).json({ error: "Media not found." });
     }
@@ -321,7 +322,7 @@ assetsRouter.get(
     // Fast path: Redirect directly to Cloudflare R2 presigned download URL
     if (file.storageKey) {
       try {
-        const presigned = await r2Storage.getPresignedGetObjectUrl({
+        const presigned = await storage.getPresignedGetObjectUrl?.({
           key: file.storageKey,
           filename: file.filename,
           disposition: "attachment",
@@ -416,7 +417,7 @@ assetsRouter.get(
     // Fast path: Redirect directly to Cloudflare R2 presigned download URL
     if (file.storageKey) {
       try {
-        const presigned = await r2Storage.getPresignedGetObjectUrl({
+        const presigned = await storage.getPresignedGetObjectUrl?.({
           key: file.storageKey,
           filename: file.filename,
           disposition: "attachment",

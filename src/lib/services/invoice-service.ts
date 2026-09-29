@@ -10,7 +10,7 @@ import type { InvoiceSettingsRecord, NewInvoiceSettingsRecord, CustomInvoiceTemp
 import { userService } from "./user-service";
 import { invoicePdfService, type InvoicePdfData } from "./invoice-pdf-service";
 import { transactionService } from "./transaction-service";
-import { r2Storage } from "@/lib/storage/r2";
+import { storage } from "@/lib/storage";
 import { AppError, NotFoundAppError } from "@/lib/errors/app-error";
 import { creditService } from "./credit-service";
 import { DEFAULT_PROJECT_CURRENCY } from "@/lib/constants/currencies";
@@ -517,7 +517,7 @@ export class InvoiceService {
     let logoBuffer: Buffer | null = null;
     if (profile.company?.logoStorageKey) {
       try {
-        const fileObj = await r2Storage.getFile({ key: profile.company.logoStorageKey });
+        const fileObj = await storage.getFile({ key: profile.company.logoStorageKey });
         if (fileObj && fileObj.body) {
           if (Buffer.isBuffer(fileObj.body)) {
             logoBuffer = fileObj.body;
@@ -701,7 +701,7 @@ export class InvoiceService {
     let logoBuffer: Buffer | null = null;
     if (profile.company?.logoStorageKey) {
       try {
-        const fileObj = await r2Storage.getFile({ key: profile.company.logoStorageKey });
+        const fileObj = await storage.getFile({ key: profile.company.logoStorageKey });
         if (fileObj && fileObj.body) {
           if (Buffer.isBuffer(fileObj.body)) {
             logoBuffer = fileObj.body;

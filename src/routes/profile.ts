@@ -223,9 +223,8 @@ profileRouter.get("/media", asyncHandler(async (req, res) => {
     return res.status(404).json({ error: "Media not found." });
   }
 
-  if (result.contentType) {
-    res.setHeader("Content-Type", result.contentType);
-  }
+  const contentType = result.contentType || "application/octet-stream";
+  res.setHeader("Content-Type", contentType);
   if (result.contentLength != null) {
     res.setHeader("Content-Length", String(result.contentLength));
   }

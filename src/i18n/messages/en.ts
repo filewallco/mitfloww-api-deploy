@@ -1175,15 +1175,28 @@ export const enMessages: AppMessages = {
     fileReviewUnderReviewCannotDelete:
       "This revision is under review because it has unresolved safety or legal reports.",
     fileReviewFinalDraftDeleteLockedDescription:
-      "The final draft can only be deleted after payment is complete and the client has downloaded it.",
+      "The final draft can only be deleted after payment is complete and the client has downloaded it.",    fileReviewDeleteFileAction: "Delete File",
+    fileReviewDeleteLastRevisionConfirmTitle: "Delete File?",
+    fileReviewDeleteLastRevisionDescription:
+      'This is the only revision. Deleting it will delete "{name}" and remove it from this project.',
+    fileReviewDeleteLastRevisionWithCommentsDescription:
+      'This is the only revision and has comments. Deleting it will delete "{name}" and all comments from this project.',
+    fileReviewDeleteLastRevisionConfirmLabel: "Delete File",
+
     fileReviewLastVersionCannotDelete:
       "At least one non-deleted revision must remain on the file.",
     fileReviewRevisionDeletedTitle: "Revision deleted",
     fileReviewRevisionDeletedDescription:
       "The revision was hidden from your review history.",
+    fileReviewFileDeletedTitle: "File deleted",
+    fileReviewFileDeletedDescription:
+      '"{name}" was removed from this project.',
     fileReviewRevisionDeleteFailedTitle: "Revision not deleted",
     fileReviewRevisionDeleteFailedDescription:
       "Failed to delete the revision. Please try again.",
+    fileReviewFileDeleteFailedTitle: "File not deleted",
+    fileReviewFileDeleteFailedDescription:
+      "Failed to delete the file. Please try again.",
     fileReviewRevisionDeletingTitle: "Deleting revision...",
     fileReviewMarkAsFinalDraft: "Mark as final draft",
     fileReviewMarkAsFinalDraftDescription:

@@ -1146,9 +1146,15 @@ export const hiMessages = {
     fileReviewRevisionDeletedTitle: "रिविज़न हटा दिया गया",
     fileReviewRevisionDeletedDescription:
       "यह रिविज़न आपकी रिव्यू हिस्ट्री से छिपा दिया गया है।",
+    fileReviewFileDeletedTitle: "फ़ाइल हटाई गई",
+    fileReviewFileDeletedDescription:
+      '"{name}" को इस प्रोजेक्ट से हटा दिया गया।',
     fileReviewRevisionDeleteFailedTitle: "रिविज़न हटाया नहीं गया",
     fileReviewRevisionDeleteFailedDescription:
       "हम अभी इस रिविज़न को हटा नहीं सके।",
+    fileReviewFileDeleteFailedTitle: "फ़ाइल नहीं हटाई गई",
+    fileReviewFileDeleteFailedDescription:
+      "फ़ाइल हटाने में विफल। कृपया पुनः प्रयास करें।",
     fileReviewMarkAsFinalDraft: "फ़ाइनल ड्राफ्ट के रूप में मार्क करें",
     fileReviewMarkAsFinalDraftDescription:
       "इस अपलोड को स्वीकृत करें और इसे नवीनतम फ़ाइनल ड्राफ्ट बनाएं।",

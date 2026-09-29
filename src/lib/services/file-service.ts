@@ -609,10 +609,6 @@ function getVersionDeleteBlockReason(input: {
     return "final_draft_processing_completed";
   }
 
-  if (input.activeVersionCount <= 1) {
-    return "last_remaining_version";
-  }
-
   if (input.hasUnresolvedReports) {
     return "version_under_review";
   }
@@ -1307,12 +1303,34 @@ export class FileService {
       );
     }
 
-    if (deleteBlockReason === "last_remaining_version") {
+    if (deleteBlockReason === "version_under_review") {
       throw new AppError(
-        "The last remaining version cannot be deleted.",
+        "A file version cannot be deleted while safety reports are unresolved.",
         409,
-        "file_version_last_remaining",
+        "file_version_under_review",
       );
+    }
+
+    if (deleteBlockReason === "final_draft_locked") {
+      throw new AppError(
+        "A downloaded final draft cannot be deleted until project payment is completed.",
+        409,
+        "final_draft_delete_locked",
+      );
+    }
+
+    if (activeVersions.length <= 1) {
+      const deletedFile = await this.deleteFile(input.fileId, {
+        userId: project.userId,
+      });
+
+      return {
+        deletedAt: deletedFile.deletedAt,
+        fileDeleted: true,
+        fileId: input.fileId,
+        nextSelectedVersionId: null,
+        versionId: input.versionId,
+      };
     }
 
     const remainingVersions = activeVersions.filter(
@@ -5579,6 +5597,41 @@ export class FileService {
     }
   }
 
+  private async sendFileProcessingCompletedEmail(file: { id: string; name: string; projectId: string }) {
+    try {
+      const project = await this.projectRepository.findById(file.projectId);
+      if (!project || !project.userId) return;
+
+      const [owner] = await db
+        .select({
+          email: users.email,
+          displayName: users.displayName,
+          firstName: users.firstName,
+        })
+        .from(users)
+        .where(eq(users.id, project.userId))
+        .limit(1);
+
+      if (!owner?.email) return;
+
+      const baseUrl = process.env.APP_URL || "https://mitfloww.com";
+      const fileUrl = `${baseUrl}/projects/${project.id || project.publicId}/files/${file.id}`;
+
+      await emailService.sendFileProcessingCompletedEmail({
+        recipientEmail: owner.email,
+        recipientName: owner.displayName || owner.firstName || undefined,
+        fileName: file.name,
+        projectTitle: project.title,
+        fileUrl,
+      });
+    } catch (error) {
+      scopedLogger.warn("Error sending file processing completed email", {
+        fileId: file.id,
+        error,
+      });
+    }
+  }
+
   private toClientShareDeliverable(
     file: FileDTO,
     shareToken: string,
@@ -6190,6 +6243,15 @@ export class FileService {
             ? "notification.fileProcessingCompletedTitle"
             : "notification.fileProcessingFailedTitle",
       });
+
+      if (status === FileProcessingStatus.Completed) {
+        void this.sendFileProcessingCompletedEmail(file).catch((err) => {
+          scopedLogger.warn("Failed to dispatch file processing completed email", {
+            fileId: file.id,
+            err,
+          });
+        });
+      }
     }
 
     return resolvedRecord;

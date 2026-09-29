@@ -114,6 +114,7 @@ export type DeletedFileDTO = {
 
 export type DeletedFileVersionDTO = {
   deletedAt: string;
+  fileDeleted?: boolean;
   fileId: string;
   nextSelectedVersionId: string | null;
   versionId: string;

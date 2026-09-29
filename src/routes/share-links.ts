@@ -31,7 +31,7 @@ import {
   fileRevisionNoteReportBodySchema,
 } from "@/lib/validation/file-revision-notes";
 import { Readable } from "node:stream";
-import { r2Storage } from "@/lib/storage/r2";
+import { storage } from "@/lib/storage";
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
 
 export const shareLinksRouter = Router();
@@ -249,7 +249,7 @@ shareLinksRouter.get("/:token/files/:fileId/download", asyncHandler(async (req, 
   // Eliminates 100% server RAM and network bandwidth usage for large video files
   if (result.storageKey) {
     try {
-      const presigned = await r2Storage.getPresignedGetObjectUrl({
+      const presigned = await storage.getPresignedGetObjectUrl?.({
         bucket: result.storageBucket,
         key: result.storageKey,
         filename: result.filename,

@@ -122,6 +122,8 @@ storageRouter.put("/:action", asyncHandler(async (req, res) => {
         body: body as any,
       });
 
+      res.setHeader("Access-Control-Expose-Headers", "ETag, etag");
+      res.setHeader("ETag", `"${encodeURIComponent(key)}"`);
       return res.status(200).end();
     } catch (err) {
       scopedLogger.error("Local storage upload error", { err, bucket, key });
@@ -158,6 +160,7 @@ storageRouter.put("/:action", asyncHandler(async (req, res) => {
         contentLength: buffer.byteLength,
       });
 
+      res.setHeader("Access-Control-Expose-Headers", "ETag, etag");
       res.setHeader("ETag", `"${result.etag}"`);
       return res.status(200).end();
     } catch (err) {

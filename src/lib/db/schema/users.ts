@@ -8,6 +8,7 @@ export interface NotificationPreferences {
     clientReply: boolean;
     clientComment: boolean;
     clientApproveFile: boolean;
+    fileProcessingCompleted: boolean;
     securityAlerts: boolean;
     promotional: boolean;
   };
@@ -15,6 +16,7 @@ export interface NotificationPreferences {
     clientReply: boolean;
     clientComment: boolean;
     clientApproveFile: boolean;
+    fileProcessingCompleted: boolean;
     securityAlerts: boolean;
     promotional: boolean;
   };
@@ -25,6 +27,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     clientReply: true,
     clientComment: true,
     clientApproveFile: true,
+    fileProcessingCompleted: true,
     securityAlerts: true,
     promotional: true,
   },
@@ -32,6 +35,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     clientReply: true,
     clientComment: true,
     clientApproveFile: true,
+    fileProcessingCompleted: true,
     securityAlerts: true,
     promotional: true,
   },

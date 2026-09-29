@@ -41,7 +41,7 @@ export const STORAGE_FOLDERS = {
  * Helper to build public CDN URL or relative proxy for a given storage key.
  */
 export function getStoragePublicUrl(storageKey: string, publicBaseUrl?: string): string {
-  const base = publicBaseUrl || process.env.R2_PUBLIC_BASE_URL;
+  const base = process.env.STORAGE_PROVIDER !== "local" ? (publicBaseUrl || process.env.R2_PUBLIC_BASE_URL) : undefined;
   if (base) {
     return `${base.replace(/\/+$/, "")}/${storageKey.replace(/^\/+/, "")}`;
   }
