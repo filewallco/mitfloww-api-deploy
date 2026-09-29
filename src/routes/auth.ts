@@ -379,3 +379,63 @@ authRouter.post(
     return res.json({ user: updated });
   }),
 );
+
+
+/**
+ * Get Active Sessions
+ */
+authRouter.get(
+  "/sessions",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
+    const sessions = await sessionService.getUserSessions(actor.id, refreshToken);
+    return res.json({ sessions, status: "success" });
+  }),
+);
+
+/**
+ * Revoke Specific Session (Logout Manually)
+ */
+authRouter.post(
+  "/sessions/:id/revoke",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    await sessionService.revokeSessionForUser(actor.id, String(req.params.id));
+    return res.json({ success: true, message: "Session revoked successfully." });
+  }),
+);
+
+/**
+ * Revoke All Other Sessions (Logout from Other Apps)
+ */
+authRouter.post(
+  "/sessions/revoke-others",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
+    await sessionService.revokeOtherSessions(actor.id, refreshToken);
+    return res.json({ success: true, message: "All other sessions revoked successfully." });
+  }),
+);
+
+/**
+ * Change Account Password
+ */
+const changePasswordBodySchema = z.object({
+  currentPassword: z.string().optional(),
+  newPassword: z.string().min(6, "Password must be at least 6 characters"),
+});
+
+authRouter.post(
+  "/change-password",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const parsed = changePasswordBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0]?.message || "Invalid input" });
+    }
+    await authService.changePassword(actor.id, parsed.data.currentPassword, parsed.data.newPassword);
+    return res.json({ success: true, message: "Password updated successfully." });
+  }),
+);

@@ -94,7 +94,120 @@ export function verifyLegacySessionToken(token: string): string | null {
 
 export const verifySessionToken = verifyLegacySessionToken;
 
+
+function parseUserAgent(ua?: string | null): { device: string; browser: string; os: string } {
+  if (!ua) return { device: "Desktop Browser", browser: "Web Browser", os: "Unknown OS" };
+
+  let browser = "Web Browser";
+  let os = "Unknown OS";
+  let device = "Desktop Device";
+
+  if (/windows/i.test(ua)) os = "Windows";
+  else if (/macintosh|mac os/i.test(ua)) os = "macOS";
+  else if (/iphone|ipad|ipod/i.test(ua)) {
+    os = "iOS";
+    device = /ipad/i.test(ua) ? "iPad" : "iPhone";
+  } else if (/android/i.test(ua)) {
+    os = "Android";
+    device = "Android Device";
+  } else if (/linux/i.test(ua)) os = "Linux";
+
+  if (/edg/i.test(ua)) browser = "Edge";
+  else if (/chrome|crios/i.test(ua)) browser = "Chrome";
+  else if (/firefox|fxios/i.test(ua)) browser = "Firefox";
+  else if (/safari/i.test(ua) && !/chrome/i.test(ua)) browser = "Safari";
+  else if (/opera|opr/i.test(ua)) browser = "Opera";
+
+  if (device === "Desktop Device") {
+    device = `${browser} on ${os}`;
+  } else {
+    device = `${browser} on ${device}`;
+  }
+
+  return { device, browser, os };
+}
+
+function resolveIpLocation(ip?: string | null): string {
+  if (!ip || ip === "127.0.0.1" || ip === "::1" || ip.startsWith("192.168.") || ip.startsWith("10.") || ip === "localhost") {
+    return "Local Network";
+  }
+  return "Online Device";
+}
+
 export class SessionService {
+  /**
+   * Fetches all active non-revoked sessions for a user with device and location metadata.
+   */
+  async getUserSessions(
+    userId: string,
+    currentRefreshToken?: string,
+  ): Promise<Array<{
+    id: string;
+    device: string;
+    browser: string;
+    os: string;
+    ipAddress: string;
+    location: string;
+    isCurrent: boolean;
+    lastUsedAt: string;
+    createdAt: string;
+  }>> {
+    const currentHash = currentRefreshToken ? hashRefreshToken(currentRefreshToken.trim()) : null;
+
+    const userSessions = await db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)))
+      .orderBy(desc(sessions.lastUsedAt));
+
+    return userSessions.map((sess) => {
+      const parsed = parseUserAgent(sess.userAgent);
+      const isCurrent = Boolean(currentHash && sess.refreshTokenHash === currentHash);
+      return {
+        id: sess.id,
+        device: parsed.device,
+        browser: parsed.browser,
+        os: parsed.os,
+        ipAddress: sess.ipAddress || "Unknown IP",
+        location: resolveIpLocation(sess.ipAddress),
+        isCurrent,
+        lastUsedAt: sess.lastUsedAt.toISOString(),
+        createdAt: sess.createdAt.toISOString(),
+      };
+    });
+  }
+
+  /**
+   * Revokes a specific session belonging to a user.
+   */
+  async revokeSessionForUser(userId: string, sessionId: string): Promise<void> {
+    await db
+      .update(sessions)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)));
+  }
+
+  /**
+   * Revokes all sessions for a user except the current session.
+   */
+  async revokeOtherSessions(userId: string, currentRefreshToken?: string): Promise<void> {
+    const currentHash = currentRefreshToken ? hashRefreshToken(currentRefreshToken.trim()) : null;
+    if (currentHash) {
+      const allActive = await db
+        .select({ id: sessions.id, refreshTokenHash: sessions.refreshTokenHash })
+        .from(sessions)
+        .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+
+      for (const s of allActive) {
+        if (s.refreshTokenHash !== currentHash) {
+          await db.update(sessions).set({ revokedAt: new Date() }).where(eq(sessions.id, s.id));
+        }
+      }
+    } else {
+      await this.revokeAllSessions(userId);
+    }
+  }
+
   /**
    * Creates a new server-side session in PostgreSQL, generating a fresh access token
    * and long-lived refresh token.

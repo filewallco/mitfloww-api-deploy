@@ -69,18 +69,22 @@ export function encryptProjectSharePassword(password: string) {
   ].join("$");
 }
 
-export function decryptProjectSharePassword(value: string) {
-  const { ciphertext, iv, tag } = parseStoredProjectSharePassword(value);
-  const decipher = createDecipheriv(
-    "aes-256-gcm",
-    getProjectSharePasswordStorageKey(),
-    iv,
-  );
+export function decryptProjectSharePassword(value: string): string | null {
+  try {
+    const { ciphertext, iv, tag } = parseStoredProjectSharePassword(value);
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      getProjectSharePasswordStorageKey(),
+      iv,
+    );
 
-  decipher.setAuthTag(tag);
+    decipher.setAuthTag(tag);
 
-  return Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]).toString("utf8");
+    return Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    return null;
+  }
 }

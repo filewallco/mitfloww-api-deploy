@@ -219,6 +219,10 @@ export const createProjectTables = (fw: PgSchema) => {
         .notNull()
         .default(0),
       watermarkEnabled: boolean("watermark_enabled").notNull().default(true),
+      deliverablesRequestedAt: timestamp("deliverables_requested_at", {
+        mode: "date",
+        withTimezone: true,
+      }),
       deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()

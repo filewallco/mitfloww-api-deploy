@@ -1,3 +1,5 @@
+import { emailService } from "@/lib/email/email-service";
+import { users } from "@/lib/db/schema";
 import {
   FileRevisionReplyEmailStatus,
   type FileRevisionNoteDTO,

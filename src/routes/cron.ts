@@ -1,3 +1,5 @@
+import { emailService } from "@/lib/email/email-service";
+import { users } from "@/lib/db/schema";
 import { DELETED_RESOURCE_RETENTION_DAYS } from "@/config/retention";
 import { assets } from "@/lib/db/schema";
 import { r2Storage } from "@/lib/storage/r2";
@@ -124,11 +126,58 @@ cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
     }
   }
 
+  // 4. Process Plan/Storage Expirations Email Alerts (3 days before expiration)
+  const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+  const expiringStorage = await db
+    .select({
+      id: storageAccountMutations.id,
+      expiresAt: storageAccountMutations.expiresAt,
+      scopeId: storageAccountMutations.scopeId,
+      actorUserId: storageAccountMutations.actorUserId,
+    })
+    .from(storageAccountMutations)
+    .where(
+      and(
+        eq(storageAccountMutations.isExpired, false),
+        isNotNull(storageAccountMutations.expiresAt),
+        lte(storageAccountMutations.expiresAt, threeDaysFromNow),
+      ),
+    );
+
+  const notifiedUserIds = new Set<string>();
+  const appUrl = process.env.APP_URL || "https://mitfloww.com";
+
+  for (const mut of expiringStorage) {
+    const userId = mut.actorUserId || mut.scopeId;
+    if (!userId || notifiedUserIds.has(userId) || !mut.expiresAt) continue;
+    notifiedUserIds.add(userId);
+
+    const [user] = await db
+      .select({ email: users.email, displayName: users.displayName, firstName: users.firstName, planKey: users.planKey })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (user?.email) {
+      const daysRemaining = Math.max(1, Math.ceil((mut.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+      const expiryDateFormatted = mut.expiresAt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+      emailService.sendPlanExpiringEmail({
+        userEmail: user.email,
+        userName: user.displayName || user.firstName || undefined,
+        planName: user.planKey ? user.planKey.toUpperCase() : "Storage",
+        expiryDateFormatted,
+        daysRemaining,
+        renewUrl: `${appUrl}/settings`,
+      }).catch(() => {});
+    }
+  }
+
   return res.json({
     success: true,
     processedStorage: expiredStorage.length,
     processedCredits: expiredCredits.length,
     refreshedAccounts: refreshCount,
+    expiringAlertsSent: notifiedUserIds.size,
   });
 }));
 

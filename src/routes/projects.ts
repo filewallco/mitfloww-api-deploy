@@ -1,3 +1,4 @@
+import { emailService } from "@/lib/email/email-service";
 import { createScopedLogger } from "@/lib/logger";
 import { Router } from "express";
 import { Readable } from "stream";
@@ -314,7 +315,15 @@ projectsRouter.post("/:id/request-testimonial-email", asyncHandler(async (req, r
 
   const reviewUrl = `${baseUrl || "http://localhost:3000"}/s/${encodeURIComponent(shareComposer.shareDraft.shareToken)}/review`;
 
-  scopedLogger.info("Testimonial request email dispatched (mock)", {
+  await emailService.sendTestimonialRequestEmail({
+    clientEmail,
+    clientName: project.clientName || undefined,
+    creatorName: actor.name || "Your creative partner",
+    projectTitle: project.title,
+    reviewUrl,
+  });
+
+  scopedLogger.info("Testimonial request email dispatched", {
     recipient: clientEmail,
     projectId: project.id,
     projectTitle: project.title,

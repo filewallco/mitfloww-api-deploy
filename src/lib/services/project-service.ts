@@ -1,3 +1,7 @@
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db/client";
+import { projects, users } from "@/lib/db/schema";
+import { emailService } from "@/lib/email/email-service";
 import { createScopedLogger } from "@/lib/logger";
   import { resolveActiveActor } from "@/lib/auth/active-actor";
   import { creditService } from "@/lib/services/credit-service";
@@ -305,7 +309,11 @@ import { createScopedLogger } from "@/lib/logger";
       return null;
     }
 
-    return decryptProjectSharePassword(project.sharePasswordCiphertext);
+    try {
+      return decryptProjectSharePassword(project.sharePasswordCiphertext);
+    } catch {
+      return null;
+    }
   }
 
   function toProjectShareAccess(
@@ -436,6 +444,7 @@ import { createScopedLogger } from "@/lib/logger";
             advancePaymentStatus: project.advancePaymentStatus,
             paymentStatus: project.paymentStatus,
             clientEmail,
+            deliverablesRequested: Boolean(project.deliverablesRequestedAt),
           }
         : null,
       remainingAttempts: getProjectShareRemainingAttempts(
@@ -617,6 +626,7 @@ export class ProjectService {
         clientPaymentCompletedAt: null,
         clientPaymentReference: null,
         invoiceId: null,
+        deliverablesRequestedAt: null,
       });
 
       return this.buildProjectDTO(record, options.viewerLocale);
@@ -915,6 +925,54 @@ export class ProjectService {
         regenerate: false,
         expiryDays: options?.expiryDays,
       });
+
+      if (input.action === ProjectShareMutationAction.Send) {
+        const clientEmail = (updatedRecord.shareClientEmail || updatedRecord.clientEmail || "").trim();
+        if (clientEmail) {
+          const shareDraft = toProjectShareDraft(updatedRecord, options?.baseUrl);
+          const sharePassword = input.passwordEnabled
+            ? (input.sharePassword || getStoredProjectSharePassword(updatedRecord))
+            : null;
+
+          let creatorName = "Your creative partner";
+          const creatorId = options?.userId || updatedRecord.userId;
+          if (creatorId) {
+            db.select({ displayName: users.displayName, firstName: users.firstName, email: users.email })
+              .from(users)
+              .where(eq(users.id, creatorId))
+              .limit(1)
+              .then(([creator]: any) => {
+                if (creator) {
+                  creatorName = creator.displayName || creator.firstName || creator.email || creatorName;
+                }
+                emailService.sendProjectShareInviteEmail({
+                  clientEmail,
+                  clientName: updatedRecord.clientName || undefined,
+                  projectTitle: updatedRecord.title,
+                  creatorName,
+                  shareUrl: shareDraft.shareUrl,
+                  sharePassword: sharePassword || undefined,
+                  expiryDays: options?.expiryDays,
+                }).catch((err) => {
+                  scopedLogger.warn("Failed to send project share invite email", { err, projectId: updatedRecord.id, clientEmail });
+                });
+              })
+              .catch(() => {});
+          } else {
+            emailService.sendProjectShareInviteEmail({
+              clientEmail,
+              clientName: updatedRecord.clientName || undefined,
+              projectTitle: updatedRecord.title,
+              creatorName,
+              shareUrl: shareDraft.shareUrl,
+              sharePassword: sharePassword || undefined,
+              expiryDays: options?.expiryDays,
+            }).catch((err) => {
+              scopedLogger.warn("Failed to send project share invite email", { err, projectId: updatedRecord.id, clientEmail });
+            });
+          }
+        }
+      }
 
       return {
         project: await this.buildProjectDTO(
@@ -1722,7 +1780,64 @@ export class ProjectService {
         );
       }
     }
-  }
+  
+    async requestProjectDeliverables(shareToken: string): Promise<{
+      alreadyRequested: boolean;
+      deliverablesRequested: boolean;
+    }> {
+      const record = await this.findProjectByShareToken(shareToken);
+      if (!record) {
+        throw this.createShareUnavailableError();
+      }
+
+      if (record.deliverablesRequestedAt) {
+        return {
+          alreadyRequested: true,
+          deliverablesRequested: true,
+        };
+      }
+
+      const now = new Date();
+      await db
+        .update(projects)
+        .set({
+          deliverablesRequestedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(projects.id, record.id));
+
+      try {
+        const [owner] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, record.userId))
+          .limit(1);
+
+        if (owner && owner.email) {
+          const clientIdentifier = record.clientName || record.shareClientEmail || record.clientEmail || null;
+          const appBaseUrl = process.env.APP_BASE_URL || "https://mitfloww.com";
+          const projectUrl = `${appBaseUrl}/projects/${record.id}`;
+
+          await emailService.sendDeliverablesRequestedEmail({
+            userEmail: owner.email,
+            userName: owner.displayName || owner.firstName || owner.email || undefined,
+            projectTitle: record.title,
+            clientName: clientIdentifier,
+            clientEmail: record.shareClientEmail || record.clientEmail || null,
+            projectUrl,
+          });
+        }
+      } catch (err) {
+        console.error("[EmailNotification] Failed sending deliverables requested email", err);
+      }
+
+      return {
+        alreadyRequested: false,
+        deliverablesRequested: true,
+      };
+    }
+
+}
 
   export const projectService = new ProjectService(
     new DrizzleProjectRepository(),

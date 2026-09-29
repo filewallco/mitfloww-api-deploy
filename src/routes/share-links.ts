@@ -513,3 +513,13 @@ shareLinksRouter.post("/:token/files/:fileId/versions/:versionId/report", asyncH
   });
   return sendSuccess(res, result, { status: 201 });
 }));
+
+shareLinksRouter.post(
+  "/:token/request-deliverables",
+  asyncHandler(async (req, res) => {
+    const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+    await requireAuthorizedShareProject(req, params.token);
+    const result = await projectService.requestProjectDeliverables(params.token);
+    return sendSuccess(res, result);
+  }),
+);

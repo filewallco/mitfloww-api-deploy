@@ -527,6 +527,522 @@ export class EmailService {
     await this.sendAsync({ to: params.creatorEmail, subject, html, text });
   }
 
+  
+  async sendProjectShareInviteEmail(params: {
+    clientEmail: string;
+    clientName?: string;
+    projectTitle: string;
+    creatorName: string;
+    shareUrl: string;
+    sharePassword?: string | null;
+    expiryDays?: number;
+  }): Promise<void> {
+    const greetingName = params.clientName ? ` ${params.clientName}` : "";
+    const subject = `${params.creatorName} invited you to review "${params.projectTitle}"`;
+
+    const passwordSection = params.sharePassword
+      ? `
+        <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin: 20px 0;">
+          <p style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin: 0 0 6px 0;">
+            Temporary Access Password
+          </p>
+          <span style="font-family: 'Courier New', Courier, monospace; font-size: 20px; font-weight: 700; color: #005bdd; letter-spacing: 0.1em; display: inline-block;">
+            ${params.sharePassword}
+          </span>
+          <p style="font-size: 12px; color: #94a3b8; margin: 6px 0 0 0;">
+            Use this password along with your email to unlock the project deliverables.
+          </p>
+        </div>
+      `
+      : "";
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        Project Deliverables Ready for Review
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, <strong>${params.creatorName}</strong> has shared the deliverables for <strong>${params.projectTitle}</strong> with you on MitFloww.
+      </p>
+
+      ${passwordSection}
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.shareUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600; box-shadow: 0 2px 4px rgba(0, 91, 221, 0.2);">
+          Review Deliverables &rarr;
+        </a>
+      </div>
+
+      <p style="font-size: 12px; line-height: 1.6; color: #94a3b8; margin: 0; text-align: center;">
+        You can review media, leave timestamped feedback, and download approved files directly through this link.
+      </p>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\n${params.creatorName} has invited you to review "${params.projectTitle}".\n\nReview link: ${params.shareUrl}${params.sharePassword ? `\nTemporary password: ${params.sharePassword}` : ""}`;
+
+    await this.sendAsync({ to: params.clientEmail, subject, html, text });
+  }
+
+  async sendNewRevisionUploadedEmail(params: {
+    clientEmail: string;
+    clientName?: string;
+    projectTitle: string;
+    fileName: string;
+    versionName?: string;
+    creatorName?: string;
+    reviewUrl: string;
+  }): Promise<void> {
+    const greetingName = params.clientName ? ` ${params.clientName}` : "";
+    const creator = params.creatorName || "Your creative partner";
+    const subject = `New revision uploaded for "${params.fileName}" (${params.projectTitle})`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        New Revision Uploaded
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, <strong>${creator}</strong> has uploaded a new revision for <strong>${params.fileName}</strong> in <strong>${params.projectTitle}</strong>.
+      </p>
+
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size: 13px; color: #64748b;">File:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a;">${params.fileName}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Project:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-top: 8px;">${params.projectTitle}</td>
+          </tr>
+          ${params.versionName ? `
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Revision:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #005bdd; padding-top: 8px;">${params.versionName}</td>
+          </tr>` : ""}
+        </table>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.reviewUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          Review Revision &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\nA new revision has been uploaded for "${params.fileName}" in "${params.projectTitle}".\n\nReview it here: ${params.reviewUrl}`;
+
+    await this.sendAsync({ to: params.clientEmail, subject, html, text });
+  }
+
+  async sendRevisionCommentEmail(params: {
+    recipientEmail: string;
+    recipientName?: string;
+    senderName: string;
+    projectTitle: string;
+    fileName: string;
+    commentText: string;
+    isReply: boolean;
+    reviewUrl: string;
+  }): Promise<void> {
+    const greetingName = params.recipientName ? ` ${params.recipientName}` : "";
+    const actionLabel = params.isReply ? "replied to a comment" : "left a new comment";
+    const subject = params.isReply
+      ? `New reply from ${params.senderName} on "${params.fileName}"`
+      : `New comment from ${params.senderName} on "${params.fileName}" (${params.projectTitle})`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        ${params.isReply ? "New Comment Reply" : "New Feedback Comment"}
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, <strong>${params.senderName}</strong> ${actionLabel} on <strong>${params.fileName}</strong> in <strong>${params.projectTitle}</strong>.
+      </p>
+
+      <div style="background-color: #f8fafc; border-left: 4px solid #005bdd; border-radius: 0 12px 12px 0; padding: 16px 20px; margin-bottom: 24px;">
+        <p style="font-size: 14px; line-height: 1.6; color: #334155; margin: 0; font-style: italic;">
+          "${params.commentText}"
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.reviewUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          View & Respond &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\n${params.senderName} ${actionLabel} on "${params.fileName}" (${params.projectTitle}):\n\n"${params.commentText}"\n\nView and respond: ${params.reviewUrl}`;
+
+    await this.sendAsync({ to: params.recipientEmail, subject, html, text });
+  }
+
+  async sendCommentReportedEmail(params: {
+    recipientEmail: string;
+    recipientName?: string;
+    reporterRole: "client" | "creator";
+    projectTitle: string;
+    fileName: string;
+    reason: string;
+    message?: string | null;
+    dashboardUrl: string;
+  }): Promise<void> {
+    const greetingName = params.recipientName ? ` ${params.recipientName}` : "";
+    const subject = `Comment Reported: "${params.fileName}" (${params.projectTitle})`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #dc2626; margin: 0 0 10px 0; line-height: 1.3;">
+        Comment Reported for Review
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, a comment on <strong>${params.fileName}</strong> in <strong>${params.projectTitle}</strong> has been reported for moderation.
+      </p>
+
+      <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <p style="font-size: 13px; color: #991b1b; margin: 0 0 6px 0;"><strong>Reason:</strong> ${params.reason}</p>
+        ${params.message ? `<p style="font-size: 13px; color: #7f1d1d; margin: 0;"><strong>Details:</strong> ${params.message}</p>` : ""}
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.dashboardUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          Review in Dashboard &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\nA comment on "${params.fileName}" (${params.projectTitle}) has been reported.\nReason: ${params.reason}${params.message ? `\nDetails: ${params.message}` : ""}\n\nReview: ${params.dashboardUrl}`;
+
+    await this.sendAsync({ to: params.recipientEmail, subject, html, text });
+  }
+
+  async sendFinalDraftAddedEmail(params: {
+    clientEmail: string;
+    clientName?: string;
+    projectTitle: string;
+    fileName: string;
+    creatorName?: string;
+    reviewUrl: string;
+  }): Promise<void> {
+    const greetingName = params.clientName ? ` ${params.clientName}` : "";
+    const creator = params.creatorName || "Your creative partner";
+    const subject = `Final draft ready for review: "${params.fileName}" (${params.projectTitle})`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        Final Draft Ready for Review
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, <strong>${creator}</strong> has marked a final draft for <strong>${params.fileName}</strong> in <strong>${params.projectTitle}</strong>.
+      </p>
+
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <p style="font-size: 13px; color: #166534; margin: 0;">
+          Please review the final deliverable. Once all final drafts are confirmed and settled, high-resolution original downloads will be unlocked.
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.reviewUrl}" style="display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          Inspect Final Draft &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\nThe final draft for "${params.fileName}" in "${params.projectTitle}" is ready for your review.\n\nInspect here: ${params.reviewUrl}`;
+
+    await this.sendAsync({ to: params.clientEmail, subject, html, text });
+  }
+
+  async sendClientReportNotificationEmail(params: {
+    creatorEmail: string;
+    creatorName?: string;
+    projectTitle: string;
+    fileName?: string;
+    reportType: "comment" | "final_draft" | "file";
+    reason: string;
+    message?: string | null;
+    dashboardUrl: string;
+  }): Promise<void> {
+    const greetingName = params.creatorName ? ` ${params.creatorName}` : "";
+    const typeLabel =
+      params.reportType === "final_draft"
+        ? "final draft"
+        : params.reportType === "file"
+        ? "deliverable file"
+        : "comment";
+    const subject = `Client reported a ${typeLabel} in "${params.projectTitle}"`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #dc2626; margin: 0 0 10px 0; line-height: 1.3;">
+        Client Issue Report
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, your client has reported an issue with a ${typeLabel}${params.fileName ? ` (<strong>${params.fileName}</strong>)` : ""} in <strong>${params.projectTitle}</strong>.
+      </p>
+
+      <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <p style="font-size: 13px; color: #991b1b; margin: 0 0 6px 0;"><strong>Reason:</strong> ${params.reason}</p>
+        ${params.message ? `<p style="font-size: 13px; color: #7f1d1d; margin: 0;"><strong>Client Message:</strong> ${params.message}</p>` : ""}
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.dashboardUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          View Report in Dashboard &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\nYour client reported a ${typeLabel} in "${params.projectTitle}".\nReason: ${params.reason}${params.message ? `\nMessage: ${params.message}` : ""}\n\nView details: ${params.dashboardUrl}`;
+
+    await this.sendAsync({ to: params.creatorEmail, subject, html, text });
+  }
+
+  async sendAdvancePaymentReceivedEmail(params: {
+    creatorEmail: string;
+    creatorName?: string;
+    clientName?: string;
+    clientEmail?: string;
+    projectTitle: string;
+    amountFormatted: string;
+    projectId: string;
+  }): Promise<void> {
+    const greetingName = params.creatorName ? ` ${params.creatorName}` : "";
+    const subject = `Advance Payment Received: ${params.amountFormatted} for "${params.projectTitle}"`;
+    const appUrl = process.env.APP_URL || "https://mitfloww.com";
+    const dashboardUrl = `${appUrl}/projects/${params.projectId}`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #16a34a; margin: 0 0 10px 0; line-height: 1.3;">
+        Advance Payment Received!
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0;">
+        Hello${greetingName}, great news! An advance payment of <strong>${params.amountFormatted}</strong> has been completed for <strong>${params.projectTitle}</strong>.
+      </p>
+
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size: 13px; color: #64748b;">Advance Amount:</td>
+            <td align="right" style="font-size: 13px; font-weight: 700; color: #16a34a;">${params.amountFormatted}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Project:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-top: 8px;">${params.projectTitle}</td>
+          </tr>
+          ${params.clientName ? `
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Client:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-top: 8px;">${params.clientName}</td>
+          </tr>` : ""}
+        </table>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${dashboardUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          View Project in Dashboard &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\nAdvance payment of ${params.amountFormatted} confirmed for "${params.projectTitle}".\n\nView project: ${dashboardUrl}`;
+
+    await this.sendAsync({ to: params.creatorEmail, subject, html, text });
+  }
+
+  async sendAdvancePaymentReceiptEmail(params: {
+    clientEmail: string;
+    clientName?: string;
+    projectTitle: string;
+    amountFormatted: string;
+    creatorName?: string;
+  }): Promise<void> {
+    const greetingName = params.clientName ? ` ${params.clientName}` : "";
+    const subject = `Advance Payment Receipt: "${params.projectTitle}"`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        Advance Payment Confirmed
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0;">
+        Hello${greetingName}, your advance payment of <strong>${params.amountFormatted}</strong> for <strong>${params.projectTitle}</strong> has been successfully received.
+      </p>
+
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size: 13px; color: #64748b;">Project:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a;">${params.projectTitle}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Advance Amount Paid:</td>
+            <td align="right" style="font-size: 13px; font-weight: 700; color: #005bdd; padding-top: 8px;">${params.amountFormatted}</td>
+          </tr>
+        </table>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\nAdvance payment of ${params.amountFormatted} for "${params.projectTitle}" confirmed. Thank you!`;
+
+    await this.sendAsync({ to: params.clientEmail, subject, html, text });
+  }
+
+  async sendTestimonialReceivedEmail(params: {
+    creatorEmail: string;
+    creatorName?: string;
+    clientName: string;
+    clientEmail?: string;
+    projectTitle: string;
+    rating?: number;
+    reviewText: string;
+    projectId: string;
+  }): Promise<void> {
+    const greetingName = params.creatorName ? ` ${params.creatorName}` : "";
+    const subject = `New Testimonial from ${params.clientName} for "${params.projectTitle}"`;
+    const appUrl = process.env.APP_URL || "https://mitfloww.com";
+    const dashboardUrl = `${appUrl}/testimonials`;
+
+    const stars = params.rating ? "★".repeat(Math.min(params.rating, 5)) : "★★★★★";
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #16a34a; margin: 0 0 10px 0; line-height: 1.3;">
+        New Client Review Received!
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, <strong>${params.clientName}</strong> has submitted a testimonial for <strong>${params.projectTitle}</strong>.
+      </p>
+
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <div style="font-size: 18px; color: #eab308; margin-bottom: 8px;">${stars}</div>
+        <p style="font-size: 14px; line-height: 1.6; color: #334155; margin: 0; font-style: italic;">
+          "${params.reviewText}"
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${dashboardUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          View in Testimonials Studio &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\n${params.clientName} left a testimonial for "${params.projectTitle}":\n\n"${params.reviewText}"\n\nView testimonials: ${dashboardUrl}`;
+
+    await this.sendAsync({ to: params.creatorEmail, subject, html, text });
+  }
+
+  async sendTestimonialRequestEmail(params: {
+    clientEmail: string;
+    clientName?: string;
+    creatorName: string;
+    projectTitle: string;
+    reviewUrl: string;
+  }): Promise<void> {
+    const greetingName = params.clientName ? ` ${params.clientName}` : "";
+    const subject = `${params.creatorName} requested your feedback for "${params.projectTitle}"`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        How was your experience?
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, <strong>${params.creatorName}</strong> would love to hear your feedback on the work delivered for <strong>${params.projectTitle}</strong>.
+      </p>
+
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0;">
+        Taking a quick moment to share a short review helps creative creators continuously improve and build their portfolio.
+      </p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.reviewUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          Leave a Review &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\n${params.creatorName} has requested a testimonial for "${params.projectTitle}".\n\nLeave your review here: ${params.reviewUrl}`;
+
+    await this.sendAsync({ to: params.clientEmail, subject, html, text });
+  }
+
+  async sendPlanExpiringEmail(params: {
+    userEmail: string;
+    userName?: string;
+    planName: string;
+    expiryDateFormatted: string;
+    daysRemaining: number;
+    renewUrl: string;
+  }): Promise<void> {
+    const greetingName = params.userName ? ` ${params.userName}` : "";
+    const subject = `Your MitFloww ${params.planName} plan expires in ${params.daysRemaining} days`;
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #d97706; margin: 0 0 10px 0; line-height: 1.3;">
+        Plan Expiring Soon
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, your <strong>${params.planName}</strong> plan will expire on <strong>${params.expiryDateFormatted}</strong> (${params.daysRemaining} days remaining).
+      </p>
+
+      <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <p style="font-size: 13px; color: #92400e; margin: 0;">
+          Renew or upgrade your subscription to keep uninterrupted access to active client links, increased storage limits, and monthly credits.
+        </p>
+      </div>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.renewUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          Renew Subscription &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\nYour MitFloww ${params.planName} plan expires on ${params.expiryDateFormatted} (${params.daysRemaining} days remaining).\n\nRenew now: ${params.renewUrl}`;
+
+    await this.sendAsync({ to: params.userEmail, subject, html, text });
+  }
+
+
+  async sendDeliverablesRequestedEmail(params: {
+    userEmail: string;
+    userName?: string | null;
+    projectTitle: string;
+    clientName?: string | null;
+    clientEmail?: string | null;
+    projectUrl: string;
+  }): Promise<void> {
+    const subject = `Deliverables requested for "${params.projectTitle}"`;
+    const clientIdentifier = params.clientName
+      ? `${params.clientName}${params.clientEmail ? ` (${params.clientEmail})` : ""}`
+      : params.clientEmail || "Your client";
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 12px 0;">
+        Deliverables Requested
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 16px 0;">
+        Hello${params.userName ? ` ${params.userName}` : ""},
+      </p>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        <strong>${clientIdentifier}</strong> has requested the deliverables for your project <strong>${params.projectTitle}</strong>.
+      </p>
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+        <p style="font-size: 13px; color: #334155; margin: 0 0 6px 0;">
+          <strong>Project:</strong> ${params.projectTitle}
+        </p>
+        <p style="font-size: 13px; color: #334155; margin: 0;">
+          <strong>Client:</strong> ${clientIdentifier}
+        </p>
+      </div>
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.projectUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          Upload Deliverables &rarr;
+        </a>
+      </div>
+    `;
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${params.userName ? ` ${params.userName}` : ""},\n\n${clientIdentifier} has requested the deliverables for your project "${params.projectTitle}".\n\nUpload deliverables: ${params.projectUrl}`;
+
+    await this.sendAsync({ to: params.userEmail, subject, html, text });
+  }
+
   private buildOtpEmailHtml(params: {
     title: string;
     subtitle: string;

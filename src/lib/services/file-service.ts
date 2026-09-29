@@ -1,7 +1,8 @@
+import { emailService } from "@/lib/email/email-service";
 import { createScopedLogger } from "@/lib/logger";
 import { db } from '@/lib/db/client';
 import { and, desc, eq } from 'drizzle-orm';
-import { fileVersions, projectPaymentSnapshots, projectUnlockedFileVersions } from '@/lib/db/schema';
+import { fileVersions, projectPaymentSnapshots, projectUnlockedFileVersions, projects, users } from '@/lib/db/schema';
 import { generateUniqueInvoiceNumber } from "./invoice-service";
 import { Readable } from "stream";
 import sharp from "sharp";
@@ -1641,6 +1642,38 @@ export class FileService {
       titleKey: "notification.clientRevisionReportedTitle",
     });
 
+    if (fileWithVersions.file.projectId) {
+      db.select({ userId: projects.userId, title: projects.title })
+        .from(projects)
+        .where(eq(projects.id, fileWithVersions.file.projectId))
+        .limit(1)
+        .then(([proj]) => {
+          if (proj?.userId) {
+            db.select({ email: users.email, displayName: users.displayName, firstName: users.firstName })
+              .from(users)
+              .where(eq(users.id, proj.userId))
+              .limit(1)
+              .then(([creator]) => {
+                if (creator?.email) {
+                  const appUrl = process.env.APP_URL || "https://mitfloww.com";
+                  emailService.sendClientReportNotificationEmail({
+                    creatorEmail: creator.email,
+                    creatorName: creator.displayName || creator.firstName || undefined,
+                    projectTitle: proj.title,
+                    fileName: fileWithVersions.file.name,
+                    reportType: "file",
+                    reason: input.reason,
+                    message: input.message,
+                    dashboardUrl: `${appUrl}/projects/${fileWithVersions.file.projectId}`,
+                  }).catch(() => {});
+                }
+              })
+              .catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+
     return result;
   }
 
@@ -1688,6 +1721,38 @@ export class FileService {
       projectId: input.projectId,
       titleKey: "notification.clientFinalDraftReportedTitle",
     });
+
+    if (fileWithVersions.file.projectId) {
+      db.select({ userId: projects.userId, title: projects.title })
+        .from(projects)
+        .where(eq(projects.id, fileWithVersions.file.projectId))
+        .limit(1)
+        .then(([proj]) => {
+          if (proj?.userId) {
+            db.select({ email: users.email, displayName: users.displayName, firstName: users.firstName })
+              .from(users)
+              .where(eq(users.id, proj.userId))
+              .limit(1)
+              .then(([creator]) => {
+                if (creator?.email) {
+                  const appUrl = process.env.APP_URL || "https://mitfloww.com";
+                  emailService.sendClientReportNotificationEmail({
+                    creatorEmail: creator.email,
+                    creatorName: creator.displayName || creator.firstName || undefined,
+                    projectTitle: proj.title,
+                    fileName: fileWithVersions.file.name,
+                    reportType: "final_draft",
+                    reason: input.reason,
+                    message: input.message,
+                    dashboardUrl: `${appUrl}/projects/${fileWithVersions.file.projectId}`,
+                  }).catch(() => {});
+                }
+              })
+              .catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
 
     return result;
   }
@@ -3543,6 +3608,45 @@ export class FileService {
         processingJobId: finalVersion.processingJobId,
         processingStatus: finalVersion.processingStatus,
       });
+
+      // Send email notifications to client if client email is registered
+      const clientEmail = (project.shareClientEmail || project.clientEmail || "").trim();
+      if (clientEmail) {
+        const shareUrl = project.shareUrl || (project.shareToken ? `${process.env.APP_URL || "https://mitfloww.com"}/s/${project.shareToken}` : `${process.env.APP_URL || "https://mitfloww.com"}/projects/${project.id}`);
+        let creatorName = "Your creative partner";
+        if (project.userId) {
+          db.select({ displayName: users.displayName, firstName: users.firstName, email: users.email })
+            .from(users)
+            .where(eq(users.id, project.userId))
+            .limit(1)
+            .then(([creator]) => {
+              if (creator) {
+                creatorName = creator.displayName || creator.firstName || creator.email || creatorName;
+              }
+              if (input.isFinalDraft) {
+                emailService.sendFinalDraftAddedEmail({
+                  clientEmail,
+                  clientName: project.clientName || undefined,
+                  projectTitle: project.title,
+                  fileName: (finalFile ?? appended.file).name || targetFile.name || "file",
+                  creatorName,
+                  reviewUrl: shareUrl,
+                }).catch(() => {});
+              } else {
+                emailService.sendNewRevisionUploadedEmail({
+                  clientEmail,
+                  clientName: project.clientName || undefined,
+                  projectTitle: project.title,
+                  fileName: (finalFile ?? appended.file).name || targetFile.name || "file",
+                  versionName: finalVersion.revisionNumber ? `Version ${finalVersion.revisionNumber}` : undefined,
+                  creatorName,
+                  reviewUrl: shareUrl,
+                }).catch(() => {});
+              }
+            })
+            .catch(() => {});
+        }
+      }
     } catch (error) {
       if (!persisted && createdVersion) {
         await this.repository.hardDeleteVersion({
@@ -4508,6 +4612,40 @@ export class FileService {
         titleKey: "notification.clientPaymentCompletedTitle",
       });
 
+      const finalAmountFormatted = `${project.currency || "INR"} ${(project.amountCents ? project.amountCents / 100 : 0).toLocaleString()}`;
+      if (project.userId) {
+        db.select({ email: users.email, displayName: users.displayName, firstName: users.firstName })
+          .from(users)
+          .where(eq(users.id, project.userId))
+          .limit(1)
+          .then(([creator]) => {
+            if (creator?.email) {
+              emailService.sendCreatorPaymentReceivedEmail({
+                creatorEmail: creator.email,
+                creatorName: creator.displayName || creator.firstName || undefined,
+                projectTitle: project.title,
+                payerName: project.clientName || project.shareClientEmail || "Client",
+                amountFormatted: finalAmountFormatted,
+                invoiceNumber: paymentReference,
+                projectId: project.id,
+              }).catch(() => {});
+
+              const clientEmail = (project.shareClientEmail || project.clientEmail || "").trim();
+              if (clientEmail) {
+                emailService.sendInvoicePaymentSuccessEmail({
+                  clientEmail,
+                  clientName: project.clientName || undefined,
+                  projectTitle: project.title,
+                  invoiceNumber: paymentReference,
+                  amountFormatted: finalAmountFormatted,
+                  galleryUrl: project.shareUrl || undefined,
+                }).catch(() => {});
+              }
+            }
+          })
+          .catch(() => {});
+      }
+
       // Cleanup files on payment success:
       // 1. Delete all versions that are not final drafts and not reported.
       // 2. For final drafts, delete the processed/watermarked storage object (keep original).
@@ -4600,6 +4738,39 @@ export class FileService {
       updatedAt: new Date(),
     });
 
+    const advanceAmountFormatted = `${project.currency || "INR"} ${(project.advanceAmountCents ? project.advanceAmountCents / 100 : 0).toLocaleString()}`;
+    if (project.userId) {
+      db.select({ email: users.email, displayName: users.displayName, firstName: users.firstName })
+        .from(users)
+        .where(eq(users.id, project.userId))
+        .limit(1)
+        .then(([creator]) => {
+          if (creator?.email) {
+            emailService.sendAdvancePaymentReceivedEmail({
+              creatorEmail: creator.email,
+              creatorName: creator.displayName || creator.firstName || undefined,
+              clientEmail: project.shareClientEmail || project.clientEmail || undefined,
+              clientName: project.clientName || undefined,
+              projectTitle: project.title,
+              amountFormatted: advanceAmountFormatted,
+              projectId: project.id,
+            }).catch(() => {});
+
+            const clientEmail = (project.shareClientEmail || project.clientEmail || "").trim();
+            if (clientEmail) {
+              emailService.sendAdvancePaymentReceiptEmail({
+                clientEmail,
+                clientName: project.clientName || undefined,
+                projectTitle: project.title,
+                amountFormatted: advanceAmountFormatted,
+                creatorName: creator.displayName || creator.firstName || undefined,
+              }).catch(() => {});
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
     return { success: true, advancePaymentStatus: ProjectPaymentStatus.Paid };
   }
 
@@ -4638,6 +4809,28 @@ export class FileService {
         projectId: project.id,
         titleKey: "notification.clientReviewSubmittedTitle",
       });
+    }
+
+    if (project.userId) {
+      db.select({ email: users.email, displayName: users.displayName, firstName: users.firstName })
+        .from(users)
+        .where(eq(users.id, project.userId))
+        .limit(1)
+        .then(([creator]) => {
+          if (creator?.email) {
+            emailService.sendTestimonialReceivedEmail({
+              creatorEmail: creator.email,
+              creatorName: creator.displayName || creator.firstName || undefined,
+              clientName: project.clientName || "Client",
+              clientEmail: project.shareClientEmail || project.clientEmail || undefined,
+              projectTitle: project.title,
+              rating: input.rating,
+              reviewText: input.reviewText,
+              projectId: project.id,
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
     }
 
     return {

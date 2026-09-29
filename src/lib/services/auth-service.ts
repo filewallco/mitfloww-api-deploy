@@ -101,6 +101,56 @@ function verifyPasswordResetToken(token: string): PasswordResetTokenPayload | nu
 }
 
 export class AuthService {
+
+  async changePassword(userId: string, currentPassword?: string, newPassword?: string): Promise<void> {
+    if (!newPassword || newPassword.length < 6) {
+      throw new AppError("New password must be at least 6 characters.", 400, "invalid_password");
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+      .limit(1);
+
+    if (!user) {
+      throw new AppError("User not found.", 404, "user_not_found");
+    }
+
+    if (user.passwordHash) {
+      if (!currentPassword) {
+        throw new AppError("Current password is required.", 400, "current_password_required");
+      }
+      const isMatch = await verifyPassword(currentPassword, user.passwordHash);
+      if (!isMatch) {
+        throw new AppError("Current password is incorrect.", 400, "invalid_current_password");
+      }
+    }
+
+    const validationError = getPasswordValidationError(newPassword);
+    if (validationError) {
+      throw new AppError(validationError, 400, "invalid_password");
+    }
+
+    const newHash = await hashPassword(newPassword);
+
+    await db
+      .update(users)
+      .set({
+        passwordHash: newHash,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id));
+
+    if (user.email) {
+      emailService.sendSecurityAlertEmail(
+        user.email,
+        "Password Updated",
+        "Your MitFloww account password was recently updated from account settings.",
+      ).catch(() => {});
+    }
+  }
+
   /**
    * Step 1 of Signup: Request email verification OTP.
    */
