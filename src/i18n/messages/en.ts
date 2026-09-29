@@ -1176,6 +1176,7 @@ export const enMessages: AppMessages = {
       "This revision is under review because it has unresolved safety or legal reports.",
     fileReviewFinalDraftDeleteLockedDescription:
       "The final draft can only be deleted after payment is complete and the client has downloaded it.",    fileReviewDeleteFileAction: "Delete File",
+    fileReviewRetryProcessingAction: "Retry Processing",
     fileReviewDeleteLastRevisionConfirmTitle: "Delete File?",
     fileReviewDeleteLastRevisionDescription:
       'This is the only revision. Deleting it will delete "{name}" and remove it from this project.',

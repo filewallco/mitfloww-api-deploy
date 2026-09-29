@@ -6269,7 +6269,7 @@ export class FileService {
     };
   }
 
-  async retryProcessingVersion(versionId: string) {
+  async retryProcessingVersion(versionId: string, options?: { resetAttempts?: boolean }) {
     const version = await this.repository.findVersionById(versionId);
 
     if (!version) {
@@ -6282,7 +6282,7 @@ export class FileService {
       throw new NotFoundAppError("File not found.");
     }
 
-    if (version.processingAttempts >= 3) {
+    if (!options?.resetAttempts && version.processingAttempts >= 3) {
       const failedVersion = await this.repository.updateVersionProcessingResult(
         versionId,
         {
@@ -6332,7 +6332,7 @@ export class FileService {
       {
         processingStatus: FileProcessingStatus.Retrying,
         processingJobId: jobId,
-        processingAttempts: version.processingAttempts + 1,
+        processingAttempts: options?.resetAttempts ? 1 : version.processingAttempts + 1,
         queuedAt: now,
         processingErrorCode: null,
         processingErrorMessage: null,

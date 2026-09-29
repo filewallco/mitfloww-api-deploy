@@ -128,7 +128,7 @@ fileProcessingRouter.get("/jobs/:id", asyncHandler(async (req, res) => {
 
 fileProcessingRouter.post("/retry/:versionId", asyncHandler(async (req, res) => {
   const versionId = typeof req.params.versionId === "string" ? req.params.versionId : "";
-  const data = await fileService.retryProcessingVersion(versionId);
+  const data = await fileService.retryProcessingVersion(versionId, { resetAttempts: true });
   return sendSuccess(res, data);
 }));
 

@@ -1131,6 +1131,7 @@ export const hiMessages = {
     fileReviewUploadLockedAfterFinalDraft:
       "इस फ़ाइल पर फ़ाइनल ड्राफ्ट पहले से मौजूद है, इसलिए सामान्य रिविज़न अपलोड लॉक हैं।",
     fileReviewDeleteRevision: "रिविज़न हटाएं",
+    fileReviewRetryProcessingAction: "प्रोसेसिंग पुनः प्रयास करें",
     fileReviewDeleteRevisionConfirmTitle: "रिविज़न हटाएं?",
     fileReviewDeleteRevisionDescription:
       "{version} आपकी रिव्यू हिस्ट्री से छिप जाएगा। रिविज़न नंबरिंग और उपयोग जैसा है वैसा ही रहेगा।",
