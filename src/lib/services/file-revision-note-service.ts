@@ -217,6 +217,13 @@ export class FileRevisionNoteService {
     }
 
     const project = await this.projectRepository.findById(file.projectId);
+    if (project?.clientApprovedAt != null) {
+      throw new AppError(
+        "Project has already been approved by the client.",
+        409,
+        "project_locked_approved",
+      );
+    }
     const note = await this.revisionNoteRepository.createComment({
       body: input.note,
       createdBy: "admin",
@@ -230,27 +237,6 @@ export class FileRevisionNoteService {
       updatedAt: new Date(),
       updatedBy: "admin",
     });
-
-    if (project) {
-      void this.emailService
-        .sendRevisionNoteCommentEmail({
-          authorRole: "creator",
-          comment: input.note,
-          fileId: input.fileId,
-          fileName: file.name,
-          hasMarkers: (input.markers?.length ?? 0) > 0,
-          noteId: note.comment.id,
-          projectId: file.projectId,
-          projectTitle: project.title,
-        })
-        .catch((err) => {
-          scopedLogger.error("Failed to send creator revision note comment email", {
-            error: err?.message || String(err),
-            fileId: input.fileId,
-            noteId: note.comment.id,
-          });
-        });
-    }
 
     return this.toFileRevisionNoteDTO(note, input.viewerLocale);
   }
@@ -320,6 +306,14 @@ export class FileRevisionNoteService {
       throw new NotFoundAppError("Project not found.");
     }
 
+    if (project.clientApprovedAt != null) {
+      throw new AppError(
+        "Project has already been approved by the client.",
+        409,
+        "project_locked_approved",
+      );
+    }
+
     const note = await this.revisionNoteRepository.createComment({
       body: input.note,
       createdBy: "client",
@@ -338,25 +332,6 @@ export class FileRevisionNoteService {
       fileId: input.fileId,
       projectId: project.id,
     });
-
-    void this.emailService
-      .sendRevisionNoteCommentEmail({
-        authorRole: "client",
-        comment: input.note,
-        fileId: input.fileId,
-        fileName: fileWithVersions.file.name,
-        hasMarkers: (input.markers?.length ?? 0) > 0,
-        noteId: note.comment.id,
-        projectId: project.id,
-        projectTitle: project.title,
-      })
-      .catch((err) => {
-        scopedLogger.error("Failed to send client revision note comment email", {
-          error: err?.message || String(err),
-          fileId: input.fileId,
-          noteId: note.comment.id,
-        });
-      });
 
     return this.toFileRevisionNoteDTO(note, input.viewerLocale);
   }
@@ -895,6 +870,14 @@ export class FileRevisionNoteService {
       throw new NotFoundAppError("Project not found.");
     }
 
+    if (project.clientApprovedAt != null) {
+      throw new AppError(
+        "Project has already been approved by the client.",
+        409,
+        "project_locked_approved",
+      );
+    }
+
     return {
       file,
       note,
@@ -968,25 +951,6 @@ export class FileRevisionNoteService {
     reply: string;
     viewerLocale: string;
   }): Promise<FileRevisionNoteReplyResultDTO> {
-    // Non-blocking asynchronous email dispatch so comment/reply creation returns immediately (<30ms)
-    void this.emailService
-      .sendRevisionNoteReplyEmail({
-        authorRole: input.authorRole,
-        fileId: input.fileId,
-        fileName: input.fileName,
-        noteId: input.note.comment.id,
-        projectId: input.projectId,
-        projectTitle: input.projectTitle,
-        reply: input.reply,
-      })
-      .catch((err) => {
-        scopedLogger.error("Failed to send revision note reply email", {
-          error: err?.message || String(err),
-          fileId: input.fileId,
-          noteId: input.note.comment.id,
-        });
-      });
-
     return {
       emailStatus: FileRevisionReplyEmailStatus.Sent,
       note: await this.toFileRevisionNoteDTO(input.note, input.viewerLocale),

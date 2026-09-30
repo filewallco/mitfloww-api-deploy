@@ -28,6 +28,9 @@ import {
   upsertFileRevisionNoteBodySchema,
 } from "@/lib/validation/file-revision-notes";
 import { ValidationAppError } from "@/lib/errors/app-error";
+import { db } from "@/lib/db/client";
+import { files, projects } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
 
 export const filesRouter = Router();
@@ -255,6 +258,23 @@ filesRouter.get("/:id/revision-notes", asyncHandler(async (req, res) => {
     viewerId: actor.id,
     viewerLocale,
   });
+
+  void (async () => {
+    try {
+      const [file] = await db
+        .select({ projectId: files.projectId })
+        .from(files)
+        .where(eq(files.id, params.id))
+        .limit(1);
+      if (file?.projectId) {
+        await db
+          .update(projects)
+          .set({ creatorLastViewedCommentsAt: new Date() })
+          .where(eq(projects.id, file.projectId));
+      }
+    } catch {}
+  })();
+
   return sendSuccess(res, data);
 }));
 

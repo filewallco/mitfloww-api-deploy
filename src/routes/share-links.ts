@@ -32,6 +32,9 @@ import {
 } from "@/lib/validation/file-revision-notes";
 import { Readable } from "node:stream";
 import { storage } from "@/lib/storage";
+import { db } from "@/lib/db/client";
+import { projects } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
 
 export const shareLinksRouter = Router();
@@ -144,6 +147,26 @@ shareLinksRouter.get("/:token/invoice/pdf", asyncHandler(async (req, res) => {
   return res.send(pdfBuffer);
 }));
 
+shareLinksRouter.post("/:token/approve", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+  const project = await requireAuthorizedShareProject(req, params.token);
+  const result = await fileService.approveClientShareProject({
+    projectId: project.id,
+    shareToken: params.token,
+  });
+  return sendSuccess(res, result);
+}));
+
+shareLinksRouter.post("/:token/projects/approve", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+  const project = await requireAuthorizedShareProject(req, params.token);
+  const result = await fileService.approveClientShareProject({
+    projectId: project.id,
+    shareToken: params.token,
+  });
+  return sendSuccess(res, result);
+}));
+
 shareLinksRouter.post("/:token/advance-payment/complete", asyncHandler(async (req, res) => {
   const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
   const project = await requireAuthorizedShareProject(req, params.token);
@@ -198,6 +221,16 @@ shareLinksRouter.get("/:token/files/:fileId/review", asyncHandler(async (req, re
     shareToken: params.token,
     viewerLocale,
   });
+
+  void (async () => {
+    try {
+      await db
+        .update(projects)
+        .set({ clientLastViewedCommentsAt: new Date() })
+        .where(eq(projects.id, project.id));
+    } catch {}
+  })();
+
   return sendSuccess(res, result);
 }));
 
@@ -330,6 +363,15 @@ shareLinksRouter.get("/:token/files/:fileId/revision-notes", asyncHandler(async 
     viewerId: null,
     viewerLocale,
   });
+
+  void (async () => {
+    try {
+      await db
+        .update(projects)
+        .set({ clientLastViewedCommentsAt: new Date() })
+        .where(eq(projects.id, project.id));
+    } catch {}
+  })();
 
   return sendSuccess(res, notes.filter((note) => note.projectId === project.id));
 }));

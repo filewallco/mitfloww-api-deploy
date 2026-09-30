@@ -756,6 +756,79 @@ export class EmailService {
     await this.sendAsync({ to: params.recipientEmail, subject, html, text });
   }
 
+  async sendUnreadCommentDigestEmail(params: {
+    recipientEmail: string;
+    recipientName?: string;
+    projectTitle: string;
+    unreadCount: number;
+    destinationUrl: string;
+    recipientRole: "creator" | "client";
+    fileName?: string;
+    latestCommentSnippet?: string;
+  }): Promise<void> {
+    try {
+      const [u] = await db
+        .select({ prefs: users.notificationPreferences })
+        .from(users)
+        .where(eq(users.email, params.recipientEmail.toLowerCase().trim()))
+        .limit(1);
+      if (u?.prefs?.email) {
+        if (params.recipientRole === "client" && u.prefs.email.clientComment === false) {
+          scopedLogger.info("Skipping digest email due to user preferences", { to: params.recipientEmail });
+          return;
+        }
+        if (params.recipientRole === "creator" && u.prefs.email.clientComment === false) {
+          scopedLogger.info("Skipping digest email due to user preferences", { to: params.recipientEmail });
+          return;
+        }
+      }
+    } catch {}
+
+    const greetingName = params.recipientName ? ` ${params.recipientName}` : "";
+    const isCreator = params.recipientRole === "creator";
+    const subject = isCreator
+      ? `Unread client feedback on "${params.projectTitle}" (${params.unreadCount} unread)`
+      : `Unread review feedback on "${params.projectTitle}" (${params.unreadCount} unread)`;
+
+    const ctaLabel = isCreator ? "Go to Dashboard &rarr;" : "View File Review &rarr;";
+    const summaryText = isCreator
+      ? `You have <strong>${params.unreadCount}</strong> unread comment${params.unreadCount > 1 ? "s" : ""} from your client on <strong>${params.projectTitle}</strong>.`
+      : `You have <strong>${params.unreadCount}</strong> unread comment${params.unreadCount > 1 ? "s" : ""} on <strong>${params.projectTitle}</strong>.`;
+
+    const snippetHtml = params.latestCommentSnippet
+      ? `
+      <div style="background-color: #f8fafc; border-left: 4px solid #005bdd; border-radius: 0 12px 12px 0; padding: 16px 20px; margin-bottom: 24px;">
+        ${params.fileName ? `<p style="font-size: 12px; font-weight: 600; color: #64748b; margin: 0 0 6px 0; text-transform: uppercase;">Latest on ${params.fileName}:</p>` : ""}
+        <p style="font-size: 14px; line-height: 1.6; color: #334155; margin: 0; font-style: italic;">
+          "${params.latestCommentSnippet}"
+        </p>
+      </div>
+      `
+      : "";
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        Unread Feedback Summary
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${greetingName}, ${summaryText}
+      </p>
+
+      ${snippetHtml}
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.destinationUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-size: 14px; font-weight: 600;">
+          ${ctaLabel}
+        </a>
+      </div>
+    `;
+
+    const html = wrapEmailHtml(contentHtml);
+    const text = `Hello${greetingName},\n\n${isCreator ? `You have ${params.unreadCount} unread comment(s) on "${params.projectTitle}".` : `You have ${params.unreadCount} unread comment(s) on "${params.projectTitle}".`}\n\nView here: ${params.destinationUrl}`;
+
+    await this.sendAsync({ to: params.recipientEmail, subject, html, text });
+  }
+
   async sendCommentReportedEmail(params: {
     recipientEmail: string;
     recipientName?: string;

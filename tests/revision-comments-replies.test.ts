@@ -122,9 +122,8 @@ test("File Review Comments & Replies: End-to-end multi-level nesting, speed, aut
     assert.ok(clientComment.id);
     assert.equal(clientComment.body, "Please adjust button contrast");
     assert.equal(clientComment.createdBy, "client");
-    assert.equal(sentEmails.length, 1);
-    assert.equal(sentEmails[0].authorRole, "client");
-    assert.equal(sentEmails[0].type, "comment");
+    // Issue 10: Stop sending email per comment/reply; digests handled by scheduler
+    assert.equal(sentEmails.length, 0);
 
     // 2. Creator creates level 1 reply (speed test: must return immediately)
     sentEmails = [];
@@ -144,8 +143,8 @@ test("File Review Comments & Replies: End-to-end multi-level nesting, speed, aut
     const reply1 = reply1Result.note.replies[0];
     assert.equal(reply1.body, "Got it, updating the blue shade now.");
     assert.equal(reply1.parentReplyId, null);
-    assert.equal(sentEmails.length, 1);
-    assert.equal(sentEmails[0].authorRole, "creator");
+    // Issue 10: Stop sending email per comment/reply
+    assert.equal(sentEmails.length, 0);
 
     // 3. Client creates level 2 reply to level 1 reply (Reply to reply)
     const reply2Result = await service.replyToFileRevisionNote({

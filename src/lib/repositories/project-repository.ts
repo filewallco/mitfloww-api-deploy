@@ -34,11 +34,11 @@ import type { SortOrder } from "@/lib/query/sorting";
 
 export type CreateProjectRecordInput = Omit<
   ProjectRecord,
-  "createdAt" | "deletedAt" | "updatedAt" | "id" | "userId"
+  "createdAt" | "deletedAt" | "updatedAt" | "id" | "userId" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt"
 > & {
   userId: string;
 } &
-  Partial<Pick<ProjectRecord, "id">>;
+  Partial<Pick<ProjectRecord, "id" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt">>;
 
 export type UpdateProjectRecordInput = Partial<
   Omit<CreateProjectRecordInput, "id">

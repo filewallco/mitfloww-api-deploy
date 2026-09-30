@@ -507,7 +507,7 @@ export class InvoiceService {
 
     if (extraRevisionCount > 0 && extraRevisionAmount > 0) {
       lineItems.push({
-        description: `Additional Project Revisions (${extraRevisionCount} extra round${extraRevisionCount > 1 ? "s" : ""})`,
+        description: `Additional Project Revisions (${extraRevisionCount} x ${project.currency || "INR"} ${extraRevisionCostCents / 100})`,
         qty: extraRevisionCount,
         rate: extraRevisionCostCents / 100,
         amount: extraRevisionAmount,

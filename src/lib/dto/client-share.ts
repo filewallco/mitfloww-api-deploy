@@ -100,6 +100,7 @@ export type ClientSharePostPaymentProjectDTO = {
   currency: string;
   deliveryDate: string | null;
   extraRevisionAmountCents: number;
+  extraRevisionCostCents: number;
   extraRevisionCount: number;
   fileCount: number;
   includedRevisionCount: number;

@@ -365,6 +365,7 @@ import { createScopedLogger } from "@/lib/logger";
       advanceAmountCents: project.advanceAmountCents,
       advancePaymentStatus: project.advancePaymentStatus,
       amountCents: project.amountCents,
+      clientApprovedAt: project.clientApprovedAt?.toISOString() ?? null,
       clientEmail: project.clientEmail,
       clientName: project.clientName || "",
       clientNameText:
@@ -652,6 +653,9 @@ export class ProjectService {
       }
 
       this.assertProjectIsActive(existing.status);
+      if (existing.clientApprovedAt != null) {
+        throw new AppError("Project has been approved by the client and cannot be modified.", 409, "project_locked_approved");
+      }
 
       const title = normalizeProjectName(input.name);
       const clientName = normalizeClientName(input.clientName);
@@ -702,6 +706,16 @@ export class ProjectService {
         });
       }
 
+      if (existing.advancePaymentStatus === ProjectPaymentStatus.Paid) {
+        if (input.amountCents < existing.amountCents) {
+          lockDetails.push({
+            code: "project_amount_cannot_decrease_after_advance_paid",
+            message: "projectAmountCannotDecreaseAfterAdvancePaid",
+            path: "amountCents",
+          });
+        }
+      }
+
       if (
         existing.advancePaymentStatus === ProjectPaymentStatus.Paid &&
         (input.advancePaymentEnabled !== existing.advancePaymentEnabled ||
@@ -738,8 +752,8 @@ export class ProjectService {
       });
 
       const record = await this.repository.update(existing.id, {
-        advancePaymentEnabled: input.advancePaymentEnabled,
-        advanceAmountCents: input.advanceAmountCents,
+        advancePaymentEnabled: existing.advancePaymentStatus === ProjectPaymentStatus.Paid ? existing.advancePaymentEnabled : input.advancePaymentEnabled,
+        advanceAmountCents: existing.advancePaymentStatus === ProjectPaymentStatus.Paid ? existing.advanceAmountCents : input.advanceAmountCents,
         amountCents: input.amountCents,
         clientEmail: normalizeClientEmail(input.clientEmail),
         shareClientEmail: normalizeClientEmail(input.clientEmail),
@@ -1055,6 +1069,9 @@ export class ProjectService {
       }
 
       this.assertProjectIsActive(existing.status);
+      if (existing.clientApprovedAt != null) {
+        throw new AppError("Project has been approved by the client and cannot be deleted.", 409, "project_locked_approved");
+      }
 
       // Pre-check: assert no file is currently uploading or processing in worker
       await fileService.assertNoActiveProcessingInProject(existing.id);

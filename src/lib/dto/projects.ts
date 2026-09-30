@@ -349,6 +349,7 @@ export type ProjectDTO = {
   advanceAmountCents: number;
   advancePaymentStatus: ProjectPaymentStatus;
   amountCents: number;
+  clientApprovedAt?: string | null;
   clientEmail: string | null;
   clientName: string;
   clientNameText: TranslatedTextDTO;

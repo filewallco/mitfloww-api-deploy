@@ -9,7 +9,7 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { projectService } from "@/lib/services/project-service";
 import { fileService } from "@/lib/services/file-service";
 import { db } from "@/lib/db/client";
-import { fileVersions, files } from "@/lib/db/schema";
+import { fileVersions, files, projects } from "@/lib/db/schema";
 import { DrizzleProjectRepository } from "@/lib/repositories/project-repository";
 import {
   projectListQueryParamsSchema,
@@ -361,6 +361,16 @@ projectsRouter.get("/:id/files/:fileId/review", asyncHandler(async (req, res) =>
     projectId: project.id,
     viewerLocale,
   });
+
+  void (async () => {
+    try {
+      await db
+        .update(projects)
+        .set({ creatorLastViewedCommentsAt: new Date() })
+        .where(eq(projects.id, project.id));
+    } catch {}
+  })();
+
   return sendSuccess(res, result);
 }));
 

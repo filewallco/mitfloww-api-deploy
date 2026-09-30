@@ -1,8 +1,8 @@
 import { emailService } from "@/lib/email/email-service";
 import { createScopedLogger } from "@/lib/logger";
 import { db } from '@/lib/db/client';
-import { and, desc, eq } from 'drizzle-orm';
-import { fileVersions, projectPaymentSnapshots, projectUnlockedFileVersions, projects, users } from '@/lib/db/schema';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { files, fileVersions, projectPaymentSnapshots, projectUnlockedFileVersions, projects, users } from '@/lib/db/schema';
 import { generateUniqueInvoiceNumber } from "./invoice-service";
 import { Readable } from "stream";
 import sharp from "sharp";
@@ -1152,6 +1152,9 @@ export class FileService {
       throw new NotFoundAppError("File not found.");
     }
     this.assertProjectIsActive(project.status);
+    if (project.clientApprovedAt != null) {
+      throw new AppError("Project has been approved by the client and files cannot be deleted.", 409, "project_locked_approved");
+    }
     if (!options?.allowApproved) {
       this.assertFileIsNotApproved(existingRecord.file.approvalStatus);
     }
@@ -1230,6 +1233,10 @@ export class FileService {
     versionId: string;
   }): Promise<DeletedFileVersionDTO> {
     const project = await this.getRequiredProject(input.projectId);
+    this.assertProjectIsActive(project.status);
+    if (project.clientApprovedAt != null) {
+      throw new AppError("Project has been approved by the client and versions cannot be deleted.", 409, "project_locked_approved");
+    }
     const fileWithVersions = await this.repository.findWithVersionsById(
       input.fileId,
       {
@@ -4223,6 +4230,13 @@ export class FileService {
     versionId: string;
   }) {
     const project = await this.getRequiredProject(input.projectId);
+    if (project.clientApprovedAt != null) {
+      throw new AppError(
+        "Project has already been approved.",
+        409,
+        "project_locked_approved",
+      );
+    }
     const fileWithVersions = await this.repository.findWithVersionsById(
       input.fileId,
       {
@@ -4279,6 +4293,13 @@ export class FileService {
     projectId: string;
   }) {
     const project = await this.getRequiredProject(input.projectId);
+    if (project.clientApprovedAt != null) {
+      throw new AppError(
+        "Project has already been approved and approval cannot be canceled.",
+        409,
+        "project_locked_approved",
+      );
+    }
     const file = await this.repository.findById(input.fileId);
 
     if (!file || file.projectId !== project.id) {
@@ -4723,6 +4744,68 @@ export class FileService {
     };
   }
 
+  async approveClientShareProject(input: {
+    projectId: string;
+    shareToken: string;
+  }): Promise<{ clientApprovedAt: string }> {
+    const project = await this.getRequiredProject(input.projectId);
+    this.assertProjectIsActive(project.status);
+
+    if (project.clientApprovedAt != null) {
+      return { clientApprovedAt: project.clientApprovedAt.toISOString() };
+    }
+
+    const workflowSummary = await this.repository.getProjectWorkflowSummary(project.id);
+    if (!workflowSummary.allFilesHaveFinalDrafts) {
+      throw new AppError(
+        "All project files must have approved final drafts before approving the project.",
+        400,
+        "final_drafts_required",
+      );
+    }
+
+    const [approvedFilesRow] = await db
+      .select({
+        approvedCount: sql<number>`cast(coalesce(sum(case when ${files.approvedVersionId} is not null then 1 else 0 end), 0) as int)`.as("approvedCount"),
+        totalCount: sql<number>`cast(count(*) as int)`.as("totalCount"),
+      })
+      .from(files)
+      .where(and(eq(files.projectId, project.id), isNull(files.deletedAt)));
+
+    const approvedCount = Number(approvedFilesRow?.approvedCount ?? 0);
+    const totalCount = Number(approvedFilesRow?.totalCount ?? 0);
+
+    if (totalCount === 0 || approvedCount < totalCount) {
+      throw new AppError(
+        "All project files must be approved before approving the project.",
+        400,
+        "all_files_approval_required",
+      );
+    }
+
+    if (
+      (Number(workflowSummary.unresolvedFinalDraftReportCount ?? 0) > 0) ||
+      (Number(workflowSummary.finalDraftProcessingIncompleteCount ?? 0) > 0)
+    ) {
+      throw new AppError(
+        "All final drafts must be processed and unresolved reports resolved before approving the project.",
+        400,
+        "final_drafts_incomplete",
+      );
+    }
+
+    const approvedAt = new Date();
+    await db
+      .update(projects)
+      .set({
+        clientApprovedAt: approvedAt,
+        updatedAt: approvedAt,
+      })
+      .where(eq(projects.id, project.id));
+
+    return { clientApprovedAt: approvedAt.toISOString() };
+  }
+
   async completeClientShareAdvancePayment(input: {
     projectId: string;
   }): Promise<{ success: boolean; advancePaymentStatus: ProjectPaymentStatus }> {
@@ -4934,6 +5017,7 @@ export class FileService {
           null,
         extraRevisionAmountCents:
           extraRevisionCount * project.extraRevisionCostCents,
+        extraRevisionCostCents: project.extraRevisionCostCents,
         extraRevisionCount,
         fileCount: finalDeliverables.length,
         includedRevisionCount: project.revisionLimit,
@@ -5314,6 +5398,9 @@ export class FileService {
       throw new NotFoundAppError("Project not found.");
     }
     this.assertProjectIsActive(project.status);
+    if (project.clientApprovedAt != null) {
+      throw new AppError("Project has been approved by the client and cannot accept new uploads.", 409, "project_locked_approved");
+    }
 
     if (!input.targetFileId) {
       return {
@@ -6840,6 +6927,7 @@ export class FileService {
         advanceAmountCents: project.advanceAmountCents,
         advancePaymentStatus: project.advancePaymentStatus,
         amountCents: project.amountCents,
+        clientApprovedAt: project.clientApprovedAt?.toISOString() ?? null,
         currency: project.currency,
         extraRevisionAmountCents,
         extraRevisionCostCents: project.extraRevisionCostCents,

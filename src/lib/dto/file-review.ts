@@ -130,6 +130,7 @@ export type FileReviewProjectDTO = {
   advancePaymentStatus: ProjectPaymentStatus;
   amountCents: number;
   allFilesHaveFinalDrafts: boolean;
+  clientApprovedAt?: string | null;
   currency: string;
   extraRevisionAmountCents: number;
   extraRevisionCostCents: number;

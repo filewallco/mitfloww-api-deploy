@@ -223,6 +223,11 @@ export const createProjectTables = (fw: PgSchema) => {
         mode: "date",
         withTimezone: true,
       }),
+      clientApprovedAt: timestamp("client_approved_at", { mode: "date", withTimezone: true }),
+      creatorLastViewedCommentsAt: timestamp("creator_last_viewed_comments_at", { mode: "date", withTimezone: true }),
+      clientLastViewedCommentsAt: timestamp("client_last_viewed_comments_at", { mode: "date", withTimezone: true }),
+      creatorDigestEmailSentAt: timestamp("creator_digest_email_sent_at", { mode: "date", withTimezone: true }),
+      clientDigestEmailSentAt: timestamp("client_digest_email_sent_at", { mode: "date", withTimezone: true }),
       deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
