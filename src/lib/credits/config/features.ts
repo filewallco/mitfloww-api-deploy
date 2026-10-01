@@ -20,6 +20,8 @@ export const CREDIT_FEATURE_KEYS = [
   "testimonial_customize",
   "testimonial_download",
   "asset_publish",
+  "project_contract",
+  "project_contract_update",
 ] as const;
 
 export type CreditFeatureKey = (typeof CREDIT_FEATURE_KEYS)[number];
@@ -175,6 +177,14 @@ export const FEATURE_CREDIT_COSTS = {
       credits: 35,
       storageGb: 5,
       validityDays: 30,
+    },
+  },
+  projectContract: {
+    initialAcceptance: {
+      credits: 10,
+    },
+    updateConfirmation: {
+      credits: 5,
     },
   },
   templates: {

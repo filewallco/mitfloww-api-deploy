@@ -1,3 +1,5 @@
+import { contractService } from "@/lib/services/contract-service";
+import { optionalClientEmailSchema } from "@/lib/validation/projects";
 import { Router } from "express";
 import { getRequestLocale } from "@/middleware/locale";
 import { projectService } from "@/lib/services/project-service";
@@ -72,6 +74,8 @@ shareLinksRouter.post("/:token", asyncHandler(async (req, res) => {
     password: input.password,
     shareToken: params.token,
     viewerLocale: requestLocale,
+    contractAccepted: input.contractAccepted,
+    ip: req.ip,
   });
 
   const expiresAt = new Date(data.state.expiresAt);
@@ -571,3 +575,56 @@ shareLinksRouter.post(
     return sendSuccess(res, result);
   }),
 );
+
+const confirmContractUpdateBodySchema = z.object({
+  requestId: z.string().uuid("requestId must be a valid UUID."),
+  clientEmail: optionalClientEmailSchema.optional(),
+});
+
+shareLinksRouter.get("/:token/contract/pdf", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.shareToken, params.token))
+    .limit(1);
+
+  if (!project) {
+    return res.status(404).json({ error: "Project share not found." });
+  }
+
+  const proposed = req.query.proposed === "true";
+  const version = req.query.version ? parseInt(String(req.query.version), 10) : undefined;
+
+  const { pdfBuffer, filename } = await contractService.getContractPdf({
+    projectId: project.id,
+    proposed,
+    version,
+  });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+  res.setHeader("Content-Length", String(pdfBuffer.length));
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  return res.send(pdfBuffer);
+}));
+
+shareLinksRouter.get("/:token/contract-update", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+  const data = await contractService.getClientContractUpdateState({
+    shareToken: params.token,
+  });
+  return sendSuccess(res, data);
+}));
+
+shareLinksRouter.post("/:token/contract-update/confirm", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+  const input = parseWithSchema(confirmContractUpdateBodySchema, req.body);
+  const result = await contractService.confirmProjectUpdate({
+    shareToken: params.token,
+    requestId: input.requestId,
+    clientEmail: input.clientEmail || "",
+    ip: req.ip,
+  });
+  return sendSuccess(res, result);
+}));

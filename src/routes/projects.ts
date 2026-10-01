@@ -1,3 +1,5 @@
+import { contractService } from "@/lib/services/contract-service";
+import { requestProjectUpdateBodySchema } from "@/lib/validation/projects";
 import { emailService } from "@/lib/email/email-service";
 import { createScopedLogger } from "@/lib/logger";
 import { Router } from "express";
@@ -521,4 +523,39 @@ projectsRouter.post("/:id/files/:fileId/versions/:versionId/report", asyncHandle
     versionId: params.versionId,
   });
   return sendSuccess(res, data, { status: 201 });
+}));
+
+projectsRouter.get("/:id/contract/pdf", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const params = parseWithSchema(projectIdParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
+  const proposed = req.query.proposed === "true";
+  const version = req.query.version ? parseInt(String(req.query.version), 10) : undefined;
+
+  const { pdfBuffer, filename } = await contractService.getContractPdf({
+    projectId: project.id,
+    proposed,
+    version,
+  });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+  res.setHeader("Content-Length", String(pdfBuffer.length));
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+  return res.send(pdfBuffer);
+}));
+
+projectsRouter.post("/:id/contract/request-update", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const params = parseWithSchema(projectIdParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
+  const input = parseWithSchema(requestProjectUpdateBodySchema, req.body);
+
+  const requestRecord = await contractService.requestProjectUpdate({
+    projectId: project.id,
+    userId: actor.id,
+    changes: input,
+  });
+
+  return sendSuccess(res, requestRecord, { status: 201 });
 }));

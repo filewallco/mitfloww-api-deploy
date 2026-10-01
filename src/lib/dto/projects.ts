@@ -319,6 +319,10 @@ export type ProjectShareClientProjectDTO = {
   paymentStatus: ProjectPaymentStatus;
   clientEmail?: string | null;
   deliverablesRequested?: boolean;
+  contractEnabled?: boolean;
+  contractStatus?: string;
+  contractAcceptedAt?: string | null;
+  contractAcceptedVersion?: number;
 };
 
 export type ProjectShareClientStateDTO = {
@@ -333,6 +337,10 @@ export type ProjectShareClientStateDTO = {
   shareStatus: ProjectShareStatus;
   clientEmail?: string | null;
   deliverablesRequested?: boolean;
+  contractEnabled?: boolean;
+  contractStatus?: string;
+  contractAcceptedAt?: string | null;
+  contractAcceptedVersion?: number;
 };
 
 export type ProjectEditLocksDTO = {
@@ -342,6 +350,7 @@ export type ProjectEditLocksDTO = {
   hasDeliverables: boolean;
   revisionSettingsLocked: boolean;
   hasActiveProcessing?: boolean;
+  contractLocked?: boolean;
 };
 
 export type ProjectDTO = {
@@ -367,6 +376,10 @@ export type ProjectDTO = {
   titleText: TranslatedTextDTO;
   updatedAt: string;
   watermarkEnabled: boolean;
+  contractEnabled: boolean;
+  contractStatus: string;
+  contractAcceptedAt?: string | null;
+  contractAcceptedVersion: number;
   paymentCompletedAt?: string | null;
   fileCount?: number;
   totalSizeBytes?: number;

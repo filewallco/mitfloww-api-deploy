@@ -138,6 +138,8 @@ export type UpdateFileVersionInput = Partial<
     | "mimeType"
     | "extension"
     | "sizeBytes"
+    | "watermarkEnabled"
+    | "useSoftWatermark"
   >
 >;
 

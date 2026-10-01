@@ -100,6 +100,10 @@ function getDefaultGrantDescriptionKey(source: CreditLedgerSource) {
 
 function getFeatureActionLabelKey(featureKey: CreditFeatureCostParams["featureKey"]) {
   switch (featureKey) {
+    case "project_contract":
+      return "creditsHistoryActionProjectContract";
+    case "project_contract_update":
+      return "creditsHistoryActionProjectContractUpdate";
     case "storage_add_on":
       return "creditsHistoryActionStorage";
     case "revision_add_on":

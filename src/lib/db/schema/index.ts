@@ -14,7 +14,7 @@ import { createAuthTables } from "./auth";
 
 export const fw = pgSchema("mitfloww");
 
-export const { projectClientReviews, projects, projectPaymentSnapshots, projectUnlockedFileVersions } = createProjectTables(fw);
+export const { projectClientReviews, projects, projectPaymentSnapshots, projectUnlockedFileVersions, projectContracts, projectContractUpdateRequests } = createProjectTables(fw);
 export const {
   testimonialRevisions,
   testimonialTemplates,
@@ -112,6 +112,10 @@ export type {
   NewProjectPaymentSnapshotRecord,
   ProjectUnlockedFileVersionRecord,
   NewProjectUnlockedFileVersionRecord,
+  ProjectContractRecord,
+  NewProjectContractRecord,
+  ProjectContractUpdateRequestRecord,
+  NewProjectContractUpdateRequestRecord,
 } from "./projects";
 export type {
   NewTestimonialRecord,

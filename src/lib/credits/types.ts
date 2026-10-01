@@ -138,6 +138,16 @@ export type CreditFeatureCostParams =
       featureKey: "asset_publish";
       planKey?: CreditPlanKey;
       isCustomTemplate?: boolean;
+    }
+  | {
+      currency: string;
+      featureKey: "project_contract";
+      planKey?: CreditPlanKey;
+    }
+  | {
+      currency: string;
+      featureKey: "project_contract_update";
+      planKey?: CreditPlanKey;
     };
 
 export type CreditQuoteMessage = {

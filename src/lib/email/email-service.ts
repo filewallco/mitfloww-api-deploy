@@ -1197,6 +1197,201 @@ export class EmailService {
     await this.sendAsync({ to: params.userEmail, subject, html, text });
   }
 
+
+  async sendContractAcceptedEmail(params: {
+    creatorEmail: string;
+    creatorName?: string;
+    clientEmail: string;
+    clientName?: string;
+    projectTitle: string;
+    version: number;
+    pdfBuffer: Buffer;
+  }): Promise<void> {
+    const filename = `MitFloww_Contract_${params.projectTitle.replace(/[^a-zA-Z0-9]/g, "_")}_v${params.version}.pdf`;
+    const attachments = [
+      {
+        filename,
+        content: params.pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ];
+
+    const creatorSubject = `Contract Accepted: "${params.projectTitle}" (v${params.version})`;
+    const creatorContent = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #16a34a; margin: 0 0 10px 0; line-height: 1.3;">
+        Project Contract Accepted & Active!
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0;">
+        Hello${params.creatorName ? ` ${params.creatorName}` : ""}, your client <strong>${params.clientName || params.clientEmail}</strong> has accepted the project contract for <strong>${params.projectTitle}</strong>.
+      </p>
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size: 13px; color: #64748b;">Project:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a;">${params.projectTitle}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Contract Version:</td>
+            <td align="right" style="font-size: 13px; font-weight: 700; color: #16a34a; padding-top: 8px;">Version ${params.version}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Client:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding-top: 8px;">${params.clientName || params.clientEmail}</td>
+          </tr>
+        </table>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin: 0 0 16px 0;">
+        The project is now contract-locked. A copy of the accepted contract PDF is attached to this email.
+      </p>
+    `;
+    await this.sendAsync({
+      to: params.creatorEmail,
+      subject: creatorSubject,
+      html: wrapEmailHtml(creatorContent),
+      text: `Contract Accepted for "${params.projectTitle}". The project is now active and locked. PDF attached.`,
+      attachments,
+    });
+
+    const clientSubject = `Your Project Contract for "${params.projectTitle}" (v${params.version})`;
+    const clientContent = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        Project Contract Confirmed
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 24px 0;">
+        Hello${params.clientName ? ` ${params.clientName}` : ""}, thank you for agreeing to the service contract for <strong>${params.projectTitle}</strong> with <strong>${params.creatorName || "the creator"}</strong>.
+      </p>
+      <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="font-size: 13px; color: #64748b;">Project:</td>
+            <td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a;">${params.projectTitle}</td>
+          </tr>
+          <tr>
+            <td style="font-size: 13px; color: #64748b; padding-top: 8px;">Status:</td>
+            <td align="right" style="font-size: 13px; font-weight: 700; color: #16a34a; padding-top: 8px;">Active & Verified</td>
+          </tr>
+        </table>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin: 0 0 16px 0;">
+        Your contract PDF is attached to this email for your records.
+      </p>
+    `;
+    await this.sendAsync({
+      to: params.clientEmail,
+      subject: clientSubject,
+      html: wrapEmailHtml(clientContent),
+      text: `Your contract for "${params.projectTitle}" has been confirmed. PDF attached.`,
+      attachments,
+    });
+  }
+
+  async sendContractUpdateRequestEmail(params: {
+    clientEmail: string;
+    clientName?: string;
+    creatorName: string;
+    projectTitle: string;
+    reviewUrl: string;
+    proposedChanges: {
+      title?: string;
+      amountFormatted?: string;
+      revisionLimit?: number;
+      extraRevisionCostFormatted?: string;
+    };
+  }): Promise<void> {
+    const subject = `Action Required: Project Contract Update for "${params.projectTitle}"`;
+    const rows = [];
+    if (params.proposedChanges.title) {
+      rows.push(`<tr><td style="font-size: 13px; color: #64748b; padding: 4px 0;">Project Name:</td><td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding: 4px 0;">${params.proposedChanges.title}</td></tr>`);
+    }
+    if (params.proposedChanges.amountFormatted) {
+      rows.push(`<tr><td style="font-size: 13px; color: #64748b; padding: 4px 0;">Total Amount:</td><td align="right" style="font-size: 13px; font-weight: 700; color: #0284c7; padding: 4px 0;">${params.proposedChanges.amountFormatted}</td></tr>`);
+    }
+    if (params.proposedChanges.revisionLimit !== undefined) {
+      rows.push(`<tr><td style="font-size: 13px; color: #64748b; padding: 4px 0;">Revision Limit:</td><td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding: 4px 0;">${params.proposedChanges.revisionLimit}</td></tr>`);
+    }
+    if (params.proposedChanges.extraRevisionCostFormatted) {
+      rows.push(`<tr><td style="font-size: 13px; color: #64748b; padding: 4px 0;">Extra Revision Cost:</td><td align="right" style="font-size: 13px; font-weight: 600; color: #0f172a; padding: 4px 0;">${params.proposedChanges.extraRevisionCostFormatted}</td></tr>`);
+    }
+
+    const contentHtml = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 10px 0; line-height: 1.3;">
+        Project Contract Update Requested
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        Hello${params.clientName ? ` ${params.clientName}` : ""}, <strong>${params.creatorName}</strong> has requested an update to the terms of your project <strong>${params.projectTitle}</strong>.
+      </p>
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
+        <p style="font-size: 12px; font-weight: 700; text-transform: uppercase; color: #64748b; margin: 0 0 10px 0;">Proposed Terms:</p>
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          ${rows.join("")}
+        </table>
+      </div>
+      <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin: 0 0 24px 0;">
+        Please review the proposed contract details and confirm or decline the changes. These changes will only take effect after your explicit confirmation.
+      </p>
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${params.reviewUrl}" style="display: inline-block; background-color: #0f172a; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; padding: 12px 28px; border-radius: 10px;">
+          Review & Confirm Changes &rarr;
+        </a>
+      </div>
+    `;
+
+    await this.sendAsync({
+      to: params.clientEmail,
+      subject,
+      html: wrapEmailHtml(contentHtml),
+      text: `${params.creatorName} requested a contract update for "${params.projectTitle}". Review here: ${params.reviewUrl}`,
+    });
+  }
+
+  async sendContractUpdateConfirmedEmail(params: {
+    creatorEmail: string;
+    creatorName?: string;
+    clientEmail: string;
+    clientName?: string;
+    projectTitle: string;
+    version: number;
+    pdfBuffer: Buffer;
+  }): Promise<void> {
+    const filename = `MitFloww_Contract_${params.projectTitle.replace(/[^a-zA-Z0-9]/g, "_")}_v${params.version}.pdf`;
+    const attachments = [
+      {
+        filename,
+        content: params.pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ];
+
+    const subject = `Contract Update Confirmed: "${params.projectTitle}" (v${params.version})`;
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #16a34a; margin: 0 0 10px 0; line-height: 1.3;">
+        Contract Update Confirmed & Active
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        The client has confirmed the proposed contract update for <strong>${params.projectTitle}</strong>. The project contract has now been advanced to <strong>Version ${params.version}</strong> and is locked under the new terms.
+      </p>
+      <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin: 0 0 16px 0;">
+        The finalized contract PDF is attached to this email for your records.
+      </p>
+    `;
+
+    await this.sendAsync({
+      to: params.creatorEmail,
+      subject,
+      html: wrapEmailHtml(content),
+      text: `Contract update confirmed for "${params.projectTitle}". Version ${params.version} is now active. PDF attached.`,
+      attachments,
+    });
+
+    await this.sendAsync({
+      to: params.clientEmail,
+      subject,
+      html: wrapEmailHtml(content),
+      text: `Contract update confirmed for "${params.projectTitle}". Version ${params.version} is now active. PDF attached.`,
+      attachments,
+    });
+  }
+
   private buildOtpEmailHtml(params: {
     title: string;
     subtitle: string;

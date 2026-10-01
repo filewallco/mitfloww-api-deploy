@@ -535,6 +535,51 @@ test("Worker Audio Processing: FFmpeg watermarks audio idempotently without touc
   await fsPromises.rm(tempDir, { recursive: true, force: true });
 });
 
+test("Worker Audio Validation: Validates and accepts audio media inputs without MIME mismatch error", async () => {
+  const { assertAllowedMediaInput, assertDetectedMediaMatchesDeclaration, classifyFileType } = await import(
+    "../../worker/src/utils/media"
+  );
+  const { FILE_TYPE } = await import("../../worker/src/constants");
+
+  // Real upload from user: Janah_Meri_Janah_Song_Video_Cappuccino_Malayalam_Movie__At9F0IifmBM_140.mp3
+  const sampleFileName = "Janah_Meri_Janah_Song_Video_Cappuccino_Malayalam_Movie__At9F0IifmBM_140.mp3";
+  assert.equal(classifyFileType("audio/mpeg", sampleFileName), FILE_TYPE.AUDIO);
+
+  // Must not throw MIME and extension mismatch
+  assert.doesNotThrow(() => {
+    assertAllowedMediaInput(FILE_TYPE.AUDIO, "audio/mpeg", sampleFileName);
+  });
+  assert.doesNotThrow(() => {
+    assertAllowedMediaInput(FILE_TYPE.AUDIO, null, "processed/" + sampleFileName);
+  });
+  assert.doesNotThrow(() => {
+    assertDetectedMediaMatchesDeclaration(FILE_TYPE.AUDIO, sampleFileName, "audio/mpeg", ".mp3");
+  });
+
+  // Verify all supported audio formats
+  const audioCases = [
+    { ext: ".mp3", mime: "audio/mpeg" },
+    { ext: ".mp3", mime: "audio/mp3" },
+    { ext: ".wav", mime: "audio/wav" },
+    { ext: ".wav", mime: "audio/vnd.wave" },
+    { ext: ".ogg", mime: "audio/ogg" },
+    { ext: ".m4a", mime: "audio/mp4" },
+    { ext: ".m4a", mime: "audio/x-m4a" },
+    { ext: ".aac", mime: "audio/aac" },
+    { ext: ".flac", mime: "audio/flac" },
+  ];
+
+  for (const { ext, mime } of audioCases) {
+    const filename = `track${ext}`;
+    assert.doesNotThrow(() => {
+      assertAllowedMediaInput(FILE_TYPE.AUDIO, mime, filename);
+    }, `Failed for ${mime} with ${ext}`);
+    assert.doesNotThrow(() => {
+      assertDetectedMediaMatchesDeclaration(FILE_TYPE.AUDIO, filename, mime, ext);
+    }, `Failed detected check for ${mime} with ${ext}`);
+  }
+});
+
 test("File Review Representation Selection: Chooses processed vs original correctly", () => {
   function resolveDisplayLocation(version: {
     storageBucket: string;
@@ -606,3 +651,129 @@ test("File Review Representation Selection: Chooses processed vs original correc
   assert.equal(zipFile.isProcessed, false);
   assert.equal(zipFile.key, "users/u1/files/f1/orig.zip");
 });
+
+test("Soft Watermarking Availability Matrix: Strictly video, pdf, and image files only", () => {
+  // Video files MUST support soft watermark
+  assert.equal(isSoftWatermarkSupported(".mp4"), true);
+  assert.equal(isSoftWatermarkSupported(".mov"), true);
+  assert.equal(isSoftWatermarkSupported(".webm"), true);
+  assert.equal(isSoftWatermarkSupported(".mkv"), true);
+  assert.equal(isSoftWatermarkSupported(".avi"), true);
+
+  // PDF files MUST support soft watermark
+  assert.equal(isSoftWatermarkSupported(".pdf"), true);
+
+  // Image files MUST support soft watermark
+  assert.equal(isSoftWatermarkSupported(".jpg"), true);
+  assert.equal(isSoftWatermarkSupported(".jpeg"), true);
+  assert.equal(isSoftWatermarkSupported(".png"), true);
+  assert.equal(isSoftWatermarkSupported(".webp"), true);
+
+  // Audio files must NEVER support soft watermark (worker baking only)
+  assert.equal(isSoftWatermarkSupported(".mp3"), false);
+  assert.equal(isSoftWatermarkSupported(".wav"), false);
+  assert.equal(isSoftWatermarkSupported(".m4a"), false);
+  assert.equal(isSoftWatermarkSupported(".aac"), false);
+  assert.equal(isSoftWatermarkSupported(".ogg"), false);
+
+  // Text and Zip must NEVER support soft watermark
+  assert.equal(isSoftWatermarkSupported(".txt"), false);
+  assert.equal(isSoftWatermarkSupported(".zip"), false);
+});
+
+test("Retry Processing Decision Matrix: Only allowed for failed watermark-enabled files", () => {
+  function shouldAllowRetryProcessing(input: {
+    processingStatus: string;
+    watermarkEnabled?: boolean;
+    projectWatermarkEnabled?: boolean;
+    extension: string;
+    isSoftWatermarked?: boolean;
+  }): boolean {
+    const isFailed =
+      input.processingStatus === "failed" ||
+      input.processingStatus === "corrupt";
+
+    const isWatermarkFile =
+      input.projectWatermarkEnabled !== false &&
+      input.watermarkEnabled !== false &&
+      isWatermarkableUploadExtension(input.extension) &&
+      !input.isSoftWatermarked;
+
+    return isFailed && isWatermarkFile;
+  }
+
+  // Already processed / Completed files -> MUST NEVER allow retry
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "completed",
+    watermarkEnabled: true,
+    extension: ".png",
+  }), false);
+
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "completed",
+    watermarkEnabled: true,
+    extension: ".mp3",
+  }), false);
+
+  // In-progress / Queued / Uploading files -> MUST NEVER allow retry
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "processing",
+    watermarkEnabled: true,
+    extension: ".mp4",
+  }), false);
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "queued",
+    watermarkEnabled: true,
+    extension: ".pdf",
+  }), false);
+
+  // Non-watermark files (e.g. .txt, .zip) -> MUST NEVER allow retry even if marked failed
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "failed",
+    watermarkEnabled: false,
+    extension: ".txt",
+  }), false);
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "failed",
+    watermarkEnabled: false,
+    extension: ".zip",
+  }), false);
+
+  // Non-watermark files (watermark disabled by project or user) -> MUST NEVER allow retry even if failed
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "failed",
+    watermarkEnabled: false,
+    extension: ".png",
+  }), false);
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "failed",
+    projectWatermarkEnabled: false,
+    extension: ".mp3",
+  }), false);
+
+  // Soft-watermarked files -> MUST NEVER allow worker retry
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "failed",
+    watermarkEnabled: true,
+    extension: ".png",
+    isSoftWatermarked: true,
+  }), false);
+
+  // Failed watermark-enabled media files -> MUST allow retry
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "failed",
+    watermarkEnabled: true,
+    extension: ".mp3",
+  }), true);
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "failed",
+    watermarkEnabled: true,
+    extension: ".mp4",
+  }), true);
+  assert.equal(shouldAllowRetryProcessing({
+    processingStatus: "corrupt",
+    watermarkEnabled: true,
+    extension: ".wav",
+  }), true);
+});
+

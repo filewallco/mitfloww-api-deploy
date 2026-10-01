@@ -73,6 +73,7 @@ export type FileReviewVersionDTO = {
   mimeType: string;
   originalName: string;
   isSoftWatermarked?: boolean;
+  watermarkEnabled?: boolean;
   preview: FileReviewPreviewDTO;
   previewPurgedAt: string | null;
   previewRetentionUntil: string | null;

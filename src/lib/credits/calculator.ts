@@ -560,6 +560,10 @@ export function calculateFeatureCreditCost(params: CreditFeatureCostParams) {
       );
       return baseCost * resolutionMultiplier;
     }
+    case "project_contract":
+      return FEATURE_CREDIT_COSTS.projectContract.initialAcceptance.credits;
+    case "project_contract_update":
+      return FEATURE_CREDIT_COSTS.projectContract.updateConfirmation.credits;
     case "asset_publish":
       return applyCurrencyCreditMultiplier(
         params.isCustomTemplate

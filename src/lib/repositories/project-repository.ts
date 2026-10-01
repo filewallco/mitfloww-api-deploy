@@ -34,11 +34,11 @@ import type { SortOrder } from "@/lib/query/sorting";
 
 export type CreateProjectRecordInput = Omit<
   ProjectRecord,
-  "createdAt" | "deletedAt" | "updatedAt" | "id" | "userId" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt" | "testimonialRequestSentAt"
+  "createdAt" | "deletedAt" | "updatedAt" | "id" | "userId" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt" | "testimonialRequestSentAt" | "contractEnabled" | "contractStatus" | "contractAcceptedAt" | "contractAcceptedVersion" | "contractPdfStorageKey"
 > & {
   userId: string;
 } &
-  Partial<Pick<ProjectRecord, "id" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt" | "testimonialRequestSentAt">>;
+  Partial<Pick<ProjectRecord, "id" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt" | "testimonialRequestSentAt" | "contractEnabled" | "contractStatus" | "contractAcceptedAt" | "contractAcceptedVersion" | "contractPdfStorageKey">>;
 
 export type UpdateProjectRecordInput = Partial<
   Omit<CreateProjectRecordInput, "id">

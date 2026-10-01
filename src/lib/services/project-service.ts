@@ -1,3 +1,4 @@
+import { contractService } from "@/lib/services/contract-service";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { projects, users } from "@/lib/db/schema";
@@ -394,6 +395,10 @@ import { createScopedLogger } from "@/lib/logger";
         }),
       updatedAt: project.updatedAt.toISOString(),
       watermarkEnabled: project.watermarkEnabled,
+      contractEnabled: Boolean(project.contractEnabled),
+      contractStatus: project.contractStatus || "none",
+      contractAcceptedAt: project.contractAcceptedAt?.toISOString() ?? null,
+      contractAcceptedVersion: project.contractAcceptedVersion ?? 0,
       paymentCompletedAt: project.clientPaymentCompletedAt?.toISOString() ?? null,
       fileCount: Number(project.fileCount ?? 0),
       totalSizeBytes: Number(project.totalSizeBytes ?? 0),
@@ -433,6 +438,10 @@ import { createScopedLogger } from "@/lib/logger";
       lockedUntil: project.shareLockedUntil?.toISOString() ?? null,
       maxAttempts: PROJECT_SHARE_PASSWORD_MAX_ATTEMPTS,
       passwordRequired: Boolean(project.sharePasswordHash),
+      contractEnabled: Boolean(project.contractEnabled),
+      contractStatus: project.contractStatus || "none",
+      contractAcceptedAt: project.contractAcceptedAt?.toISOString() ?? null,
+      contractAcceptedVersion: project.contractAcceptedVersion ?? 0,
       clientEmail,
       project: accessGranted
         ? {
@@ -449,6 +458,10 @@ import { createScopedLogger } from "@/lib/logger";
             paymentStatus: project.paymentStatus,
             clientEmail,
             deliverablesRequested: Boolean(project.deliverablesRequestedAt),
+            contractEnabled: Boolean(project.contractEnabled),
+            contractStatus: project.contractStatus || "none",
+            contractAcceptedAt: project.contractAcceptedAt?.toISOString() ?? null,
+            contractAcceptedVersion: project.contractAcceptedVersion ?? 0,
           }
         : null,
       remainingAttempts: getProjectShareRemainingAttempts(
@@ -576,6 +589,21 @@ export class ProjectService {
         userId: actorId,
       });
 
+      if (input.contractEnabled) {
+        const creatorBalance = await creditService.getCreditBalance({
+          actorUserId: actorId,
+          scopeId: actorId,
+          scopeType: "personal",
+        });
+        if (creatorBalance.availableCredits < 10) {
+          throw new AppError(
+            "You need at least 10 available tokens to create a contract-based project.",
+            402,
+            "insufficient_credits",
+          );
+        }
+      }
+
       const publicId = await this.createUniqueProjectPublicId(title);
       const { account: creditAccount, scope: creditScope } =
         await creditService.getOrCreateCreditAccountForScope();
@@ -630,6 +658,7 @@ export class ProjectService {
         title,
         titleSourceLocale,
         watermarkEnabled: input.watermarkEnabled,
+        contractEnabled: Boolean(input.contractEnabled),
         clientNameSourceLocale,
         clientPaymentCompletedAt: null,
         clientPaymentReference: null,
@@ -660,6 +689,30 @@ export class ProjectService {
       }
 
       this.assertProjectIsActive(existing.status);
+
+      if (existing.contractStatus === "accepted") {
+        throw new AppError(
+          "Project is contract-locked and cannot be edited directly. Please request a project update instead.",
+          403,
+          "project_contract_locked",
+        );
+      }
+
+      if (input.contractEnabled && !existing.contractEnabled) {
+        const creatorBalance = await creditService.getCreditBalance({
+          actorUserId: existing.userId,
+          scopeId: existing.userId,
+          scopeType: "personal",
+        });
+        if (creatorBalance.availableCredits < 10) {
+          throw new AppError(
+            "You need at least 10 available tokens to enable contract-based projects.",
+            402,
+            "insufficient_credits",
+          );
+        }
+      }
+
       if (existing.clientApprovedAt != null) {
         throw new AppError("Project has been approved by the client and cannot be modified.", 409, "project_locked_approved");
       }
@@ -773,6 +826,7 @@ export class ProjectService {
         titleSourceLocale,
         updatedAt: new Date(),
         watermarkEnabled: input.watermarkEnabled,
+        contractEnabled: Boolean(input.contractEnabled),
         clientNameSourceLocale,
       });
 
@@ -805,15 +859,17 @@ export class ProjectService {
           ),
         ]);
 
+      const isContractLocked = existing.contractStatus === "accepted";
       return {
         advancePaymentLocked:
-          existing.advancePaymentStatus === ProjectPaymentStatus.Paid,
-        amountLocked: workflowSummary.hasAnyApprovedRevision,
+          existing.advancePaymentStatus === ProjectPaymentStatus.Paid || isContractLocked,
+        amountLocked: workflowSummary.hasAnyApprovedRevision || isContractLocked,
         hasApprovedRevision: workflowSummary.hasAnyApprovedRevision,
         hasDeliverables: workflowSummary.activeFileCount > 0,
-        revisionSettingsLocked: workflowSummary.activeFileCount > 0,
+        revisionSettingsLocked: workflowSummary.activeFileCount > 0 || isContractLocked,
         hasActiveProcessing:
           uploadingFiles.length > 0 || processingVersions.length > 0,
+        contractLocked: isContractLocked,
       };
     }
 
@@ -1021,6 +1077,14 @@ export class ProjectService {
         throw new NotFoundAppError("Project not found.");
       }
 
+      if (existing.contractStatus === "accepted") {
+        throw new AppError(
+          "Client email cannot be modified for a contract-locked project.",
+          403,
+          "project_contract_locked",
+        );
+      }
+
       const record = await this.repository.update(existing.id, {
         shareClientEmail: normalizeRequiredClientEmail(shareClientEmail),
         clientEmail: normalizeRequiredClientEmail(shareClientEmail),
@@ -1050,6 +1114,14 @@ export class ProjectService {
         throw new NotFoundAppError("Project not found.");
       }
 
+      if (existing.contractStatus === "accepted") {
+        throw new AppError(
+          "Client email cannot be removed for a contract-locked project.",
+          403,
+          "project_contract_locked",
+        );
+      }
+
       const record = await this.repository.update(existing.id, {
         shareClientEmail: null,
         clientEmail: null,
@@ -1076,6 +1148,15 @@ export class ProjectService {
       }
 
       this.assertProjectIsActive(existing.status);
+
+      if (existing.contractStatus === "accepted") {
+        throw new AppError(
+          "A contract-locked project cannot be deleted.",
+          403,
+          "project_contract_locked",
+        );
+      }
+
       if (existing.clientApprovedAt != null) {
         throw new AppError("Project has been approved by the client and cannot be deleted.", 409, "project_locked_approved");
       }
@@ -1194,6 +1275,8 @@ export class ProjectService {
       password?: string | null;
       shareToken: string;
       viewerLocale: string;
+      contractAccepted?: boolean;
+      ip?: string;
     }): Promise<{
       sessionToken: string;
       state: ProjectShareClientStateDTO;
@@ -1276,6 +1359,93 @@ export class ProjectService {
               },
             ],
           );
+        }
+      }
+
+      if (project.contractEnabled && project.contractStatus !== "accepted") {
+        if (!input.contractAccepted) {
+          throw new AppError(
+            "You must agree to the contract to continue.",
+            400,
+            "contract_agreement_required",
+            [
+              {
+                code: "contract_agreement_required",
+                message: "You must agree to the contract to continue.",
+                path: "contractAccepted",
+              },
+            ],
+          );
+        }
+
+        const clientEmailToUse = email?.trim() || project.shareClientEmail || project.clientEmail || "";
+        await contractService.acceptInitialContract({
+          projectId: project.id,
+          clientEmail: clientEmailToUse,
+          ip: input.ip,
+        });
+
+        const refreshed = await this.repository.findById(project.id);
+        if (refreshed) {
+          project = refreshed;
+        }
+      }
+
+      if (project.contractEnabled && project.contractStatus !== "accepted") {
+        if (!input.contractAccepted) {
+          throw new AppError(
+            "You must agree to the contract to continue.",
+            400,
+            "contract_agreement_required",
+            [
+              {
+                code: "contract_agreement_required",
+                message: "You must agree to the contract to continue.",
+                path: "contractAccepted",
+              },
+            ],
+          );
+        }
+
+        const clientEmailToUse = email?.trim() || project.shareClientEmail || project.clientEmail || "";
+        await contractService.acceptInitialContract({
+          projectId: project.id,
+          clientEmail: clientEmailToUse,
+          ip: input.ip,
+        });
+
+        const refreshed = await this.repository.findById(project.id);
+        if (refreshed) {
+          project = refreshed;
+        }
+      }
+
+      if (project.contractEnabled && project.contractStatus !== "accepted") {
+        if (!input.contractAccepted) {
+          throw new AppError(
+            "You must agree to the contract to continue.",
+            400,
+            "contract_agreement_required",
+            [
+              {
+                code: "contract_agreement_required",
+                message: "You must agree to the contract to continue.",
+                path: "contractAccepted",
+              },
+            ],
+          );
+        }
+
+        const clientEmailToUse = email?.trim() || project.shareClientEmail || project.clientEmail || "";
+        await contractService.acceptInitialContract({
+          projectId: project.id,
+          clientEmail: clientEmailToUse,
+          ip: input.ip,
+        });
+
+        const refreshed = await this.repository.findById(project.id);
+        if (refreshed) {
+          project = refreshed;
         }
       }
 

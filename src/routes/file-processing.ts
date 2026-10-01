@@ -137,3 +137,9 @@ fileProcessingRouter.post("/cancel/:targetId", asyncHandler(async (req, res) => 
   const data = await fileService.cancelProcessingVersion(targetId);
   return sendSuccess(res, data);
 }));
+
+fileProcessingRouter.post("/soft-watermark/:versionId", asyncHandler(async (req, res) => {
+  const versionId = typeof req.params.versionId === "string" ? req.params.versionId : "";
+  const data = await fileService.switchToSoftWatermark(versionId);
+  return sendSuccess(res, data);
+}));

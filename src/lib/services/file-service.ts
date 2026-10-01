@@ -949,6 +949,7 @@ function toFileReviewVersionDTO(input: {
     mimeType: version.mimeType,
     originalName: version.originalName,
     isSoftWatermarked: version.useSoftWatermark,
+    watermarkEnabled: Boolean(version.watermarkEnabled),
     preview,
     previewPurgedAt: version.previewPurgedAt?.toISOString() ?? null,
     previewRetentionUntil: version.previewRetentionUntil?.toISOString() ?? null,
@@ -2867,6 +2868,11 @@ export class FileService {
         watermarkReason: input.version.isFinalDraft ? "final_draft_preview" : null,
       });
     } catch (error) {
+      scopedLogger.error("Failed to enqueue version processing job to worker", {
+        error: error instanceof Error ? error.message : String(error),
+        versionId: input.version.id,
+        jobId: input.version.processingJobId,
+      });
       const workerFailure = toWorkerProcessingFailure(error);
       const failedVersion = await this.repository.updateVersionProcessingResult(
         input.version.id,
@@ -6384,6 +6390,50 @@ export class FileService {
       throw new NotFoundAppError("File not found.");
     }
 
+    if (version.processingStatus === FileProcessingStatus.Completed) {
+      throw new AppError(
+        "File is already processed.",
+        400,
+        "file_already_processed",
+      );
+    }
+
+    if (
+      version.processingStatus === FileProcessingStatus.Queued ||
+      version.processingStatus === FileProcessingStatus.Processing ||
+      version.processingStatus === FileProcessingStatus.Uploading ||
+      version.processingStatus === FileProcessingStatus.Retrying
+    ) {
+      throw new AppError(
+        "File processing is already in progress.",
+        409,
+        "processing_already_active",
+      );
+    }
+
+    if (
+      version.processingStatus !== FileProcessingStatus.Failed &&
+      version.processingStatus !== FileProcessingStatus.Corrupt
+    ) {
+      throw new AppError(
+        "Only failed files can be retried.",
+        400,
+        "file_processing_not_failed",
+      );
+    }
+
+    if (
+      !version.watermarkEnabled ||
+      !isWatermarkableUploadExtension(version.extension) ||
+      version.useSoftWatermark
+    ) {
+      throw new AppError(
+        "File does not support watermark processing.",
+        400,
+        "watermark_not_supported",
+      );
+    }
+
     if (!options?.resetAttempts && version.processingAttempts >= 3) {
       const failedVersion = await this.repository.updateVersionProcessingResult(
         versionId,
@@ -6485,6 +6535,11 @@ export class FileService {
         isLargeFile: exceedsStandardUploadLimit(version.sizeBytes),
       });
     } catch (error) {
+      scopedLogger.error("Failed to enqueue retry processing job to worker", {
+        error: error instanceof Error ? error.message : String(error),
+        versionId,
+        jobId,
+      });
       const workerFailure = toWorkerProcessingFailure(error);
       const failedVersion = await this.repository.updateVersionProcessingResult(
         versionId,
@@ -6632,6 +6687,109 @@ export class FileService {
       jobId: jobId || "",
       status: FileProcessingStatus.Cancelled,
       message: "Processing cancelled successfully.",
+    };
+  }
+
+  async switchToSoftWatermark(versionIdOrJobId: string) {
+    let version = await this.repository.findVersionById(versionIdOrJobId);
+    if (!version) {
+      version = await this.repository.findVersionByProcessingJobId(versionIdOrJobId);
+    }
+
+    if (!version) {
+      const fileCandidate = await this.repository.findWithVersionsById(versionIdOrJobId);
+      if (fileCandidate) {
+        if (fileCandidate.file.currentVersionId) {
+          version = fileCandidate.versions.find((v) => v.id === fileCandidate.file.currentVersionId) ?? null;
+        }
+        if (!version) {
+          version =
+            fileCandidate.versions.find(
+              (v) =>
+                v.processingStatus === FileProcessingStatus.Failed ||
+                v.processingStatus === FileProcessingStatus.Corrupt ||
+                v.processingStatus === FileProcessingStatus.Processing ||
+                v.processingStatus === FileProcessingStatus.Queued,
+            ) ??
+            fileCandidate.versions[0] ??
+            null;
+        }
+      }
+    }
+
+    if (!version) {
+      throw new NotFoundAppError("File version not found.");
+    }
+
+    const file = await this.repository.findById(version.fileId);
+    if (!file) {
+      throw new NotFoundAppError("File not found.");
+    }
+
+    if (!isSoftWatermarkSupported(version.extension)) {
+      throw new AppError(
+        "Soft watermarking is only supported for video, image, and PDF files.",
+        400,
+        "soft_watermark_not_supported",
+      );
+    }
+
+    const jobId = version.processingJobId;
+    if (jobId) {
+      await cancelWorkerJob(jobId).catch((err) => {
+        scopedLogger.warn("Worker cancel request warning during soft watermark switch", { jobId, err });
+      });
+    }
+
+    if (version.processedStorageKey) {
+      await this.storage
+        .deleteFile({
+          bucket: version.processedStorageBucket || version.storageBucket,
+          key: version.processedStorageKey,
+        })
+        .catch((err) => {
+          scopedLogger.warn("Failed to delete partial processed R2 object during soft watermark switch", {
+            key: version.processedStorageKey,
+            err,
+          });
+        });
+    }
+
+    await creditService
+      .refundCreditsForVersion(version.id, "switch_to_soft_watermark")
+      .catch((err) => {
+        scopedLogger.warn("Failed to refund credits during switch to soft watermark", {
+          versionId: version.id,
+          err,
+        });
+      });
+
+    await this.repository.updateVersion(version.id, {
+      processingStatus: FileProcessingStatus.Completed,
+      processingJobId: null,
+      processingErrorCode: null,
+      processingErrorMessage: null,
+      processingCompletedAt: new Date(),
+      watermarkEnabled: true,
+      useSoftWatermark: true,
+      processedStorageBucket: null,
+      processedStorageKey: null,
+      processedMimeType: null,
+      processedExtension: null,
+      processedSizeBytes: null,
+      previewStorageBucket: null,
+      previewStorageKey: null,
+      updatedAt: new Date(),
+    });
+
+    return {
+      success: true,
+      fileId: file.id,
+      fileVersionId: version.id,
+      jobId: jobId || "",
+      status: FileProcessingStatus.Completed,
+      useSoftWatermark: true,
+      message: "Switched to soft watermarking successfully.",
     };
   }
 

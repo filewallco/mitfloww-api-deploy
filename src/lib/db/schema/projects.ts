@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  jsonb,
   customType,
   index,
   integer,
@@ -218,6 +219,11 @@ export const createProjectTables = (fw: PgSchema) => {
       extraRevisionCostCents: integer("extra_revision_cost_cents")
         .notNull()
         .default(0),
+      contractEnabled: boolean("contract_enabled").notNull().default(false),
+      contractStatus: varchar("contract_status", { length: 32 }).notNull().default("none"),
+      contractAcceptedAt: timestamp("contract_accepted_at", { mode: "date", withTimezone: true }),
+      contractAcceptedVersion: integer("contract_accepted_version").notNull().default(0),
+      contractPdfStorageKey: varchar("contract_pdf_storage_key", { length: 1024 }),
       watermarkEnabled: boolean("watermark_enabled").notNull().default(true),
       deliverablesRequestedAt: timestamp("deliverables_requested_at", {
         mode: "date",
@@ -423,7 +429,115 @@ export const createProjectTables = (fw: PgSchema) => {
     ],
   );
 
-  return { projectClientReviews, projects, projectPaymentSnapshots, projectUnlockedFileVersions };
+    const projectContracts = fw.table(
+    "project_contracts",
+    {
+      id: uuid("id").defaultRandom().primaryKey(),
+      projectId: uuid("project_id")
+        .notNull()
+        .references(() => projects.id, {
+          onDelete: "cascade",
+          onUpdate: "cascade",
+        }),
+      userId: varchar("user_id", { length: 255 }).notNull(),
+      version: integer("version").notNull(),
+      status: varchar("status", { length: 32 }).notNull().default("accepted"),
+      snapshot: jsonb("snapshot").notNull(),
+      pdfStorageBucket: varchar("pdf_storage_bucket", { length: 255 }),
+      pdfStorageKey: varchar("pdf_storage_key", { length: 1024 }),
+      acceptedAt: timestamp("accepted_at", {
+        mode: "date",
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+      acceptedBy: varchar("accepted_by", { length: 255 }),
+      acceptedIp: varchar("accepted_ip", { length: 64 }),
+      tokenTransactionId: varchar("token_transaction_id", { length: 255 }),
+      createdAt: timestamp("created_at", {
+        mode: "date",
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+      updatedAt: timestamp("updated_at", {
+        mode: "date",
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+    },
+    (table) => [
+      index("project_contracts_project_id_idx").on(table.projectId),
+      uniqueIndex("project_contracts_project_version_unique_idx").on(
+        table.projectId,
+        table.version,
+      ),
+    ],
+  );
+
+  const projectContractUpdateRequests = fw.table(
+    "project_contract_update_requests",
+    {
+      id: uuid("id").defaultRandom().primaryKey(),
+      projectId: uuid("project_id")
+        .notNull()
+        .references(() => projects.id, {
+          onDelete: "cascade",
+          onUpdate: "cascade",
+        }),
+      userId: varchar("user_id", { length: 255 }).notNull(),
+      fromVersion: integer("from_version").notNull(),
+      targetVersion: integer("target_version").notNull(),
+      status: varchar("status", { length: 32 }).notNull().default("pending"),
+      requestedChanges: jsonb("requested_changes").notNull(),
+      proposedSnapshot: jsonb("proposed_snapshot").notNull(),
+      proposedPdfStorageBucket: varchar("proposed_pdf_storage_bucket", {
+        length: 255,
+      }),
+      proposedPdfStorageKey: varchar("proposed_pdf_storage_key", {
+        length: 1024,
+      }),
+      tokenTransactionId: varchar("token_transaction_id", { length: 255 }),
+      requestedAt: timestamp("requested_at", {
+        mode: "date",
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+      respondedAt: timestamp("responded_at", {
+        mode: "date",
+        withTimezone: true,
+      }),
+      createdAt: timestamp("created_at", {
+        mode: "date",
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+      updatedAt: timestamp("updated_at", {
+        mode: "date",
+        withTimezone: true,
+      })
+        .notNull()
+        .defaultNow(),
+    },
+    (table) => [
+      index("project_contract_update_requests_project_id_idx").on(
+        table.projectId,
+      ),
+      index("project_contract_update_requests_status_idx").on(table.status),
+    ],
+  );
+
+  return {
+    projectClientReviews,
+    projects,
+    projectPaymentSnapshots,
+    projectUnlockedFileVersions,
+    projectContracts,
+    projectContractUpdateRequests,
+  };
 };
 
 export type ProjectRecord = InferSelectModel<
@@ -456,4 +570,20 @@ export type ProjectUnlockedFileVersionRecord = InferSelectModel<
 
 export type NewProjectUnlockedFileVersionRecord = InferInsertModel<
   ReturnType<typeof createProjectTables>["projectUnlockedFileVersions"]
+>;
+
+export type ProjectContractRecord = InferSelectModel<
+  ReturnType<typeof createProjectTables>["projectContracts"]
+>;
+
+export type NewProjectContractRecord = InferInsertModel<
+  ReturnType<typeof createProjectTables>["projectContracts"]
+>;
+
+export type ProjectContractUpdateRequestRecord = InferSelectModel<
+  ReturnType<typeof createProjectTables>["projectContractUpdateRequests"]
+>;
+
+export type NewProjectContractUpdateRequestRecord = InferInsertModel<
+  ReturnType<typeof createProjectTables>["projectContractUpdateRequests"]
 >;

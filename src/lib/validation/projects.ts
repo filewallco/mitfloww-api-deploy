@@ -183,6 +183,11 @@ const projectMutationObjectSchema = z.object({
       invalid_type_error: "watermarkingInvalid",
     })
     .default(true),
+  contractEnabled: z
+    .boolean({
+      invalid_type_error: "contractEnabledInvalid",
+    })
+    .default(false),
 });
 
 export const projectMutationSchema = projectMutationObjectSchema
@@ -316,8 +321,51 @@ export const projectShareTokenParamsSchema = z
   })
   .strict();
 
+export const requestProjectUpdateBodySchema = z
+  .object({
+    name: projectNameSchema.optional(),
+    amountCents: z
+      .number({
+        invalid_type_error: "projectAmountInvalid",
+      })
+      .int("projectAmountInvalid")
+      .min(0, "projectAmountMustBeGreaterThanZero")
+      .optional(),
+    revisionLimit: z
+      .number({
+        invalid_type_error: "revisionLimitMustBeValidNumber",
+      })
+      .int("revisionLimitMustBeWholeNumber")
+      .min(0, "revisionLimitCannotBeNegative")
+      .max(MAX_REVISION_LIMIT, "revisionLimitMustBeAtMost")
+      .optional(),
+    extraRevisionCostCents: z
+      .number({
+        invalid_type_error: "extraRevisionCostInvalid",
+      })
+      .int("extraRevisionCostInvalid")
+      .min(0, "extraRevisionCostCannotBeNegative")
+      .max(MAX_EXTRA_REVISION_COST_CENTS, "extraRevisionCostMustBeAtMost")
+      .optional(),
+  })
+  .refine(
+    (data) =>
+      data.name !== undefined ||
+      data.amountCents !== undefined ||
+      data.revisionLimit !== undefined ||
+      data.extraRevisionCostCents !== undefined,
+    {
+      message: "At least one editable field must be specified.",
+    },
+  );
+
+export type RequestProjectUpdateInput = z.infer<
+  typeof requestProjectUpdateBodySchema
+>;
+
 export const projectSharePasswordValidationSchema = z
   .object({
+    contractAccepted: z.boolean().optional(),
     email: z.preprocess(
       emptyStringToUndefined,
       optionalClientEmailSchema.optional(),
