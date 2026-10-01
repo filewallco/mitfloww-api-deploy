@@ -231,7 +231,7 @@ export function calculateFinalDraftMismatchReuploadCreditCost(params: {
 export function calculateWatermarkCreditCost(params: {
   currency: string;
   durationMinutes?: number;
-  mediaType: "image" | "pdf" | "video";
+  mediaType: "audio" | "image" | "pdf" | "video";
   pageCount?: number;
   planKey: CreditPlanKey;
   priorityProcessing?: boolean;
@@ -247,6 +247,21 @@ export function calculateWatermarkCreditCost(params: {
       params.planKey,
       FEATURE_CREDIT_COSTS.watermark.image.byPlanTier,
     );
+  } else if (params.mediaType === "audio") {
+    const durationMinutes = Math.max(1, params.durationMinutes ?? 1);
+    const step = FEATURE_CREDIT_COSTS.watermark.audio;
+    const extraSteps = getExtraStepCount(
+      durationMinutes,
+      step.includedDurationMinutes,
+      step.extraDurationStepMinutes,
+    );
+    baseCredits =
+      getCreditsForPlanTier(params.planKey, step.baseCreditsByPlanTier) +
+      extraSteps *
+        getCreditsForPlanTier(
+          params.planKey,
+          step.extraDurationStepCreditsByPlanTier,
+        );
   } else if (params.mediaType === "pdf") {
     const pageCount = Math.max(1, params.pageCount ?? 1);
     const base = getCreditsForPlanTier(
@@ -337,7 +352,7 @@ export function calculateWatermarkCreditCost(params: {
     }
   }
 
-  if (params.isSoftWatermark) {
+  if (params.mediaType !== "audio" && params.isSoftWatermark) {
     baseCredits = Math.ceil(baseCredits * 0.5);
   }
 

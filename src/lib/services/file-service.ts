@@ -8,6 +8,8 @@ import { Readable } from "stream";
 import sharp from "sharp";
 import {
   getUploadCategoryForExtension,
+  isSoftWatermarkSupported,
+  isWatermarkableUploadExtension,
   isWorkerSupportedUploadExtension,
   standardUploadMaxSizeBytes,
   uploadConfig,
@@ -237,19 +239,20 @@ function shouldQueueVersionProcessing(input: {
   if (!isWorkerSupportedUploadExtension(input.extension)) {
     return false;
   }
-  
-  if (input.watermarkEnabled && input.useSoftWatermark) {
-      return false;
+
+  const softWatermarkSupported = isSoftWatermarkSupported(input.extension);
+  const effectiveUseSoftWatermark =
+    softWatermarkSupported && Boolean(input.useSoftWatermark);
+
+  if (input.watermarkEnabled && effectiveUseSoftWatermark) {
+    return false;
   }
 
-  if (input.watermarkEnabled && !input.useSoftWatermark) {
+  if (input.watermarkEnabled && !effectiveUseSoftWatermark) {
     return true;
   }
 
-  return (
-    input.allowLargeUploads
-    // &&  input.sizeBytes > uploadConfig.largeFileProcessingThresholdBytes //TODO: Need to check if this is needed or not, if needed then we need to handle the watermarking scenario
-  );
+  return input.allowLargeUploads;
 }
 
 function determineFileProcessingPlan(input: {
@@ -261,19 +264,31 @@ function determineFileProcessingPlan(input: {
   isFinalDraft?: boolean;
 }) {
   const isFinalDraft = Boolean(input.isFinalDraft);
+  const watermarkable = isWatermarkableUploadExtension(input.extension);
+
+  const effectiveWatermarkEnabled = watermarkable && Boolean(input.watermarkEnabled);
+  const effectiveUseSoftWatermark =
+    effectiveWatermarkEnabled &&
+    Boolean(input.useSoftWatermark) &&
+    isSoftWatermarkSupported(input.extension);
+
+  const needsWorkerWatermark = effectiveWatermarkEnabled && !effectiveUseSoftWatermark;
 
   const shouldQueue =
     shouldQueueVersionProcessing({
       allowLargeUploads: input.allowLargeUploads,
       extension: input.extension,
       sizeBytes: input.sizeBytes,
-      watermarkEnabled: input.watermarkEnabled,
-      useSoftWatermark: input.useSoftWatermark,
+      watermarkEnabled: effectiveWatermarkEnabled,
+      useSoftWatermark: effectiveUseSoftWatermark,
     }) || isFinalDraft;
 
   return {
+    effectiveWatermarkEnabled,
+    effectiveUseSoftWatermark,
+    needsWorkerWatermark,
     shouldQueueProcessing: shouldQueue,
-    willChargeWatermarkCredits: Boolean(input.watermarkEnabled && !isFinalDraft),
+    willChargeWatermarkCredits: Boolean(needsWorkerWatermark && !isFinalDraft),
     willChargeLargeUploadCredits: Boolean(
       input.allowLargeUploads && exceedsStandardUploadLimit(input.sizeBytes),
     ),
@@ -3041,7 +3056,7 @@ export class FileService {
               featureParams: toWatermarkFeatureParams({
                 projectCurrency: project.currency,
                 watermarkCreditInput: file.watermarkCreditInput,
-                isSoftWatermark: useSoftWatermark,
+                isSoftWatermark: plan.effectiveUseSoftWatermark,
               }),
               fileId: file.fileId,
               idempotencyKey: buildCreditOperationId("watermark", [
@@ -3084,8 +3099,8 @@ export class FileService {
               storageKey: file.storageKey,
               uploadedBy: MANAGED_UPLOAD_OWNER,
               revisionNumber: 1,
-              watermarkEnabled,
-              useSoftWatermark,
+              watermarkEnabled: plan.effectiveWatermarkEnabled,
+              useSoftWatermark: plan.effectiveUseSoftWatermark,
               processingStatus: processingState.processingStatus,
               processingJobId: processingState.jobId,
               processingAttempts: 0,
@@ -3423,7 +3438,7 @@ export class FileService {
           featureParams: toWatermarkFeatureParams({
             projectCurrency: project.currency,
             watermarkCreditInput: targetFile.watermarkCreditInput,
-            isSoftWatermark: useSoftWatermark,
+            isSoftWatermark: plan.effectiveUseSoftWatermark,
           }),
           fileId: input.fileId,
           idempotencyKey: buildCreditOperationId("watermark", [
@@ -3518,8 +3533,8 @@ export class FileService {
           storageBucket: targetFile.bucket,
           storageKey: targetFile.storageKey,
           uploadedBy: MANAGED_UPLOAD_OWNER,
-          watermarkEnabled,
-          useSoftWatermark,
+          watermarkEnabled: plan.effectiveWatermarkEnabled,
+          useSoftWatermark: plan.effectiveUseSoftWatermark,
         },
       });
 

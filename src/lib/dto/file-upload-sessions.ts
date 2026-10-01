@@ -59,7 +59,7 @@ export type UploadClientSession = UploadSessionDTO & {
 
 export type WatermarkCreditInputDTO = {
   durationMinutes?: number;
-  mediaType: "image" | "pdf" | "video";
+  mediaType: "audio" | "image" | "pdf" | "video";
   pageCount?: number;
   priorityProcessing?: boolean;
   resolutionClass?: "720p" | "1080p" | "4k";

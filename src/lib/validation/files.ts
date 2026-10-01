@@ -255,7 +255,7 @@ const watermarkCreditInputSchema = z
       .int("durationMinutes must be an integer.")
       .positive("durationMinutes must be greater than 0.")
       .optional(),
-    mediaType: z.enum(["image", "pdf", "video"] as const, {
+    mediaType: z.enum(["audio", "image", "pdf", "video"] as const, {
       errorMap: () => ({ message: "mediaType is invalid." }),
     }),
     pageCount: z

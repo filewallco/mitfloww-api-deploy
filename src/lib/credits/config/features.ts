@@ -67,7 +67,7 @@ export const TEMPLATE_CREDIT_KEYS = [
 
 export type TemplateCreditKey = (typeof TEMPLATE_CREDIT_KEYS)[number];
 
-export const CREDIT_MEDIA_TYPES = ["image", "pdf", "video"] as const;
+export const CREDIT_MEDIA_TYPES = ["audio", "image", "pdf", "video"] as const;
 export type CreditMediaType = (typeof CREDIT_MEDIA_TYPES)[number];
 
 export const CREDIT_VIDEO_RESOLUTION_CLASSES = [
@@ -212,6 +212,20 @@ export const FEATURE_CREDIT_COSTS = {
     },
   },
   watermark: {
+    audio: {
+      baseCreditsByPlanTier: {
+        freeStandard: 4,
+        pro: 3,
+        studio: 2,
+      },
+      extraDurationStepCreditsByPlanTier: {
+        freeStandard: 2,
+        pro: 1,
+        studio: 1,
+      },
+      extraDurationStepMinutes: 10,
+      includedDurationMinutes: 10,
+    },
     image: {
       byPlanTier: {
         freeStandard: 2,

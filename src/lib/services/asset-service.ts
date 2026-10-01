@@ -22,6 +22,7 @@ import { AppError, NotFoundAppError, ValidationAppError } from "@/lib/errors/app
 import { storage } from "@/lib/storage";
 import { createStoredZip } from "@/lib/utils/zip";
 import { emailService } from "@/lib/email/email-service";
+import { isDangerousUploadExtension } from "@/config/upload";
 
 const assetOtpMap = new Map<string, { code: string; expiresAt: number }>();
 
@@ -520,8 +521,8 @@ export class AssetService {
     }
 
     const ext = filename.split(".").pop()?.toLowerCase() || "";
-    if (ext === "exe") {
-      throw new ValidationAppError("Executable (.exe) files are disallowed.");
+    if (isDangerousUploadExtension(`.${ext}`)) {
+      throw new ValidationAppError("Dangerous or executable files are disallowed.");
     }
 
     const fileId = crypto.randomUUID();
@@ -580,8 +581,8 @@ export class AssetService {
     }
 
     const ext = filename.split(".").pop()?.toLowerCase() || "";
-    if (ext === "exe") {
-      throw new ValidationAppError("Executable (.exe) files are disallowed.");
+    if (isDangerousUploadExtension(`.${ext}`)) {
+      throw new ValidationAppError("Dangerous or executable files are disallowed.");
     }
 
     const fileId = crypto.randomUUID();

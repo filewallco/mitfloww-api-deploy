@@ -48,6 +48,15 @@ export const VIDEO_EXTENSIONS = [
 ] as const;
 
 export const PDF_EXTENSIONS = [".pdf"] as const;
+export const TEXT_EXTENSIONS = [".txt"] as const;
+export const AUDIO_EXTENSIONS = [
+  ".mp3",
+  ".wav",
+  ".ogg",
+  ".m4a",
+  ".aac",
+  ".flac",
+] as const;
 export const DESIGN_EXTENSIONS = [".fig"] as const;
 export const ARCHIVE_EXTENSIONS = [".zip"] as const;
 
@@ -79,15 +88,43 @@ export const VIDEO_MIME_TYPES = [
 ] as const;
 
 export const PDF_MIME_TYPES = ["application/pdf"] as const;
+export const TEXT_MIME_TYPES = ["text/plain"] as const;
+export const AUDIO_MIME_TYPES = [
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
+  "audio/ogg",
+  "audio/aac",
+  "audio/x-m4a",
+  "audio/mp4",
+  "audio/flac",
+  "audio/x-flac",
+] as const;
 
 export const SAFE_MEDIA_MIME_TO_EXTENSIONS = {
   "application/mxf": [".mxf"],
   "application/ogg": [".ogv"],
   "application/pdf": [".pdf"],
+  "application/x-zip-compressed": [".zip"],
+  "application/zip": [".zip"],
+  "audio/aac": [".aac"],
+  "audio/flac": [".flac"],
+  "audio/mp3": [".mp3"],
+  "audio/mp4": [".m4a"],
+  "audio/mpeg": [".mp3"],
+  "audio/ogg": [".ogg"],
+  "audio/wav": [".wav"],
+  "audio/wave": [".wav"],
+  "audio/x-flac": [".flac"],
+  "audio/x-m4a": [".m4a"],
+  "audio/x-wav": [".wav"],
   "image/gif": [".gif"],
   "image/jpeg": [".jpg", ".jpeg"],
   "image/png": [".png"],
   "image/webp": [".webp"],
+  "text/plain": [".txt"],
   "video/3gpp": [".3gp"],
   "video/matroska": [".mkv"],
   "video/mp2t": [".ts", ".mts", ".m2ts"],
@@ -148,6 +185,42 @@ export const uploadCategoryConfig = {
       {
         extensions: ARCHIVE_EXTENSIONS,
         mimeTypes: ARCHIVE_MIME_TYPES,
+        workerSupported: false,
+      },
+    ],
+  },
+  audio: {
+    maxFileSizeBytes: 500 * MB,
+    formats: [
+      {
+        extensions: [".mp3"],
+        mimeTypes: ["audio/mpeg", "audio/mp3"],
+        workerSupported: true,
+      },
+      {
+        extensions: [".wav"],
+        mimeTypes: ["audio/wav", "audio/x-wav", "audio/wave"],
+        workerSupported: true,
+      },
+      {
+        extensions: [".ogg"],
+        mimeTypes: ["audio/ogg"],
+        workerSupported: true,
+      },
+      {
+        extensions: [".m4a"],
+        mimeTypes: ["audio/x-m4a", "audio/mp4"],
+        workerSupported: true,
+      },
+      {
+        extensions: [".aac"],
+        mimeTypes: ["audio/aac"],
+        workerSupported: true,
+      },
+      {
+        extensions: [".flac"],
+        mimeTypes: ["audio/flac", "audio/x-flac"],
+        workerSupported: true,
       },
     ],
   },
@@ -167,6 +240,11 @@ export const uploadCategoryConfig = {
         extensions: PDF_EXTENSIONS,
         mimeTypes: PDF_MIME_TYPES,
         workerSupported: true,
+      },
+      {
+        extensions: TEXT_EXTENSIONS,
+        mimeTypes: TEXT_MIME_TYPES,
+        workerSupported: false,
       },
     ],
   },
@@ -471,8 +549,37 @@ export function isWorkerSupportedUploadExtension(extension: string) {
   return workerSupportedUploadExtensions.has(normalizeUploadExtension(extension));
 }
 
+export function isAudioExtension(extension: string) {
+  const normalized = normalizeUploadExtension(extension);
+  return (AUDIO_EXTENSIONS as readonly string[]).includes(normalized);
+}
+
+export function isTextExtension(extension: string) {
+  const normalized = normalizeUploadExtension(extension);
+  return (TEXT_EXTENSIONS as readonly string[]).includes(normalized);
+}
+
+export function isArchiveExtension(extension: string) {
+  const normalized = normalizeUploadExtension(extension);
+  return (ARCHIVE_EXTENSIONS as readonly string[]).includes(normalized);
+}
+
+export function isWatermarkableUploadExtension(extension: string) {
+  const normalized = normalizeUploadExtension(extension);
+  if (normalized === ".txt" || normalized === ".zip") return false;
+  return isWorkerSupportedUploadExtension(normalized);
+}
+
+export function isSoftWatermarkSupported(extension: string) {
+  const normalized = normalizeUploadExtension(extension);
+  if (normalized === ".txt" || normalized === ".zip" || isAudioExtension(normalized)) {
+    return false;
+  }
+  return isWatermarkableUploadExtension(normalized);
+}
+
 export function isWatermarkSupportedUploadExtension(extension: string) {
-  return isWorkerSupportedUploadExtension(extension);
+  return isWatermarkableUploadExtension(extension);
 }
 
 export function inferUploadMimeType(file: UploadFileLike) {

@@ -8,19 +8,23 @@ import {
 const HEADER_BYTES_TO_READ = 4096;
 
 type SupportedSignatureKind =
+  | "aac"
   | "asf"
   | "avi"
   | "ebml"
+  | "flac"
   | "flv"
   | "gif"
   | "isobmff"
   | "jpeg"
+  | "mp3"
   | "mpeg"
   | "mxf"
   | "ogg"
   | "pdf"
   | "png"
   | "ts"
+  | "wav"
   | "webm"
   | "webp"
   | "zip";
@@ -38,25 +42,31 @@ type StoredUploadValidationResult =
 
 const SIGNATURE_KIND_BY_EXTENSION: Partial<Record<string, SupportedSignatureKind>> = {
   ".3gp": "isobmff",
+  ".aac": "aac",
   ".avi": "avi",
+  ".flac": "flac",
   ".flv": "flv",
   ".gif": "gif",
   ".jpeg": "jpeg",
   ".jpg": "jpeg",
   ".m2ts": "ts",
   ".m2v": "mpeg",
+  ".m4a": "isobmff",
   ".m4v": "isobmff",
   ".mkv": "ebml",
   ".mov": "isobmff",
+  ".mp3": "mp3",
   ".mp4": "isobmff",
   ".mpeg": "mpeg",
   ".mpg": "mpeg",
   ".mts": "ts",
   ".mxf": "mxf",
+  ".ogg": "ogg",
   ".ogv": "ogg",
   ".pdf": "pdf",
   ".png": "png",
   ".ts": "ts",
+  ".wav": "wav",
   ".webm": "webm",
   ".webp": "webp",
   ".wmv": "asf",
@@ -164,6 +174,11 @@ function hasBlockedMagic(bytes: Uint8Array) {
 
 function matchesExpectedSignature(bytes: Uint8Array, signatureKind: SupportedSignatureKind) {
   switch (signatureKind) {
+    case "aac":
+      return (
+        startsWith(bytes, [0x49, 0x44, 0x33]) ||
+        (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xf0) === 0xf0)
+      );
     case "asf":
       return startsWith(bytes, [
         0x30,
@@ -187,6 +202,8 @@ function matchesExpectedSignature(bytes: Uint8Array, signatureKind: SupportedSig
       return asciiAt(bytes, 0, 4) === "RIFF" && asciiAt(bytes, 8, 4) === "AVI ";
     case "ebml":
       return startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3]);
+    case "flac":
+      return asciiAt(bytes, 0, 4) === "fLaC";
     case "flv":
       return asciiAt(bytes, 0, 3) === "FLV";
     case "gif":
@@ -195,6 +212,11 @@ function matchesExpectedSignature(bytes: Uint8Array, signatureKind: SupportedSig
       return isIsoBaseMedia(bytes);
     case "jpeg":
       return startsWith(bytes, [0xff, 0xd8, 0xff]);
+    case "mp3":
+      return (
+        startsWith(bytes, [0x49, 0x44, 0x33]) ||
+        (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0)
+      );
     case "mpeg":
       return startsWith(bytes, [0x00, 0x00, 0x01, 0xba]) || startsWith(bytes, [0x00, 0x00, 0x01, 0xb3]);
     case "mxf":
@@ -207,6 +229,8 @@ function matchesExpectedSignature(bytes: Uint8Array, signatureKind: SupportedSig
       return startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     case "ts":
       return bytes.length > 376 && bytes[0] === 0x47 && bytes[188] === 0x47;
+    case "wav":
+      return asciiAt(bytes, 0, 4) === "RIFF" && asciiAt(bytes, 8, 4) === "WAVE";
     case "webm":
       return startsWith(bytes, [0x1a, 0x45, 0xdf, 0xa3]) && includesAscii(bytes, "webm");
     case "webp":
