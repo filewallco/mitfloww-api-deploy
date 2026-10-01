@@ -301,6 +301,24 @@ projectsRouter.post("/:id/request-testimonial-email", asyncHandler(async (req, r
     throw new AppError("Testimonials can only be requested for paid projects.", 400, "project_not_paid");
   }
 
+  const existingReview = await projectService.getProjectClientReviewByProjectId(params.id);
+  if (existingReview) {
+    throw new AppError("This project already has client feedback submitted.", 400, "project_already_reviewed");
+  }
+
+  const COOLDOWN_MS = 24 * 60 * 60 * 1000;
+  if (project.testimonialRequestSentAt) {
+    const elapsed = Date.now() - new Date(project.testimonialRequestSentAt).getTime();
+    if (elapsed < COOLDOWN_MS) {
+      const hoursRemaining = Math.max(1, Math.ceil((COOLDOWN_MS - elapsed) / (60 * 60 * 1000)));
+      throw new AppError(
+        `A testimonial request email was already sent for this project. Please wait ${hoursRemaining} hour${hoursRemaining === 1 ? "" : "s"} before sending another.`,
+        429,
+        "testimonial_request_cooldown"
+      );
+    }
+  }
+
   const clientEmail = (req.body?.clientEmail || project.clientEmail || project.shareClientEmail || "").trim();
   if (!clientEmail) {
     throw new AppError("Client email is required to send testimonial request.", 400, "client_email_required");
@@ -323,12 +341,16 @@ projectsRouter.post("/:id/request-testimonial-email", asyncHandler(async (req, r
     reviewUrl,
   });
 
+  const sentAt = new Date();
+  await projectService.recordTestimonialRequestSent(project.id, sentAt);
+
   scopedLogger.info("Testimonial request email dispatched", {
     recipient: clientEmail,
     projectId: project.id,
     projectTitle: project.title,
     actorId: actor.id,
     expiryDays: actor.clientShareLinkExpiryDays,
+    testimonialRequestSentAt: sentAt.toISOString(),
   });
 
   return sendSuccess(res, {
@@ -336,6 +358,7 @@ projectsRouter.post("/:id/request-testimonial-email", asyncHandler(async (req, r
     message: "Testimonial request email sent successfully.",
     reviewUrl,
     success: true,
+    testimonialRequestSentAt: sentAt.toISOString(),
   });
 }));
 

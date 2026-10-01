@@ -34,11 +34,11 @@ import type { SortOrder } from "@/lib/query/sorting";
 
 export type CreateProjectRecordInput = Omit<
   ProjectRecord,
-  "createdAt" | "deletedAt" | "updatedAt" | "id" | "userId" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt"
+  "createdAt" | "deletedAt" | "updatedAt" | "id" | "userId" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt" | "testimonialRequestSentAt"
 > & {
   userId: string;
 } &
-  Partial<Pick<ProjectRecord, "id" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt">>;
+  Partial<Pick<ProjectRecord, "id" | "clientApprovedAt" | "creatorLastViewedCommentsAt" | "clientLastViewedCommentsAt" | "creatorDigestEmailSentAt" | "clientDigestEmailSentAt" | "testimonialRequestSentAt">>;
 
 export type UpdateProjectRecordInput = Partial<
   Omit<CreateProjectRecordInput, "id">
@@ -59,10 +59,12 @@ export type ProjectRecordWithMetrics = ProjectRecord & {
   fileCount?: number | null;
   totalSizeBytes?: number | null;
   isPendingPayment?: boolean | null;
+  hasClientReview?: boolean | null;
 };
 
 export type FindManyProjectsParams = ProjectListRepositoryQuery & {
   includeDeleted?: boolean;
+  excludeReviewed?: boolean;
 };
 
 export type FindManyProjectsResult = {
@@ -96,6 +98,7 @@ export interface ProjectRepository {
   findManyPaginated(
     params: FindManyProjectsParams,
   ): Promise<FindManyProjectsResult>;
+  recordTestimonialRequestSent(id: string, sentAt: Date): Promise<void>;
   findClientReviewByProjectId(projectId: string): Promise<ProjectClientReviewRecord | null>;
   upsertClientReview(input: {
     projectId: string;
@@ -148,6 +151,7 @@ const projectRecordWithMetricsColumns = {
   fileCount: projectFileMetrics.fileCount,
   totalSizeBytes: projectFileMetrics.totalSizeBytes,
   isPendingPayment: projectFileMetrics.isPendingPayment,
+  hasClientReview: sql<boolean>`EXISTS (SELECT 1 FROM ${projectClientReviews} WHERE ${projectClientReviews.projectId} = ${projects.id})`,
 };
 
 function getSortColumn(sortField: ProjectSortField) {
@@ -355,6 +359,12 @@ export class DrizzleProjectRepository implements ProjectRepository {
       }
     }
 
+    if (params.excludeReviewed) {
+      conditions.push(
+        sql`NOT EXISTS (SELECT 1 FROM ${projectClientReviews} WHERE ${projectClientReviews.projectId} = ${projects.id})`,
+      );
+    }
+
     if (params.hasDeliverables) {
       conditions.push(sql`coalesce(${projectFileMetrics.fileCount}, 0) > 0`);
     }
@@ -429,6 +439,13 @@ export class DrizzleProjectRepository implements ProjectRepository {
 
   async hardDelete(id: string): Promise<ProjectRecord | null> {
     return this.softDelete(id, new Date());
+  }
+
+  async recordTestimonialRequestSent(id: string, sentAt: Date): Promise<void> {
+    await db
+      .update(projects)
+      .set({ testimonialRequestSentAt: sentAt, updatedAt: sentAt })
+      .where(eq(projects.id, id));
   }
 
   async findClientReviewByProjectId(

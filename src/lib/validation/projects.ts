@@ -338,6 +338,17 @@ export const projectSharePasswordValidationSchema = z
 
 export const projectListQueryParamsSchema = z
   .object({
+    excludeReviewed: z.preprocess((value) => {
+      const normalizedValue = emptyStringToUndefined(value);
+
+      if (typeof normalizedValue === "boolean") {
+        return normalizedValue ? "true" : "false";
+      }
+
+      return normalizedValue;
+    }, z.enum(["true", "false"], {
+      errorMap: () => ({ message: "excludeReviewed must be true or false." }),
+    }).transform((value) => value === "true").optional()),
     hasDeliverables: z.preprocess((value) => {
       const normalizedValue = emptyStringToUndefined(value);
 

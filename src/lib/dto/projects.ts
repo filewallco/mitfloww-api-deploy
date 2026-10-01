@@ -371,6 +371,8 @@ export type ProjectDTO = {
   fileCount?: number;
   totalSizeBytes?: number;
   isPendingPayment?: boolean;
+  testimonialRequestSentAt?: string | null;
+  hasClientReview?: boolean;
 };
 
 export type ProjectClientReviewDTO = {

@@ -352,6 +352,7 @@ import { createScopedLogger } from "@/lib/logger";
       fileCount?: number | null;
       totalSizeBytes?: number | null;
       isPendingPayment?: boolean | null;
+      hasClientReview?: boolean | null;
     },
     options?: {
       baseUrl?: string;
@@ -401,6 +402,8 @@ import { createScopedLogger } from "@/lib/logger";
         (Boolean(project.isPendingPayment) ||
           (Boolean(project.advancePaymentEnabled) &&
             project.advancePaymentStatus === ProjectPaymentStatus.Pending)),
+      testimonialRequestSentAt: project.testimonialRequestSentAt?.toISOString() ?? null,
+      hasClientReview: Boolean(project.hasClientReview),
     };
   }
 
@@ -519,6 +522,10 @@ export class ProjectService {
       }
 
       return this.buildProjectDTO(record, viewerLocale);
+    }
+
+    async recordTestimonialRequestSent(id: string, sentAt: Date): Promise<void> {
+      await this.repository.recordTestimonialRequestSent(id, sentAt);
     }
 
     async getProjectClientReviewByProjectId(
@@ -1415,7 +1422,7 @@ export class ProjectService {
     }
 
     private async buildProjectDTOs(
-      records: Array<ProjectRecord & { fileCount?: number | null; totalSizeBytes?: number | null; isPendingPayment?: boolean | null }>,
+      records: Array<ProjectRecord & { fileCount?: number | null; totalSizeBytes?: number | null; isPendingPayment?: boolean | null; hasClientReview?: boolean | null }>,
       viewerLocale: string,
       options?: { includeSharePassword?: boolean; baseUrl?: string },
     ) {
@@ -1433,7 +1440,7 @@ export class ProjectService {
     }
 
     private async buildProjectDTO(
-      record: ProjectRecord & { fileCount?: number | null; totalSizeBytes?: number | null; isPendingPayment?: boolean | null },
+      record: ProjectRecord & { fileCount?: number | null; totalSizeBytes?: number | null; isPendingPayment?: boolean | null; hasClientReview?: boolean | null },
       viewerLocale: string,
       options?: { includeSharePassword?: boolean; baseUrl?: string },
     ) {
