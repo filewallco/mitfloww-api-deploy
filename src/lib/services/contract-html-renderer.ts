@@ -64,7 +64,7 @@ export function generateContractHtml(data: ContractPdfData): string {
   <style>
     @page {
       size: A4;
-      margin: 18mm 16mm 18mm 16mm;
+      margin: 12mm 14mm 12mm 14mm;
     }
     * {
       box-sizing: border-box;
@@ -75,8 +75,8 @@ export function generateContractHtml(data: ContractPdfData): string {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       color: #1f2937;
       background-color: #ffffff;
-      line-height: 1.5;
-      font-size: 13px;
+      line-height: 1.45;
+      font-size: 12px;
       -webkit-font-smoothing: antialiased;
     }
     .contract-container {
@@ -87,30 +87,23 @@ export function generateContractHtml(data: ContractPdfData): string {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      padding-bottom: 20px;
+      padding-bottom: 12px;
       border-bottom: 2px solid #f3f4f6;
     }
     .logo-container {
       display: flex;
       align-items: center;
-      gap: 12px;
     }
     .logo-img {
-      height: 38px;
+      height: 36px;
       width: auto;
       object-fit: contain;
-    }
-    .logo-text {
-      font-size: 20px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      color: #111827;
     }
     .header-meta {
       text-align: right;
     }
     .contract-title {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 700;
       color: #111827;
       text-transform: uppercase;
@@ -118,9 +111,9 @@ export function generateContractHtml(data: ContractPdfData): string {
     }
     .status-badge {
       display: inline-block;
-      margin-top: 6px;
-      padding: 4px 10px;
-      font-size: 11px;
+      margin-top: 4px;
+      padding: 3px 9px;
+      font-size: 10.5px;
       font-weight: 700;
       color: #ffffff;
       background-color: ${badgeBg};
@@ -128,46 +121,48 @@ export function generateContractHtml(data: ContractPdfData): string {
       letter-spacing: 0.5px;
     }
     .sub-meta {
-      margin-top: 6px;
-      font-size: 11px;
+      margin-top: 4px;
+      font-size: 10.5px;
       color: #6b7280;
     }
     .parties-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      margin-top: 24px;
-      padding: 16px 20px;
+      gap: 20px;
+      margin-top: 12px;
+      padding: 12px 18px;
       background-color: #f9fafb;
       border: 1px solid #e5e7eb;
-      border-radius: 12px;
+      border-radius: 10px;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .party-card h3 {
-      font-size: 11px;
+      font-size: 10.5px;
       font-weight: 700;
       color: #4b5563;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
     .party-name {
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 700;
       color: #111827;
     }
     .party-detail {
-      font-size: 12px;
+      font-size: 11.5px;
       color: #4b5563;
       margin-top: 2px;
     }
     .section-title {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
       color: #111827;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      margin-top: 24px;
-      margin-bottom: 12px;
+      margin-top: 12px;
+      margin-bottom: 6px;
       display: flex;
       align-items: center;
       gap: 8px;
@@ -179,29 +174,33 @@ export function generateContractHtml(data: ContractPdfData): string {
       background-color: #e5e7eb;
     }
     .project-card {
-      padding: 16px 20px;
+      padding: 12px 18px;
       background-color: #ffffff;
       border: 1px solid #e5e7eb;
-      border-radius: 12px;
+      border-radius: 10px;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .project-name {
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 700;
       color: #111827;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
     .project-meta-row {
       display: flex;
-      gap: 24px;
-      margin-top: 8px;
-      font-size: 12px;
+      gap: 20px;
+      margin-top: 4px;
+      font-size: 11px;
       color: #6b7280;
     }
     .table-container {
-      margin-top: 12px;
+      margin-top: 6px;
       border: 1px solid #e5e7eb;
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     table {
       width: 100%;
@@ -210,8 +209,8 @@ export function generateContractHtml(data: ContractPdfData): string {
     }
     th {
       background-color: #f9fafb;
-      padding: 10px 16px;
-      font-size: 11px;
+      padding: 7px 14px;
+      font-size: 10px;
       font-weight: 700;
       color: #4b5563;
       text-transform: uppercase;
@@ -219,8 +218,8 @@ export function generateContractHtml(data: ContractPdfData): string {
       border-bottom: 1px solid #e5e7eb;
     }
     td {
-      padding: 12px 16px;
-      font-size: 12px;
+      padding: 7px 14px;
+      font-size: 11px;
       border-bottom: 1px solid #f3f4f6;
     }
     tr:last-child td {
@@ -236,31 +235,35 @@ export function generateContractHtml(data: ContractPdfData): string {
       font-weight: 700;
     }
     .terms-box {
-      margin-top: 16px;
-      padding: 14px 18px;
+      margin-top: 10px;
+      padding: 10px 16px;
       background-color: #f8fafc;
       border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      font-size: 11px;
+      border-radius: 10px;
+      font-size: 10px;
       color: #475569;
-      line-height: 1.6;
+      line-height: 1.45;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .terms-box ul {
-      margin-left: 18px;
-      margin-top: 6px;
+      margin-left: 16px;
+      margin-top: 3px;
     }
     .terms-box li {
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
     .signature-section {
-      margin-top: 24px;
-      padding: 16px 20px;
-      border-radius: 12px;
+      margin-top: 12px;
+      padding: 11px 16px;
+      border-radius: 10px;
       border: 1.5px dashed ${isAccepted ? "#10b981" : "#cbd5e1"};
       background-color: ${isAccepted ? "#ecfdf5" : "#f8fafc"};
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
     .signature-title {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
       color: ${isAccepted ? "#065f46" : "#475569"};
@@ -269,19 +272,21 @@ export function generateContractHtml(data: ContractPdfData): string {
       gap: 6px;
     }
     .signature-content {
-      margin-top: 8px;
-      font-size: 11px;
+      margin-top: 5px;
+      font-size: 10.5px;
       color: ${isAccepted ? "#047857" : "#64748b"};
-      line-height: 1.5;
+      line-height: 1.4;
     }
     .footer {
-      margin-top: 30px;
-      padding-top: 14px;
+      margin-top: 14px;
+      padding-top: 8px;
       border-top: 1px solid #e5e7eb;
       display: flex;
       justify-content: space-between;
-      font-size: 10px;
+      font-size: 9.5px;
       color: #9ca3af;
+      page-break-inside: avoid;
+      break-inside: avoid;
     }
   </style>
 </head>
@@ -290,7 +295,6 @@ export function generateContractHtml(data: ContractPdfData): string {
     <div class="header">
       <div class="logo-container">
         <img class="logo-img" src="data:image/png;base64,${MITFLOWW_LOGO_BASE64}" alt="MitFloww" />
-        <span class="logo-text">MitFloww</span>
       </div>
       <div class="header-meta">
         <div class="contract-title">Project Service Agreement</div>

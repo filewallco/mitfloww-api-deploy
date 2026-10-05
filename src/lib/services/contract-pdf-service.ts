@@ -211,8 +211,8 @@ export class ContractPdfService {
           format: "A4",
           printBackground: true,
           margin: {
-            top: "14mm",
-            bottom: "14mm",
+            top: "12mm",
+            bottom: "12mm",
             left: "14mm",
             right: "14mm",
           },
