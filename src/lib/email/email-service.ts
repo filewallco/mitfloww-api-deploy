@@ -1330,8 +1330,11 @@ export class EmailService {
         Please review the proposed contract details and confirm or decline the changes. These changes will only take effect after your explicit confirmation.
       </p>
       <div style="text-align: center; margin: 28px 0;">
-        <a href="${params.reviewUrl}" style="display: inline-block; background-color: #0f172a; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; padding: 12px 28px; border-radius: 10px;">
-          Review & Confirm Changes &rarr;
+        <a href="${params.reviewUrl}" style="display: inline-block; background-color: #005bdd; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; padding: 12px 28px; border-radius: 10px; margin: 4px 6px;">
+          Review & Accept Changes &rarr;
+        </a>
+        <a href="${params.reviewUrl}?action=reject" style="display: inline-block; background-color: #dc2626; color: #ffffff; font-size: 14px; font-weight: 700; text-decoration: none; padding: 12px 24px; border-radius: 10px; margin: 4px 6px;">
+          Reject Changes
         </a>
       </div>
     `;
@@ -1389,6 +1392,34 @@ export class EmailService {
       html: wrapEmailHtml(content),
       text: `Contract update confirmed for "${params.projectTitle}". Version ${params.version} is now active. PDF attached.`,
       attachments,
+    });
+  }
+
+
+  async sendContractUpdateRejectedEmail(params: {
+    creatorEmail: string;
+    creatorName?: string;
+    clientName?: string;
+    projectTitle: string;
+  }): Promise<void> {
+    const subject = `Contract Update Declined: "${params.projectTitle}"`;
+    const content = `
+      <h1 style="font-size: 20px; font-weight: 700; color: #ef4444; margin: 0 0 10px 0; line-height: 1.3;">
+        Contract Update Declined
+      </h1>
+      <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0 0 20px 0;">
+        ${params.clientName || "The client"} has declined the proposed contract update for <strong>${params.projectTitle}</strong>.
+      </p>
+      <p style="font-size: 13px; line-height: 1.5; color: #64748b; margin: 0 0 16px 0;">
+        The existing contract terms remain active and unmodified.
+      </p>
+    `;
+
+    await this.sendAsync({
+      to: params.creatorEmail,
+      subject,
+      html: wrapEmailHtml(content),
+      text: `${params.clientName || "The client"} has declined the proposed contract update for "${params.projectTitle}". Existing terms remain active.`,
     });
   }
 

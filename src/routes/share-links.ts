@@ -171,6 +171,26 @@ shareLinksRouter.post("/:token/projects/approve", asyncHandler(async (req, res) 
   return sendSuccess(res, result);
 }));
 
+shareLinksRouter.post("/:token/revoke-approval", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+  const project = await requireAuthorizedShareProject(req, params.token);
+  const result = await fileService.revokeClientShareProjectApproval({
+    projectId: project.id,
+    shareToken: params.token,
+  });
+  return sendSuccess(res, result);
+}));
+
+shareLinksRouter.post("/:token/projects/revoke-approval", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+  const project = await requireAuthorizedShareProject(req, params.token);
+  const result = await fileService.revokeClientShareProjectApproval({
+    projectId: project.id,
+    shareToken: params.token,
+  });
+  return sendSuccess(res, result);
+}));
+
 shareLinksRouter.post("/:token/advance-payment/complete", asyncHandler(async (req, res) => {
   const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
   const project = await requireAuthorizedShareProject(req, params.token);
@@ -615,6 +635,18 @@ shareLinksRouter.get("/:token/contract-update", asyncHandler(async (req, res) =>
     shareToken: params.token,
   });
   return sendSuccess(res, data);
+}));
+
+
+shareLinksRouter.post("/:token/contract-update/reject", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
+  const input = parseWithSchema(confirmContractUpdateBodySchema, req.body);
+  const result = await contractService.rejectProjectUpdate({
+    shareToken: params.token,
+    requestId: input.requestId,
+    clientEmail: input.clientEmail || "",
+  });
+  return sendSuccess(res, result);
 }));
 
 shareLinksRouter.post("/:token/contract-update/confirm", asyncHandler(async (req, res) => {

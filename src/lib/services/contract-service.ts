@@ -736,6 +736,72 @@ export class ContractService {
 
     return { success: true, newVersion: targetVersion };
   }
+
+  /**
+   * Client rejects the project contract update.
+   * Cancels the update request and keeps original contract active.
+   */
+  async rejectProjectUpdate(params: {
+    shareToken: string;
+    requestId: string;
+    clientEmail?: string;
+  }): Promise<{ success: boolean }> {
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.shareToken, params.shareToken))
+      .limit(1);
+
+    if (!project) {
+      throw new NotFoundAppError("Project not found.");
+    }
+
+    const [updateRequest] = await db
+      .select()
+      .from(projectContractUpdateRequests)
+      .where(eq(projectContractUpdateRequests.id, params.requestId))
+      .limit(1);
+
+    if (!updateRequest || updateRequest.projectId !== project.id) {
+      throw new NotFoundAppError("Contract update request not found.");
+    }
+
+    if (updateRequest.status !== "pending") {
+      throw new AppError(
+        "This contract update request is no longer pending.",
+        400,
+        "contract_update_not_pending",
+      );
+    }
+
+    await db
+      .update(projectContractUpdateRequests)
+      .set({
+        status: "rejected",
+        respondedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(projectContractUpdateRequests.id, updateRequest.id));
+
+    void (async () => {
+      try {
+        const profile = await userService.getProfile(project.userId);
+        if (profile.user.email) {
+          await emailService.sendContractUpdateRejectedEmail({
+            creatorEmail: profile.user.email,
+            creatorName: profile.user.displayName || profile.user.username || undefined,
+            clientName: project.clientName || undefined,
+            projectTitle: project.title,
+          });
+        }
+      } catch (err) {
+        scopedLogger.error("Failed to send contract update rejection email", { err });
+      }
+    })();
+
+    return { success: true };
+  }
+
 }
 
 export const contractService = new ContractService();

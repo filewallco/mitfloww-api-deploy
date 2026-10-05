@@ -385,7 +385,9 @@ import { createScopedLogger } from "@/lib/logger";
       revisionLimit: project.revisionLimit,
       shareClientEmail: project.shareClientEmail,
       shareAccess: toProjectShareAccess(project, options),
-      status: project.status,
+      status: (project.clientApprovedAt != null || project.status === "approved" || (project.status as any) === 2)
+        ? ProjectStatus.Approved
+        : project.status,
       title: project.title,
       titleText:
         options?.titleText ??
@@ -688,14 +690,85 @@ export class ProjectService {
         throw new NotFoundAppError("Project not found.");
       }
 
+      if (existing.clientApprovedAt != null || existing.status === "approved" || (existing.status as any) === 2) {
+        throw new AppError("Project has been approved by the client and cannot be modified.", 409, "project_locked_approved");
+      }
+
       this.assertProjectIsActive(existing.status);
 
-      if (existing.contractStatus === "accepted") {
-        throw new AppError(
-          "Project is contract-locked and cannot be edited directly. Please request a project update instead.",
-          403,
-          "project_contract_locked",
-        );
+      if (existing.contractEnabled && existing.contractStatus === "accepted") {
+        const contractLockDetails = [];
+        if (input.amountCents !== undefined && input.amountCents !== existing.amountCents) {
+          contractLockDetails.push({
+            code: "project_contract_locked",
+            message: "Project amount cannot be changed under an accepted contract.",
+            path: "amountCents",
+          });
+        }
+        if (input.currency !== undefined && normalizeProjectCurrency(input.currency) !== existing.currency) {
+          contractLockDetails.push({
+            code: "project_contract_locked",
+            message: "Project currency cannot be changed under an accepted contract.",
+            path: "currency",
+          });
+        }
+        if (input.revisionLimit !== undefined && input.revisionLimit !== existing.revisionLimit) {
+          contractLockDetails.push({
+            code: "project_contract_locked",
+            message: "Revision limit cannot be changed under an accepted contract.",
+            path: "revisionLimit",
+          });
+        }
+        if (input.extraRevisionCostCents !== undefined && input.extraRevisionCostCents !== existing.extraRevisionCostCents) {
+          contractLockDetails.push({
+            code: "project_contract_locked",
+            message: "Extra revision cost cannot be changed under an accepted contract.",
+            path: "extraRevisionCostCents",
+          });
+        }
+        if (input.clientEmail !== undefined && input.clientEmail.trim().toLowerCase() !== (existing.clientEmail ?? "").trim().toLowerCase()) {
+          contractLockDetails.push({
+            code: "project_contract_locked",
+            message: "Client email cannot be changed under an accepted contract.",
+            path: "clientEmail",
+          });
+        }
+        if (input.clientName !== undefined && normalizeClientName(input.clientName) !== existing.clientName) {
+          contractLockDetails.push({
+            code: "project_contract_locked",
+            message: "Client name cannot be changed under an accepted contract.",
+            path: "clientName",
+          });
+        }
+        if (input.contractEnabled === false && existing.contractEnabled) {
+          contractLockDetails.push({
+            code: "project_contract_locked",
+            message: "Contract-based project cannot be disabled once accepted.",
+            path: "contractEnabled",
+          });
+        }
+        if (input.advancePaymentEnabled !== undefined && input.advancePaymentEnabled !== existing.advancePaymentEnabled) {
+          contractLockDetails.push({
+            code: "project_contract_locked",
+            message: "Advance payment cannot be modified under an accepted contract.",
+            path: "advancePaymentEnabled",
+          });
+        }
+        if (input.advanceAmountCents !== undefined && input.advanceAmountCents !== existing.advanceAmountCents) {
+          contractLockDetails.push({
+            code: "project_contract_locked",
+            message: "Advance payment amount cannot be modified under an accepted contract.",
+            path: "advanceAmountCents",
+          });
+        }
+        if (contractLockDetails.length > 0) {
+          throw new AppError(
+            "Contract terms are locked and cannot be edited directly.",
+            400,
+            "project_contract_locked",
+            contractLockDetails,
+          );
+        }
       }
 
       if (input.contractEnabled && !existing.contractEnabled) {
@@ -711,10 +784,6 @@ export class ProjectService {
             "insufficient_credits",
           );
         }
-      }
-
-      if (existing.clientApprovedAt != null) {
-        throw new AppError("Project has been approved by the client and cannot be modified.", 409, "project_locked_approved");
       }
 
       const title = normalizeProjectName(input.name);

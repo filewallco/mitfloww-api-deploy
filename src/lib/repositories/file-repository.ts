@@ -310,6 +310,7 @@ export interface FileRepository {
 
   findVersionByProcessingJobId(
     jobId: string,
+    options?: { includeDeleted?: boolean },
   ): Promise<FileVersionRecord | null>;
 
   findFileSafetySummaries(fileIds: string[]): Promise<FileSafetySummary[]>;
@@ -692,11 +693,17 @@ export class DrizzleFileRepository implements FileRepository {
 
   async findVersionByProcessingJobId(
     jobId: string,
+    options?: { includeDeleted?: boolean },
   ): Promise<FileVersionRecord | null> {
+    const conditions = [eq(fileVersions.processingJobId, jobId)];
+    if (!options?.includeDeleted) {
+      conditions.push(isNull(fileVersions.deletedAt));
+    }
+
     const [record] = await db
       .select()
       .from(fileVersions)
-      .where(eq(fileVersions.processingJobId, jobId))
+      .where(and(...conditions))
       .limit(1);
 
     return record ?? null;

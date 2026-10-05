@@ -1009,6 +1009,9 @@ export class FileService {
       throw new NotFoundAppError("Project not found.");
     }
     this.assertProjectIsActive(project.status);
+    if (project.clientApprovedAt != null || project.status === "approved" || (project.status as any) === 2) {
+      throw new AppError("Project has been approved by the client and new files cannot be uploaded.", 409, "project_locked_approved");
+    }
     await storageService.assertCanAllocateStorage({
       requiredBytes: input.sizeBytes,
     });
@@ -1232,6 +1235,12 @@ export class FileService {
       });
     }
 
+    for (const version of existingRecord.versions) {
+      if (version.processingJobId) {
+        void cancelWorkerJob(version.processingJobId).catch(() => {});
+      }
+    }
+
     const deletedAt = new Date();
     const record = await this.repository.softDeleteWithVersions(id, deletedAt);
 
@@ -1404,6 +1413,10 @@ export class FileService {
       shouldReplaceCurrentVersion && nextCurrentVersion
         ? nextCurrentVersion
         : null;
+    if (targetVersion.processingJobId) {
+      void cancelWorkerJob(targetVersion.processingJobId).catch(() => {});
+    }
+
     const deletedAt = new Date();
 
     void (async () => {
@@ -4770,11 +4783,12 @@ export class FileService {
     shareToken: string;
   }): Promise<{ clientApprovedAt: string }> {
     const project = await this.getRequiredProject(input.projectId);
-    this.assertProjectIsActive(project.status);
 
     if (project.clientApprovedAt != null) {
       return { clientApprovedAt: project.clientApprovedAt.toISOString() };
     }
+
+    this.assertProjectIsActive(project.status);
 
     const workflowSummary = await this.repository.getProjectWorkflowSummary(project.id);
     if (!workflowSummary.allFilesHaveFinalDrafts) {
@@ -4820,11 +4834,43 @@ export class FileService {
       .update(projects)
       .set({
         clientApprovedAt: approvedAt,
+        status: 'approved',
         updatedAt: approvedAt,
       })
       .where(eq(projects.id, project.id));
 
     return { clientApprovedAt: approvedAt.toISOString() };
+  }
+
+  async revokeClientShareProjectApproval(input: {
+    projectId: string;
+    shareToken: string;
+  }): Promise<{ success: boolean }> {
+    const project = await this.getRequiredProject(input.projectId);
+
+    if (project.paymentStatus === ProjectPaymentStatus.Paid) {
+      throw new AppError(
+        "Project approval cannot be revoked after payment has been completed.",
+        400,
+        "project_payment_completed",
+      );
+    }
+
+    if (project.clientApprovedAt == null && project.status === "active") {
+      return { success: true };
+    }
+
+    const updatedAt = new Date();
+    await db
+      .update(projects)
+      .set({
+        clientApprovedAt: null,
+        status: 'active',
+        updatedAt,
+      })
+      .where(eq(projects.id, project.id));
+
+    return { success: true };
   }
 
   async completeClientShareAdvancePayment(input: {
@@ -6360,7 +6406,12 @@ export class FileService {
   async getProcessingJobByJobId(jobId: string) {
     const version = await this.repository.findVersionByProcessingJobId(jobId);
 
-    if (!version) {
+    if (!version || version.deletedAt != null) {
+      throw new NotFoundAppError("Processing job not found.");
+    }
+
+    const file = await this.repository.findById(version.fileId);
+    if (!file || file.deletedAt != null) {
       throw new NotFoundAppError("Processing job not found.");
     }
 
@@ -6593,11 +6644,11 @@ export class FileService {
   async cancelProcessingVersion(versionIdOrJobId: string) {
     let version = await this.repository.findVersionById(versionIdOrJobId);
     if (!version) {
-      version = await this.repository.findVersionByProcessingJobId(versionIdOrJobId);
+      version = await this.repository.findVersionByProcessingJobId(versionIdOrJobId, { includeDeleted: true });
     }
 
     if (!version) {
-      const fileCandidate = await this.repository.findWithVersionsById(versionIdOrJobId);
+      const fileCandidate = await this.repository.findWithVersionsById(versionIdOrJobId, { includeDeletedVersions: true });
       if (fileCandidate) {
         if (fileCandidate.file.currentVersionId) {
           version = fileCandidate.versions.find((v) => v.id === fileCandidate.file.currentVersionId) ?? null;
@@ -6619,12 +6670,25 @@ export class FileService {
     }
 
     if (!version) {
-      throw new NotFoundAppError("File version not found.");
+      return {
+        jobId: versionIdOrJobId,
+        status: FileProcessingStatus.Cancelled,
+        message: "Processing job or file not found.",
+      };
     }
 
     const file = await this.repository.findById(version.fileId);
-    if (!file) {
-      throw new NotFoundAppError("File not found.");
+    if (!file || file.deletedAt != null || version.deletedAt != null) {
+      if (version.processingJobId) {
+        await cancelWorkerJob(version.processingJobId).catch(() => {});
+      }
+      return {
+        fileId: version.fileId,
+        fileVersionId: version.id,
+        jobId: version.processingJobId || "",
+        status: FileProcessingStatus.Cancelled,
+        message: "File has already been deleted.",
+      };
     }
 
     if (version.processingStatus === FileProcessingStatus.Cancelled) {

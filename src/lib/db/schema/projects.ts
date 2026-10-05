@@ -254,7 +254,7 @@ export const createProjectTables = (fw: PgSchema) => {
       uniqueIndex("projects_invoice_id_unique_idx").on(table.invoiceId),
       check(
         "projects_status_check",
-        sql`${table.status} >= 0 AND ${table.status} <= 1`,
+        sql`${table.status} >= 0 AND ${table.status} <= 2`,
       ),
       check(
         "projects_share_status_check",

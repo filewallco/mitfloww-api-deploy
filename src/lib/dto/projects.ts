@@ -1,6 +1,6 @@
 import type { TranslatedTextDTO } from "@/lib/dto/translated-text";
 
-export const PROJECT_STATUSES = ["active", "completed"] as const;
+export const PROJECT_STATUSES = ["active", "completed", "approved"] as const;
 export const PROJECT_PAYMENT_STATUSES = ["pending", "paid"] as const;
 export const PROJECT_SHARE_STATUSES = [
   "active",
@@ -25,6 +25,7 @@ export type ProjectShareMutationAction =
 export const ProjectStatus = {
   Active: "active",
   Completed: "completed",
+  Approved: "approved",
 } as const satisfies Record<string, ProjectStatus>;
 
 export const ProjectPaymentStatus = {
@@ -80,11 +81,12 @@ export function fromProjectPaymentStatusDbValue(
   }
 }
 
-export const PROJECT_STATUS_DB_VALUES = [0, 1] as const;
+export const PROJECT_STATUS_DB_VALUES = [0, 1, 2] as const;
 export type ProjectStatusDbValue = (typeof PROJECT_STATUS_DB_VALUES)[number];
 export const ProjectStatusDb = {
   Active: 0,
   Completed: 1,
+  Approved: 2,
 } as const;
 
 export function toProjectStatusDbValue(
@@ -96,6 +98,9 @@ export function toProjectStatusDbValue(
   if (status === ProjectStatusDb.Completed || status === ProjectStatus.Completed || status === "completed" || status === 1) {
     return ProjectStatusDb.Completed;
   }
+  if (status === ProjectStatusDb.Approved || status === ProjectStatus.Approved || status === "approved" || status === 2) {
+    return ProjectStatusDb.Approved;
+  }
   return ProjectStatusDb.Active;
 }
 
@@ -106,6 +111,8 @@ export function fromProjectStatusDbValue(value: unknown): ProjectStatus {
       return ProjectStatus.Active;
     case ProjectStatusDb.Completed:
       return ProjectStatus.Completed;
+    case ProjectStatusDb.Approved:
+      return ProjectStatus.Approved;
     default:
       return ProjectStatus.Active;
   }
