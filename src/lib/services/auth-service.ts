@@ -648,7 +648,7 @@ export class AuthService {
           providerUserId: googleProfile.sub,
           email: googleProfile.email,
           emailVerified: googleProfile.emailVerified,
-        });
+        }).onConflictDoNothing();
       } else {
         // Create new user without requiring a password!
         const id = crypto.randomUUID();
@@ -684,7 +684,7 @@ export class AuthService {
           providerUserId: googleProfile.sub,
           email: googleProfile.email,
           emailVerified: googleProfile.emailVerified,
-        });
+        }).onConflictDoNothing();
 
         // Default company
         await db.insert(companies).values({

@@ -358,18 +358,7 @@ export class SessionService {
       const key = `${sess.userAgent || "ua"}::${sess.ipAddress || "ip"}`;
       if (!seenDevices.has(key)) {
         seenDevices.set(key, sess);
-      } else if (seenDevices.get(key)!.id !== sess.id) {
-        duplicateIdsToRevoke.push(sess.id);
       }
-    }
-
-    // Clean up duplicate session records in the background
-    if (duplicateIdsToRevoke.length > 0) {
-      void Promise.all(
-        duplicateIdsToRevoke.map((id) =>
-          db.update(sessions).set({ revokedAt: new Date() }).where(eq(sessions.id, id))
-        )
-      ).catch(() => {});
     }
 
     const uniqueSessions = Array.from(seenDevices.values());
@@ -469,20 +458,7 @@ export class SessionService {
     const refreshTokenHash = hashRefreshToken(rawRefreshToken);
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS);
 
-    // Revoke any prior session for the same user on the identical device and IP to prevent duplicates
-    if (meta?.userAgent && meta?.ipAddress) {
-      await db
-        .update(sessions)
-        .set({ revokedAt: new Date() })
-        .where(
-          and(
-            eq(sessions.userId, userId),
-            eq(sessions.userAgent, meta.userAgent),
-            eq(sessions.ipAddress, meta.ipAddress),
-            isNull(sessions.revokedAt),
-          ),
-        );
-    }
+    // Multiple devices and sessions are permitted concurrently until manually logged out
 
     const [session] = await db
       .insert(sessions)
