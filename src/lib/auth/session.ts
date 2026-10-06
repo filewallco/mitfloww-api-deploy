@@ -134,7 +134,186 @@ function resolveIpLocation(ip?: string | null): string {
   return "Online Device";
 }
 
+// In-memory cache for fast session validity lookups with instant eviction on revocation
+type SessionCacheEntry = {
+  status: "valid" | "revoked" | "expired";
+  userId?: string;
+  sessionId?: string;
+  expiresAt?: number;
+  cachedAt: number;
+};
+
+const sessionValidationCache = new Map<string, SessionCacheEntry>();
+const CACHE_TTL_VALID_MS = 10_000; // 10s for valid sessions
+
+function evictSessionCacheForUser(userId: string, keepRefreshTokenHash?: string | null) {
+  for (const [key, entry] of sessionValidationCache.entries()) {
+    if (entry.userId === userId) {
+      if (keepRefreshTokenHash && key === keepRefreshTokenHash) {
+        continue;
+      }
+      sessionValidationCache.set(key, {
+        status: "revoked",
+        userId,
+        cachedAt: Date.now(),
+      });
+    }
+  }
+}
+
 export class SessionService {
+  /**
+   * Authenticates and verifies that the incoming request's session has not been revoked.
+   */
+  async authenticateRequest(credentials: {
+    bearerToken?: string;
+    refreshToken?: string;
+    sessionCookie?: string;
+  }): Promise<
+    | { status: "valid"; userId: string; sessionId: string }
+    | { status: "revoked"; reason: string }
+    | { status: "expired"; reason?: string }
+    | { status: "invalid" }
+  > {
+    const now = Date.now();
+
+    // 1. Check refresh token cookie (primary session token in production)
+    if (credentials.refreshToken && typeof credentials.refreshToken === "string") {
+      const trimmed = credentials.refreshToken.trim();
+      if (trimmed.length >= 32) {
+        const hash = hashRefreshToken(trimmed);
+        const cached = sessionValidationCache.get(hash);
+
+        if (cached) {
+          if (cached.status === "revoked") {
+            return { status: "revoked", reason: "Session has been revoked." };
+          }
+          if (cached.status === "valid" && cached.userId && cached.sessionId) {
+            if (now - cached.cachedAt < CACHE_TTL_VALID_MS) {
+              return { status: "valid", userId: cached.userId, sessionId: cached.sessionId };
+            }
+          }
+        }
+
+        const [sessionRecord] = await db
+          .select({
+            id: sessions.id,
+            userId: sessions.userId,
+            revokedAt: sessions.revokedAt,
+            expiresAt: sessions.expiresAt,
+          })
+          .from(sessions)
+          .where(eq(sessions.refreshTokenHash, hash))
+          .limit(1);
+
+        if (!sessionRecord) {
+          sessionValidationCache.set(hash, { status: "revoked", cachedAt: now });
+          return { status: "invalid" };
+        }
+
+        if (sessionRecord.revokedAt !== null) {
+          sessionValidationCache.set(hash, {
+            status: "revoked",
+            userId: sessionRecord.userId,
+            sessionId: sessionRecord.id,
+            cachedAt: now,
+          });
+          return { status: "revoked", reason: "Session has been revoked." };
+        }
+
+        if (new Date() > sessionRecord.expiresAt) {
+          return { status: "expired", reason: "Session has expired." };
+        }
+
+        sessionValidationCache.set(hash, {
+          status: "valid",
+          userId: sessionRecord.userId,
+          sessionId: sessionRecord.id,
+          expiresAt: sessionRecord.expiresAt.getTime(),
+          cachedAt: now,
+        });
+
+        return {
+          status: "valid",
+          userId: sessionRecord.userId,
+          sessionId: sessionRecord.id,
+        };
+      }
+    }
+
+    // 2. Check Bearer access token
+    if (credentials.bearerToken && typeof credentials.bearerToken === "string") {
+      const payload = verifyAccessToken(credentials.bearerToken);
+      if (payload && payload.sessionId) {
+        const cached = sessionValidationCache.get(payload.sessionId);
+        if (cached) {
+          if (cached.status === "revoked") {
+            return { status: "revoked", reason: "Session has been revoked." };
+          }
+          if (cached.status === "valid" && cached.userId) {
+            if (now - cached.cachedAt < CACHE_TTL_VALID_MS) {
+              return { status: "valid", userId: cached.userId, sessionId: payload.sessionId };
+            }
+          }
+        }
+
+        const [sessionRecord] = await db
+          .select({
+            id: sessions.id,
+            userId: sessions.userId,
+            revokedAt: sessions.revokedAt,
+            expiresAt: sessions.expiresAt,
+          })
+          .from(sessions)
+          .where(eq(sessions.id, payload.sessionId))
+          .limit(1);
+
+        if (!sessionRecord || sessionRecord.revokedAt !== null) {
+          sessionValidationCache.set(payload.sessionId, { status: "revoked", cachedAt: now });
+          return { status: "revoked", reason: "Session has been revoked." };
+        }
+
+        if (new Date() > sessionRecord.expiresAt) {
+          return { status: "expired", reason: "Session has expired." };
+        }
+
+        sessionValidationCache.set(payload.sessionId, {
+          status: "valid",
+          userId: sessionRecord.userId,
+          sessionId: sessionRecord.id,
+          expiresAt: sessionRecord.expiresAt.getTime(),
+          cachedAt: now,
+        });
+
+        return {
+          status: "valid",
+          userId: sessionRecord.userId,
+          sessionId: sessionRecord.id,
+        };
+      }
+    }
+
+    // 3. Fallback: Legacy HMAC session token
+    if (credentials.sessionCookie && !credentials.refreshToken) {
+      const userId = verifyLegacySessionToken(credentials.sessionCookie);
+      if (userId) {
+        const [activeSession] = await db
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)))
+          .limit(1);
+
+        if (!activeSession) {
+          return { status: "revoked", reason: "Session has been revoked." };
+        }
+
+        return { status: "valid", userId, sessionId: activeSession.id };
+      }
+    }
+
+    return { status: "invalid" };
+  }
+
   /**
    * Fetches all active non-revoked sessions for a user with device and location metadata.
    */
@@ -222,24 +401,57 @@ export class SessionService {
       .update(sessions)
       .set({ revokedAt: new Date() })
       .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)));
+
+    sessionValidationCache.set(sessionId, { status: "revoked", userId, cachedAt: Date.now() });
+    for (const [key, entry] of sessionValidationCache.entries()) {
+      if (entry.sessionId === sessionId) {
+        sessionValidationCache.set(key, { status: "revoked", userId, cachedAt: Date.now() });
+      }
+    }
   }
 
   /**
    * Revokes all sessions for a user except the current session.
    */
-  async revokeOtherSessions(userId: string, currentRefreshToken?: string): Promise<void> {
+  async revokeOtherSessions(
+    userId: string,
+    options?: { currentRefreshToken?: string; currentSessionId?: string } | string,
+  ): Promise<void> {
+    const currentRefreshToken =
+      typeof options === "string" ? options : options?.currentRefreshToken;
+    const currentSessionId =
+      typeof options === "object" ? options?.currentSessionId : undefined;
+
     const currentHash = currentRefreshToken ? hashRefreshToken(currentRefreshToken.trim()) : null;
-    if (currentHash) {
+
+    if (currentHash || currentSessionId) {
       const allActive = await db
         .select({ id: sessions.id, refreshTokenHash: sessions.refreshTokenHash })
         .from(sessions)
         .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
 
       for (const s of allActive) {
-        if (s.refreshTokenHash !== currentHash) {
+        const isCurrent = currentHash
+          ? s.refreshTokenHash === currentHash
+          : s.id === currentSessionId;
+
+        if (!isCurrent) {
           await db.update(sessions).set({ revokedAt: new Date() }).where(eq(sessions.id, s.id));
+          sessionValidationCache.set(s.refreshTokenHash, {
+            status: "revoked",
+            userId,
+            sessionId: s.id,
+            cachedAt: Date.now(),
+          });
+          sessionValidationCache.set(s.id, {
+            status: "revoked",
+            userId,
+            sessionId: s.id,
+            cachedAt: Date.now(),
+          });
         }
       }
+      evictSessionCacheForUser(userId, currentHash);
     } else {
       await this.revokeAllSessions(userId);
     }
@@ -377,6 +589,8 @@ export class SessionService {
       .update(sessions)
       .set({ revokedAt: new Date() })
       .where(eq(sessions.id, sessionId));
+
+    sessionValidationCache.set(sessionId, { status: "revoked", cachedAt: Date.now() });
   }
 
   /**
@@ -389,6 +603,8 @@ export class SessionService {
       .update(sessions)
       .set({ revokedAt: new Date() })
       .where(eq(sessions.refreshTokenHash, tokenHash));
+
+    sessionValidationCache.set(tokenHash, { status: "revoked", cachedAt: Date.now() });
   }
 
   /**
@@ -399,12 +615,14 @@ export class SessionService {
       .update(sessions)
       .set({ revokedAt: new Date() })
       .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+
+    evictSessionCacheForUser(userId);
   }
 
   /**
    * Attaches HttpOnly, SameSite, Secure auth cookies to the response.
    */
-  setCookies(res: Response, refreshToken: string, userId?: string): void {
+  setCookies(res: Response, refreshToken: string, userId?: string, sessionId?: string): void {
     const isProd = process.env.NODE_ENV === "production";
 
     // Set secure rotating refresh cookie
@@ -419,7 +637,7 @@ export class SessionService {
     // Also set legacy cookie for seamless middleware compatibility during transition
     if (userId) {
       const legacyPayload = Buffer.from(
-        JSON.stringify({ userId, exp: Date.now() + REFRESH_TOKEN_EXPIRY_MS }),
+        JSON.stringify({ userId, sessionId, exp: Date.now() + REFRESH_TOKEN_EXPIRY_MS }),
       ).toString("base64url");
       const hmac = crypto
         .createHmac("sha256", SESSION_SECRET)

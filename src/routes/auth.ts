@@ -414,7 +414,11 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const actor = await resolveActiveActor(req);
     const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
-    await sessionService.revokeOtherSessions(actor.id, refreshToken);
+    const currentSessionId = (req as any).authenticatedSessionId;
+    await sessionService.revokeOtherSessions(actor.id, {
+      currentRefreshToken: refreshToken,
+      currentSessionId,
+    });
     return res.json({ success: true, message: "All other sessions revoked successfully." });
   }),
 );

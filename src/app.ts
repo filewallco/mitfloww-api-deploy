@@ -12,7 +12,7 @@ import { usersRouter } from "@/routes/users";
 import { profileRouter } from "@/routes/profile";
 import { authRouter } from "@/routes/auth";
 import { actorStorage } from "@/lib/auth/active-actor";
-import { verifyAccessToken, verifySessionToken } from "@/lib/auth/session";
+import { sessionService, REFRESH_COOKIE_NAME, LEGACY_SESSION_COOKIE_NAME } from "@/lib/auth/session";
 import { plansRouter } from "@/routes/plans";
 import { creditsRouter } from "@/routes/credits";
 import { storageRouter } from "@/routes/storage";
@@ -49,34 +49,48 @@ app.use(
 app.use(cookieParser());
 
 // Session authentication context middleware
-app.use((req, _res, next) => {
-  let userId: string | undefined = undefined;
+app.use(async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const bearerToken =
+      authHeader && authHeader.startsWith("Bearer ")
+        ? authHeader.slice(7).trim()
+        : undefined;
 
-  // 1. Authorization: Bearer <accessToken>
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.slice(7).trim();
-    const verified = verifyAccessToken(token);
-    if (verified) {
-      userId = verified.sub;
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
+    const sessionCookie = req.cookies?.[LEGACY_SESSION_COOKIE_NAME];
+
+    const result = await sessionService.authenticateRequest({
+      bearerToken,
+      refreshToken,
+      sessionCookie,
+    });
+
+    if (result.status === "revoked") {
+      sessionService.clearCookies(res);
+      (req as any).sessionRevoked = true;
+      (req as any).sessionRevokeReason = result.reason;
+      return next();
     }
-  }
 
-  // 2. Fallback to cookie
-  if (!userId) {
-    const sessionCookie = req.cookies?.mitfloww_session;
-    if (sessionCookie) {
-      const verified = verifySessionToken(sessionCookie);
-      if (verified) {
-        userId = verified;
+    if (result.status === "valid" && result.userId) {
+      (req as any).authenticatedUserId = result.userId;
+      (req as any).authenticatedSessionId = result.sessionId;
+      return actorStorage.run(
+        { userId: result.userId, sessionId: result.sessionId },
+        () => next(),
+      );
+    }
+
+    if (result.status === "invalid" || result.status === "expired") {
+      if (refreshToken || sessionCookie) {
+        sessionService.clearCookies(res);
       }
     }
-  }
 
-  if (userId) {
-    actorStorage.run({ userId }, () => next());
-  } else {
-    next();
+    return next();
+  } catch (err) {
+    next(err);
   }
 });
 
