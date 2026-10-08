@@ -20,6 +20,7 @@ import {
   files,
   projectClientReviews,
   projects,
+  revisionComments,
   FileFinalDraftReportStatusDb,
   FileProcessingStatusDb,
   type ProjectClientReviewRecord,
@@ -60,6 +61,7 @@ export type ProjectRecordWithMetrics = ProjectRecord & {
   totalSizeBytes?: number | null;
   isPendingPayment?: boolean | null;
   hasClientReview?: boolean | null;
+  hasRevisionRequested?: boolean | null;
 };
 
 export type FindManyProjectsParams = ProjectListRepositoryQuery & {
@@ -152,6 +154,7 @@ const projectRecordWithMetricsColumns = {
   totalSizeBytes: projectFileMetrics.totalSizeBytes,
   isPendingPayment: projectFileMetrics.isPendingPayment,
   hasClientReview: sql<boolean>`EXISTS (SELECT 1 FROM ${projectClientReviews} WHERE ${projectClientReviews.projectId} = ${projects.id})`,
+  hasRevisionRequested: sql<boolean>`EXISTS (SELECT 1 FROM ${revisionComments} WHERE ${revisionComments.projectId} = ${projects.id} AND ${revisionComments.deletedAt} IS NULL AND ${revisionComments.status} = 0)`,
 };
 
 function getSortColumn(sortField: ProjectSortField) {

@@ -1,6 +1,6 @@
 import type { TranslatedTextDTO } from "@/lib/dto/translated-text";
 
-export const PROJECT_STATUSES = ["active", "completed", "approved"] as const;
+export const PROJECT_STATUSES = ["active", "completed", "approved", "pending"] as const;
 export const PROJECT_PAYMENT_STATUSES = ["pending", "paid"] as const;
 export const PROJECT_SHARE_STATUSES = [
   "active",
@@ -26,6 +26,7 @@ export const ProjectStatus = {
   Active: "active",
   Completed: "completed",
   Approved: "approved",
+  Pending: "pending",
 } as const satisfies Record<string, ProjectStatus>;
 
 export const ProjectPaymentStatus = {
@@ -393,6 +394,7 @@ export type ProjectDTO = {
   isPendingPayment?: boolean;
   testimonialRequestSentAt?: string | null;
   hasClientReview?: boolean;
+  hasRevisionRequested?: boolean;
 };
 
 export type ProjectClientReviewDTO = {

@@ -354,6 +354,7 @@ import { createScopedLogger } from "@/lib/logger";
       totalSizeBytes?: number | null;
       isPendingPayment?: boolean | null;
       hasClientReview?: boolean | null;
+      hasRevisionRequested?: boolean | null;
     },
     options?: {
       baseUrl?: string;
@@ -411,6 +412,7 @@ import { createScopedLogger } from "@/lib/logger";
             project.advancePaymentStatus === ProjectPaymentStatus.Pending)),
       testimonialRequestSentAt: project.testimonialRequestSentAt?.toISOString() ?? null,
       hasClientReview: Boolean(project.hasClientReview),
+      hasRevisionRequested: Boolean(project.hasRevisionRequested),
     };
   }
 
