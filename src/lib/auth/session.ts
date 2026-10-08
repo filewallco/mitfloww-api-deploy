@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { Response } from "express";
-import { and, desc, eq, isNull, lt } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { sessions, users, UserStatus, type SessionRecord, type UserRecord } from "@/lib/db/schema";
 import { AppError, UnauthorizedAppError } from "@/lib/errors/app-error";
@@ -332,31 +332,39 @@ export class SessionService {
     createdAt: string;
   }>> {
     const currentHash = currentRefreshToken ? hashRefreshToken(currentRefreshToken.trim()) : null;
+    const now = new Date();
 
     const userSessions = await db
       .select()
       .from(sessions)
-      .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)))
+      .where(and(
+        eq(sessions.userId, userId),
+        isNull(sessions.revokedAt),
+        gt(sessions.expiresAt, now),
+      ))
       .orderBy(desc(sessions.lastUsedAt));
 
-    // Deduplicate active sessions by unique device signature (device + browser + IP)
-    const seenDevices = new Map<string, typeof userSessions[0]>();
-    const duplicateIdsToRevoke: string[] = [];
-
-    // Prioritize keeping the current active session
     let currentSessionId: string | null = null;
     if (currentHash) {
       const match = userSessions.find((s) => s.refreshTokenHash === currentHash);
       if (match) {
         currentSessionId = match.id;
-        const key = `${match.userAgent || "ua"}::${match.ipAddress || "ip"}`;
-        seenDevices.set(key, match);
       }
     }
 
+    // Deduplicate active sessions by unique device signature (userAgent + ipAddress)
+    // Always prioritize keeping the current active session as the representative for its device!
+    const seenDevices = new Map<string, typeof userSessions[0]>();
+
     for (const sess of userSessions) {
       const key = `${sess.userAgent || "ua"}::${sess.ipAddress || "ip"}`;
-      if (!seenDevices.has(key)) {
+      const isThisCurrent = currentSessionId
+        ? sess.id === currentSessionId
+        : Boolean(currentHash && sess.refreshTokenHash === currentHash);
+
+      if (isThisCurrent) {
+        seenDevices.set(key, sess);
+      } else if (!seenDevices.has(key)) {
         seenDevices.set(key, sess);
       }
     }
@@ -386,14 +394,47 @@ export class SessionService {
    * Revokes a specific session belonging to a user.
    */
   async revokeSessionForUser(userId: string, sessionId: string): Promise<void> {
+    const [targetSession] = await db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)))
+      .limit(1);
+
+    if (!targetSession) {
+      return;
+    }
+
+    const revokedAt = new Date();
+
+    // Revoke the specific session and any identical session signature for this user
     await db
       .update(sessions)
-      .set({ revokedAt: new Date() })
-      .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)));
+      .set({ revokedAt })
+      .where(
+        and(
+          eq(sessions.userId, userId),
+          or(
+            eq(sessions.id, sessionId),
+            and(
+              eq(sessions.userAgent, targetSession.userAgent || ""),
+              eq(sessions.ipAddress, targetSession.ipAddress || ""),
+            ),
+          ),
+        ),
+      );
 
     sessionValidationCache.set(sessionId, { status: "revoked", userId, cachedAt: Date.now() });
+    if (targetSession.refreshTokenHash) {
+      sessionValidationCache.set(targetSession.refreshTokenHash, {
+        status: "revoked",
+        userId,
+        sessionId,
+        cachedAt: Date.now(),
+      });
+    }
+
     for (const [key, entry] of sessionValidationCache.entries()) {
-      if (entry.sessionId === sessionId) {
+      if (entry.sessionId === sessionId || (targetSession.refreshTokenHash && key === targetSession.refreshTokenHash)) {
         sessionValidationCache.set(key, { status: "revoked", userId, cachedAt: Date.now() });
       }
     }
@@ -505,13 +546,9 @@ export class SessionService {
       throw new UnauthorizedAppError("Invalid refresh session.");
     }
 
-    // 2. Reuse Detection: If session was already revoked, token theft may have occurred!
+    // 2. Revocation check
     if (existingSession.revokedAt !== null) {
-      // Revoke all sessions for this user to protect their account
-      await this.revokeAllSessions(existingSession.userId);
-      throw new UnauthorizedAppError(
-        "Security alert: Token reuse detected. All sessions revoked. Please log in again.",
-      );
+      throw new UnauthorizedAppError("Session has been revoked. Please sign in again.");
     }
 
     // 3. Expiration check

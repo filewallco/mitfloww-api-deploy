@@ -70,6 +70,27 @@ app.use(async (req, res, next) => {
       sessionService.clearCookies(res);
       (req as any).sessionRevoked = true;
       (req as any).sessionRevokeReason = result.reason;
+
+      const url = req.originalUrl || req.url || "";
+      const isPublicAuthRoute =
+        url.includes("/api/auth/login") ||
+        url.includes("/api/auth/signup") ||
+        url.includes("/api/auth/forgot-password") ||
+        url.includes("/api/auth/reset-password") ||
+        url.includes("/api/auth/reactivate") ||
+        url.includes("/api/auth/google") ||
+        url.includes("/api/share-links") ||
+        url.includes("/api/asset-shares");
+
+      if (!isPublicAuthRoute) {
+        return res.status(401).json({
+          error: {
+            code: "UNAUTHORIZED",
+            message: "Session has been revoked. Please sign in again.",
+          },
+        });
+      }
+
       return next();
     }
 
