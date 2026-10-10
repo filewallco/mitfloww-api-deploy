@@ -4,3 +4,5 @@ dist
 .env.local
 *.log
 logs/
+scripts/
+/scripts
