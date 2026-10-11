@@ -92,12 +92,14 @@ class FileLogSink {
 
     try {
       this.mainStream = fs.createWriteStream(mainLogPath, { flags: "a" });
+      this.mainStream.on("error", () => { this.mainStream = null; });
     } catch {
       this.mainStream = null;
     }
 
     try {
       this.errorStream = fs.createWriteStream(errorLogPath, { flags: "a" });
+      this.errorStream.on("error", () => { this.errorStream = null; });
     } catch {
       this.errorStream = null;
     }
@@ -188,6 +190,11 @@ class FileLogSink {
 const fileLogSinkInstance = new FileLogSink();
 
 export function persistApiLogToFile(entry: ApiFileLogEntry): void {
+  // In serverless environments (Vercel / AWS Lambda), the local filesystem is ephemeral and read-only.
+  // Logs are already stored in mitfloww.api_logs database sink and stdout.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.DISABLE_FILE_LOGS === "true") {
+    return;
+  }
   fileLogSinkInstance.write(entry);
 }
 
