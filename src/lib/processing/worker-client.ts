@@ -1,6 +1,6 @@
 import { AppError } from "@/lib/errors/app-error";
 
-const WORKER_REQUEST_TIMEOUT_MS = 1_500;
+const WORKER_REQUEST_TIMEOUT_MS = Number(process.env.WORKER_REQUEST_TIMEOUT_MS) || 10_000;
 
 type EnqueueWorkerJobInput = {
   jobId: string;
@@ -22,10 +22,6 @@ type EnqueueWorkerJobInput = {
     name?: string | null;
     tier: "free" | "standard" | "pro" | "studio" | "business";
   };
-  // Optional processing hints for the worker. These are best-effort flags
-  // describing final-draft behavior and preview-watermarking preferences.
-  // The worker is free to ignore or honor them; they are provided so the
-  // processor can apply consistent behavior for final-draft previews.
   isFinalDraft?: boolean;
   isLargeFile: boolean;
   forcePreviewGeneration?: boolean;
@@ -35,7 +31,7 @@ type EnqueueWorkerJobInput = {
 };
 
 function workerBaseUrl() {
-  return (process.env.WORKER_API_BASE_URL || "http://localhost:4000").replace(/\/+$/, "");
+  return (process.env.WORKER_API_BASE_URL || process.env.WORKER_URL || "http://localhost:4000").replace(/\/+$/, "");
 }
 
 function workerToken() {
@@ -50,27 +46,20 @@ function callbackBaseUrl() {
   ).replace(/\/+$/, "");
 }
 
-function workerUnavailableError() {
-  return new AppError(
-    "Processing worker is unavailable. Upload was saved, but processing could not start.",
-    503,
-    "worker_unavailable",
-  );
-}
-
 function createWorkerRequestSignal() {
   const timeout = (AbortSignal as typeof AbortSignal & {
     timeout?: (milliseconds: number) => AbortSignal;
   }).timeout;
 
-  return timeout?.(WORKER_REQUEST_TIMEOUT_MS);
+  return timeout ? timeout(WORKER_REQUEST_TIMEOUT_MS) : undefined;
 }
 
 export async function enqueueProcessingJob(input: EnqueueWorkerJobInput) {
   let response: Response;
+  const targetUrl = `${workerBaseUrl()}/jobs`;
 
   try {
-    response = await fetch(`${workerBaseUrl()}/jobs`, {
+    response = await fetch(targetUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -82,18 +71,42 @@ export async function enqueueProcessingJob(input: EnqueueWorkerJobInput) {
       }),
       signal: createWorkerRequestSignal(),
     });
-  } catch {
-    throw workerUnavailableError();
+  } catch (error: any) {
+    const isTimeout = error?.name === "TimeoutError" || error?.name === "AbortError";
+    const detailMsg = isTimeout
+      ? `Worker request timed out after ${WORKER_REQUEST_TIMEOUT_MS}ms (${targetUrl})`
+      : `Failed to connect to worker (${targetUrl}): ${error instanceof Error ? error.message : String(error)}`;
+
+    const appError = new AppError(detailMsg, 503, "worker_unavailable");
+    (appError as any).cause = error;
+    (appError as any).targetUrl = targetUrl;
+    throw appError;
   }
 
-  const payload = await response.json().catch(() => null);
+  const rawText = await response.text().catch(() => "");
+  let payload: any = null;
+  try {
+    payload = JSON.parse(rawText);
+  } catch {
+    payload = null;
+  }
 
   if (!response.ok) {
-    throw new AppError(
-      (payload as any)?.error || "Worker enqueue failed.",
+    const errorDetail =
+      payload?.error ||
+      payload?.message ||
+      rawText.slice(0, 500) ||
+      `HTTP ${response.status} ${response.statusText}`;
+
+    const appError = new AppError(
+      `Worker enqueue rejected (HTTP ${response.status} from ${targetUrl}): ${errorDetail}`,
       response.status,
       "worker_enqueue_failed",
     );
+    (appError as any).status = response.status;
+    (appError as any).responseBody = rawText;
+    (appError as any).targetUrl = targetUrl;
+    throw appError;
   }
 
   return payload as {
@@ -105,23 +118,30 @@ export async function enqueueProcessingJob(input: EnqueueWorkerJobInput) {
 
 export async function getWorkerJobStatus(jobId: string) {
   let response: Response;
+  const targetUrl = `${workerBaseUrl()}/job/${encodeURIComponent(jobId)}`;
 
   try {
-    response = await fetch(`${workerBaseUrl()}/job/${encodeURIComponent(jobId)}`, {
+    response = await fetch(targetUrl, {
       headers: {
         Authorization: `Bearer ${workerToken()}`,
       },
       signal: createWorkerRequestSignal(),
     });
-  } catch {
-    throw workerUnavailableError();
+  } catch (error: any) {
+    const appError = new AppError(
+      `Worker status unreachable (${targetUrl}): ${error instanceof Error ? error.message : String(error)}`,
+      503,
+      "worker_unavailable",
+    );
+    (appError as any).cause = error;
+    throw appError;
   }
 
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
     throw new AppError(
-      (payload as any)?.error || "Worker status failed.",
+      (payload as any)?.error || `Worker status failed with HTTP ${response.status}`,
       response.status,
       "worker_status_failed",
     );
@@ -131,7 +151,8 @@ export async function getWorkerJobStatus(jobId: string) {
 }
 
 export async function retryWorkerJob(jobId: string) {
-  const response = await fetch(`${workerBaseUrl()}/admin/retry/${encodeURIComponent(jobId)}`, {
+  const targetUrl = `${workerBaseUrl()}/admin/retry/${encodeURIComponent(jobId)}`;
+  const response = await fetch(targetUrl, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${workerToken()}`,
@@ -142,7 +163,7 @@ export async function retryWorkerJob(jobId: string) {
 
   if (!response.ok) {
     throw new AppError(
-      (payload as any)?.error || "Worker retry failed.",
+      (payload as any)?.error || `Worker retry failed with HTTP ${response.status}`,
       response.status,
       "worker_retry_failed",
     );
@@ -153,18 +174,16 @@ export async function retryWorkerJob(jobId: string) {
 
 export async function cancelWorkerJob(jobId: string) {
   let response: Response;
+  const targetUrl = `${workerBaseUrl()}/job/cancel/${encodeURIComponent(jobId)}`;
 
   try {
-    response = await fetch(
-      `${workerBaseUrl()}/job/cancel/${encodeURIComponent(jobId)}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${workerToken()}`,
-        },
-        signal: createWorkerRequestSignal(),
+    response = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${workerToken()}`,
       },
-    );
+      signal: createWorkerRequestSignal(),
+    });
   } catch (error) {
     return {
       success: false,
@@ -179,7 +198,7 @@ export async function cancelWorkerJob(jobId: string) {
     return {
       success: false,
       status: response.status,
-      error: (payload as any)?.error || "Worker cancellation failed.",
+      error: (payload as any)?.error || `Worker cancellation failed with HTTP ${response.status}`,
     };
   }
 

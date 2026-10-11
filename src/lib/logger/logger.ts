@@ -155,7 +155,7 @@ export class Logger {
       }
     } else {
       // Pretty developer output in local terminal (when LOG_TO_CONSOLE=true is explicitly set)
-      const prefix = `[${timestamp}] [${level.toUpperCase()}]`;
+      const prefix = `[${timestamp}] [API] [${level.toUpperCase()}]`;
       const componentStr = component ? ` [${component}]` : "";
       const reqIdStr = requestId ? ` [${requestId}]` : "";
       const userStr = userId ? ` [user:${userId}]` : "";

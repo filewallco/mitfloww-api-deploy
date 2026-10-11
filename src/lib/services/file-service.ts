@@ -2880,11 +2880,21 @@ export class FileService {
         chargeWatermarkCredits: Boolean(!input.version.isFinalDraft && input.version.watermarkEnabled),
         watermarkReason: input.version.isFinalDraft ? "final_draft_preview" : null,
       });
-    } catch (error) {
+    } catch (error: any) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorCause = error?.cause ? (error.cause instanceof Error ? error.cause.message : String(error.cause)) : undefined;
+
       scopedLogger.error("Failed to enqueue version processing job to worker", {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMsg,
+        errorMessage: errorMsg,
+        errorCode: error?.code || error?.statusCode || 500,
+        cause: errorCause,
+        stackTrace: error instanceof Error ? error.stack : undefined,
+        workerUrl: `${process.env.WORKER_API_BASE_URL || process.env.WORKER_URL || "http://localhost:4000"}/jobs`,
         versionId: input.version.id,
         jobId: input.version.processingJobId,
+        fileId: input.file.id,
+        fileName: input.file.name,
       });
       const workerFailure = toWorkerProcessingFailure(error);
       const failedVersion = await this.repository.updateVersionProcessingResult(
