@@ -104,13 +104,44 @@ export class ContractPdfService {
       color: rgb(0.3, 0.35, 0.4),
     });
     currentY -= 16;
-    page.drawText(`Creator: ${data.creatorName} (${data.creatorEmail})`, {
-      x: margin + 10,
-      y: currentY,
-      size: 9,
-      font: fontRegular,
-      color: rgb(0.15, 0.18, 0.2),
-    });
+    if (data.companyName) {
+      page.drawText(`Provider: ${data.companyName} - ${data.creatorName} (${data.companyEmail || data.creatorEmail})`, {
+        x: margin + 10,
+        y: currentY,
+        size: 9,
+        font: fontRegular,
+        color: rgb(0.15, 0.18, 0.2),
+      });
+      if (data.creatorLocation || data.companyWebsite) {
+        currentY -= 12;
+        const extraInfo = [data.companyWebsite, data.creatorLocation].filter(Boolean).join(" | ");
+        page.drawText(extraInfo, {
+          x: margin + 10,
+          y: currentY,
+          size: 8,
+          font: fontRegular,
+          color: rgb(0.4, 0.45, 0.5),
+        });
+      }
+    } else {
+      page.drawText(`Creator: ${data.creatorName} (${data.creatorEmail})`, {
+        x: margin + 10,
+        y: currentY,
+        size: 9,
+        font: fontRegular,
+        color: rgb(0.15, 0.18, 0.2),
+      });
+      if (data.creatorLocation) {
+        currentY -= 12;
+        page.drawText(data.creatorLocation, {
+          x: margin + 10,
+          y: currentY,
+          size: 8,
+          font: fontRegular,
+          color: rgb(0.4, 0.45, 0.5),
+        });
+      }
+    }
     currentY -= 14;
     page.drawText(`Client: ${data.clientName} (${data.clientEmail || "Pending Confirmation"})`, {
       x: margin + 10,

@@ -11,6 +11,11 @@ export interface ContractPdfData {
   acceptedBy?: string | null;
   creatorName: string;
   creatorEmail: string;
+  companyName?: string | null;
+  companyTagline?: string | null;
+  companyEmail?: string | null;
+  companyWebsite?: string | null;
+  creatorLocation?: string | null;
   clientName: string;
   clientEmail: string;
   currency: string;
@@ -305,9 +310,19 @@ export function generateContractHtml(data: ContractPdfData): string {
 
     <div class="parties-grid">
       <div class="party-card">
-        <h3>Service Provider (Creator)</h3>
-        <div class="party-name">${data.creatorName || "Freelancer"}</div>
+        <h3>Service Provider ${data.companyName ? "(Company)" : "(Creator)"}</h3>
+        ${
+          data.companyName
+            ? `<div class="party-name">${data.companyName}</div>
+        ${data.companyTagline ? `<div class="party-tagline" style="font-size: 10.5px; color: #6b7280; margin-bottom: 3px;">${data.companyTagline}</div>` : ""}
+        <div class="party-detail"><strong>Representative:</strong> ${data.creatorName || "Freelancer"}</div>
+        <div class="party-detail">${data.companyEmail || data.creatorEmail}</div>
+        ${data.companyWebsite ? `<div class="party-detail">${data.companyWebsite}</div>` : ""}
+        ${data.creatorLocation ? `<div class="party-detail">${data.creatorLocation}</div>` : ""}`
+            : `<div class="party-name">${data.creatorName || "Freelancer"}</div>
         <div class="party-detail">${data.creatorEmail}</div>
+        ${data.creatorLocation ? `<div class="party-detail">${data.creatorLocation}</div>` : ""}`
+        }
       </div>
       <div class="party-card">
         <h3>Client</h3>
@@ -406,7 +421,7 @@ export function generateContractHtml(data: ContractPdfData): string {
         ${
           isAccepted
             ? `This contract was digitally accepted and agreed to by the Client (${data.acceptedBy || data.clientEmail}) on ${data.acceptedAt || data.date} through the MitFloww client portal. This agreement is cryptographically verified and locked as Contract Version ${data.version}.`
-            : `This proposed contract has been prepared by ${data.creatorName} and is awaiting client acceptance. Upon checking "I agree to the contract and continue" on the MitFloww portal, this contract becomes active and legally binding.`
+            : `This proposed contract has been prepared by ${data.companyName ? `${data.companyName} (${data.creatorName})` : (data.creatorName || "Creator")} and is awaiting client acceptance. Upon checking "I agree to the contract and continue" on the MitFloww portal, this contract becomes active and legally binding.`
         }
       </div>
     </div>

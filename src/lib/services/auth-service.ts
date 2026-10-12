@@ -363,15 +363,6 @@ export class AuthService {
       user = newUser;
       isNewUser = true;
 
-      // Create default company profile
-      await db.insert(companies).values({
-        userId: user.id,
-        name: "My Studio",
-        tagline: "Creative Operations",
-        industry: "Design & Creative",
-        yearFounded: new Date().getFullYear().toString(),
-        companySize: "1 Member",
-      });
 
       // Send welcome email asynchronously
       await emailService.sendWelcomeEmail(user.email!, user.displayName || user.firstName || "");
@@ -686,15 +677,6 @@ export class AuthService {
           emailVerified: googleProfile.emailVerified,
         }).onConflictDoNothing();
 
-        // Default company
-        await db.insert(companies).values({
-          userId: user.id,
-          name: `${displayName}'s Company`,
-          tagline: "Designing Ideas, Delivering Impact",
-          industry: "Design & Creative",
-          yearFounded: new Date().getFullYear().toString(),
-          companySize: "1 Member",
-        });
 
         await emailService.sendWelcomeEmail(user.email!, user.displayName || "");
       }
@@ -950,3 +932,5 @@ export class AuthService {
 }
 
 export const authService = new AuthService();
+
+

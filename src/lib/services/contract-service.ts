@@ -60,10 +60,25 @@ export class ContractService {
 
     let creatorName = "Creator";
     let creatorEmail = "";
+    let companyName: string | null = null;
+    let companyTagline: string | null = null;
+    let companyEmail: string | null = null;
+    let companyWebsite: string | null = null;
+    let creatorLocation: string | null = null;
     try {
       const profile = await userService.getProfile(project.userId);
       creatorName = profile.user.displayName || profile.user.username || "Creator";
       creatorEmail = profile.user.email || "";
+      if (profile.company?.name && profile.company.name.trim().length > 0) {
+        companyName = profile.company.name.trim();
+        companyTagline = profile.company.tagline?.trim() || null;
+        companyEmail = profile.company.email?.trim() || null;
+        companyWebsite = profile.company.website?.trim() || null;
+      }
+      const locParts = [profile.user.city, profile.user.country].filter(Boolean);
+      if (locParts.length > 0) {
+        creatorLocation = locParts.join(", ");
+      }
     } catch (e) {
       scopedLogger.warn("Failed to fetch creator profile for contract PDF", { error: e });
     }
@@ -95,8 +110,13 @@ export class ContractService {
         version: updateRequest.targetVersion,
         status: "proposed",
         date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }),
-        creatorName,
-        creatorEmail,
+        creatorName: snapshot.creatorName || creatorName,
+        creatorEmail: snapshot.creatorEmail || creatorEmail,
+        companyName: snapshot.companyName !== undefined ? snapshot.companyName : companyName,
+        companyTagline: snapshot.companyTagline !== undefined ? snapshot.companyTagline : companyTagline,
+        companyEmail: snapshot.companyEmail !== undefined ? snapshot.companyEmail : companyEmail,
+        companyWebsite: snapshot.companyWebsite !== undefined ? snapshot.companyWebsite : companyWebsite,
+        creatorLocation: snapshot.creatorLocation !== undefined ? snapshot.creatorLocation : creatorLocation,
         clientName: project.clientName || "Client",
         clientEmail: project.clientEmail || project.shareClientEmail || "",
         currency: snapshot.currency || project.currency,
@@ -169,8 +189,13 @@ export class ContractService {
       date: acceptedAtFormatted || new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }),
       acceptedAt: acceptedAtFormatted,
       acceptedBy,
-      creatorName,
-      creatorEmail,
+      creatorName: snapshotData.creatorName || creatorName,
+      creatorEmail: snapshotData.creatorEmail || creatorEmail,
+      companyName: snapshotData.companyName !== undefined ? snapshotData.companyName : companyName,
+      companyTagline: snapshotData.companyTagline !== undefined ? snapshotData.companyTagline : companyTagline,
+      companyEmail: snapshotData.companyEmail !== undefined ? snapshotData.companyEmail : companyEmail,
+      companyWebsite: snapshotData.companyWebsite !== undefined ? snapshotData.companyWebsite : companyWebsite,
+      creatorLocation: snapshotData.creatorLocation !== undefined ? snapshotData.creatorLocation : creatorLocation,
       clientName: project.clientName || "Client",
       clientEmail: project.clientEmail || project.shareClientEmail || "",
       currency: snapshotData.currency || project.currency,

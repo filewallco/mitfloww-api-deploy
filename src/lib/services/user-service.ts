@@ -220,8 +220,8 @@ export class UserService {
           industry: data.industry,
           website: data.website,
           email: data.email,
-          yearFounded: data.yearFounded || "2024",
-          companySize: data.companySize || "2 - 10 Members",
+          yearFounded: data.yearFounded || null,
+          companySize: data.companySize || null,
         })
         .returning();
       return newCompany;
@@ -574,15 +574,6 @@ export class UserService {
       })
       .returning();
 
-    // Create default company
-    await db.insert(companies).values({
-      userId: id,
-      name: `${displayName}'s Company`,
-      tagline: "Designing Ideas, Delivering Impact",
-      industry: "Design & Creative",
-      yearFounded: new Date().getFullYear().toString(),
-      companySize: "1 - 10 Members",
-    });
 
     return newUser;
   }
@@ -715,3 +706,4 @@ export class UserService {
 }
 
 export const userService = new UserService();
+
