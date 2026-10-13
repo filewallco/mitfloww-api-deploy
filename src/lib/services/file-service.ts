@@ -110,6 +110,7 @@ import {
 } from "@/lib/uploads/final-storage-keys";
 import {
   cancelWorkerJob,
+  deleteWorkerCachedSource,
   enqueueProcessingJob,
   getWorkerJobStatus,
 } from "@/lib/processing/worker-client";
@@ -1239,6 +1240,7 @@ export class FileService {
       if (version.processingJobId) {
         void cancelWorkerJob(version.processingJobId).catch(() => {});
       }
+      void deleteWorkerCachedSource(version.id, version.storageKey).catch(() => {});
     }
 
     const deletedAt = new Date();
@@ -1416,6 +1418,7 @@ export class FileService {
     if (targetVersion.processingJobId) {
       void cancelWorkerJob(targetVersion.processingJobId).catch(() => {});
     }
+    void deleteWorkerCachedSource(targetVersion.id, targetVersion.storageKey).catch(() => {});
 
     const deletedAt = new Date();
 
@@ -6413,6 +6416,42 @@ export class FileService {
     return resolvedRecord;
   }
 
+  async getActiveProcessingJobs(userId: string) {
+    const versions = await this.repository.findActiveProcessingVersionsByUserId(userId);
+    const results = await Promise.all(
+      versions.map(async (v: any) => {
+        let local: Record<string, any> = {
+          fileId: v.fileId,
+          fileVersionId: v.id,
+          fileName: v.fileName,
+          originalName: v.originalName,
+          jobId: v.processingJobId || "",
+          revisionNumber: v.revisionNumber,
+          status: v.processingStatus,
+          errorCode: v.processingErrorCode,
+          errorMessage: v.processingErrorMessage,
+          queuedAt: v.queuedAt ? v.queuedAt.toISOString() : null,
+          createdAt: v.createdAt.toISOString(),
+        };
+        let worker: any = null;
+        if (v.processingJobId) {
+          worker = await getWorkerJobStatus(v.processingJobId).catch(() => null);
+          if (worker) {
+            local = await this.reconcileJobIfStale(local as any, worker).catch(() => local);
+          }
+        }
+        return {
+          ...local,
+          worker,
+        };
+      }),
+    );
+    return results.filter((job: any) => {
+      const s = String(job.status || "");
+      return s === "queued" || s === "processing" || s === "uploading" || s === "retrying";
+    });
+  }
+
   async getProcessingJobByJobId(jobId: string) {
     const version = await this.repository.findVersionByProcessingJobId(jobId);
 
@@ -6474,7 +6513,8 @@ export class FileService {
 
     if (
       version.processingStatus !== FileProcessingStatus.Failed &&
-      version.processingStatus !== FileProcessingStatus.Corrupt
+      version.processingStatus !== FileProcessingStatus.Corrupt &&
+      version.processingStatus !== FileProcessingStatus.Cancelled
     ) {
       throw new AppError(
         "Only failed files can be retried.",

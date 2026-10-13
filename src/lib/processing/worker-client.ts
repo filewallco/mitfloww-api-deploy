@@ -204,3 +204,28 @@ export async function cancelWorkerJob(jobId: string) {
 
   return payload as { success: boolean };
 }
+
+export async function deleteWorkerCachedSource(fileVersionId: string, sourceKey?: string) {
+  let response: Response;
+  const targetUrl = `${workerBaseUrl()}/sources/delete`;
+
+  try {
+    response = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${workerToken()}`,
+      },
+      body: JSON.stringify({ fileVersionId, sourceKey }),
+      signal: createWorkerRequestSignal(),
+    });
+  } catch (error) {
+    return {
+      success: false,
+      unreachable: true,
+      error: error instanceof Error ? error.message : "Worker unavailable",
+    };
+  }
+
+  return { success: response.ok };
+}

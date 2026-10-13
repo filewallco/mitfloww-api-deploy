@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { FILE_PROCESSING_CALLBACK_STATUSES } from "@/lib/db/schema";
 import { AppError } from "@/lib/errors/app-error";
+import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { fileService } from "@/lib/services/file-service";
 import { getWorkerJobStatus } from "@/lib/processing/worker-client";
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
@@ -67,6 +68,12 @@ function readJobIds(req: any): string[] {
   const unique = Array.from(new Set([...directIds, ...csvIds]));
   return unique.slice(0, MAX_BATCH_JOB_IDS);
 }
+
+fileProcessingRouter.get("/active", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const activeJobs = await fileService.getActiveProcessingJobs(actor.id);
+  return sendSuccess(res, activeJobs);
+}));
 
 fileProcessingRouter.get("/jobs", asyncHandler(async (req, res) => {
   const jobIds = readJobIds(req);
