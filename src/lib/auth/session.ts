@@ -635,7 +635,13 @@ export class SessionService {
   /**
    * Attaches HttpOnly, SameSite, Secure auth cookies to the response.
    */
-  setCookies(res: Response, refreshToken: string, userId?: string, sessionId?: string): void {
+  setCookies(
+    res: Response,
+    refreshToken: string,
+    userId?: string,
+    sessionId?: string,
+    isProfileComplete?: boolean,
+  ): void {
     const isProd = process.env.NODE_ENV === "production";
 
     // Set secure rotating refresh cookie
@@ -650,7 +656,12 @@ export class SessionService {
     // Also set legacy cookie for seamless middleware compatibility during transition
     if (userId) {
       const legacyPayload = Buffer.from(
-        JSON.stringify({ userId, sessionId, exp: Date.now() + REFRESH_TOKEN_EXPIRY_MS }),
+        JSON.stringify({
+          userId,
+          sessionId,
+          isProfileComplete: Boolean(isProfileComplete),
+          exp: Date.now() + REFRESH_TOKEN_EXPIRY_MS,
+        }),
       ).toString("base64url");
       const hmac = crypto
         .createHmac("sha256", SESSION_SECRET)

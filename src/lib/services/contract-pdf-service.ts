@@ -1,5 +1,5 @@
 import { createScopedLogger } from "@/lib/logger";
-import puppeteer, { type Browser } from "puppeteer";
+import { puppeteerManager } from "./puppeteer-manager.js";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fs from "node:fs";
 import {
@@ -14,36 +14,6 @@ export { type ContractPdfData };
 const scopedLogger = createScopedLogger("contract-pdf-service");
 
 export class ContractPdfService {
-  private browserPromise: Promise<Browser> | null = null;
-
-  private async getBrowser(): Promise<Browser> {
-    if (!this.browserPromise) {
-      const executablePath = resolveChromeExecutablePath();
-      this.browserPromise = puppeteer
-        .launch({
-          headless: true,
-          executablePath,
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--font-render-hinting=none",
-          ],
-        })
-        .then((browser) => {
-          browser.on("disconnected", () => {
-            this.browserPromise = null;
-          });
-          return browser;
-        })
-        .catch((err) => {
-          this.browserPromise = null;
-          throw err;
-        });
-    }
-    return this.browserPromise;
-  }
 
   async generatePdfLibFallback(data: ContractPdfData): Promise<Buffer> {
     const pdfDoc = await PDFDocument.create();
@@ -230,15 +200,8 @@ export class ContractPdfService {
     const html = generateContractHtml(data);
 
     try {
-      const browser = await this.getBrowser();
-      const page = await browser.newPage();
-
-      try {
-        await page.setContent(html, {
-          waitUntil: "load",
-        });
-
-        const pdfBuffer = await page.pdf({
+      return await puppeteerManager.generatePdfFromHtml(html, {
+        pdfOptions: {
           format: "A4",
           printBackground: true,
           margin: {
@@ -247,12 +210,8 @@ export class ContractPdfService {
             left: "14mm",
             right: "14mm",
           },
-        });
-
-        return Buffer.from(pdfBuffer);
-      } finally {
-        await page.close().catch(() => {});
-      }
+        },
+      });
     } catch (puppeteerError) {
       scopedLogger.warn(
         "Puppeteer contract PDF generation failed, falling back to pdf-lib",

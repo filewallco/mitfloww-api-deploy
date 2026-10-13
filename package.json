@@ -8,7 +8,8 @@
     "build": "tsup src/index.ts --format esm --clean",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit --skipLibCheck",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "start:cluster": "node --env-file=.env -e \"process.env.NODE_CLUSTER='true'; import('./dist/index.js')\""
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1045.0",

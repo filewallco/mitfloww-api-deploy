@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { sessionService, REFRESH_COOKIE_NAME } from "@/lib/auth/session";
-import { authService } from "@/lib/services/auth-service";
+import { authService, isUserProfileComplete } from "@/lib/services/auth-service";
 import { asyncHandler } from "@/lib/api/route";
 
 export const authRouter = Router();
@@ -88,12 +88,13 @@ authRouter.post(
       meta: getRequestMeta(req),
     });
 
-    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id, undefined, result.isProfileComplete);
 
     return res.status(201).json({
       accessToken: result.accessToken,
       user: result.user,
       isNewUser: result.isNewUser,
+      isProfileComplete: result.isProfileComplete,
     });
   }),
 );
@@ -116,7 +117,7 @@ authRouter.post(
     });
 
     if (result.refreshToken && result.user) {
-      sessionService.setCookies(res, result.refreshToken, result.user.id);
+      sessionService.setCookies(res, result.refreshToken, result.user.id, undefined, result.isProfileComplete);
     }
 
     return res.json(result);
@@ -144,11 +145,12 @@ authRouter.post(
       return res.json(result);
     }
 
-    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id, undefined, result.isProfileComplete);
 
     return res.json({
       accessToken: result.accessToken,
       user: result.user,
+      isProfileComplete: result.isProfileComplete,
     });
   }),
 );
@@ -190,12 +192,13 @@ authRouter.post(
       return res.json(result);
     }
 
-    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id, undefined, result.isProfileComplete);
 
     return res.json({
       accessToken: result.accessToken,
       user: result.user,
       isNewUser: result.isNewUser,
+      isProfileComplete: result.isProfileComplete,
     });
   }),
 );
@@ -220,12 +223,13 @@ authRouter.post(
       return res.json(result);
     }
 
-    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id, undefined, result.isProfileComplete);
 
     return res.json({
       accessToken: result.accessToken,
       user: result.user,
       isNewUser: result.isNewUser,
+      isProfileComplete: result.isProfileComplete,
     });
   }),
 );
@@ -242,11 +246,12 @@ authRouter.post(
     }
 
     const result = await authService.reactivateAccount(parsed.data.email, getRequestMeta(req));
-    sessionService.setCookies(res, result.refreshToken!, result.user!.id);
+    sessionService.setCookies(res, result.refreshToken!, result.user!.id, undefined, result.isProfileComplete);
 
     return res.json({
       accessToken: result.accessToken,
       user: result.user,
+      isProfileComplete: result.isProfileComplete,
       message: "Account reactivated successfully.",
     });
   }),
@@ -315,11 +320,13 @@ authRouter.post(
     }
 
     const result = await sessionService.rotateSession(refreshToken, getRequestMeta(req));
-    sessionService.setCookies(res, result.refreshToken, result.user.id);
+    const isProfileComplete = isUserProfileComplete(result.user);
+    sessionService.setCookies(res, result.refreshToken, result.user.id, undefined, isProfileComplete);
 
     return res.json({
       accessToken: result.accessToken,
       user: result.user,
+      isProfileComplete,
     });
   }),
 );
@@ -376,7 +383,12 @@ authRouter.post(
     }
 
     const updated = await authService.updateOnboardingStep(actor.id, parsed.data.step);
-    return res.json({ user: updated });
+    const isProfileComplete = isUserProfileComplete(updated);
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME];
+    if (refreshToken) {
+      sessionService.setCookies(res, refreshToken, actor.id, (req as any).authenticatedSessionId, isProfileComplete);
+    }
+    return res.json({ user: updated, isProfileComplete });
   }),
 );
 

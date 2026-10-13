@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { CreditPlanKey } from "@/lib/credits";
 import { UnauthorizedAppError } from "@/lib/errors/app-error";
 import { userService } from "@/lib/services/user-service";
+import { isUserProfileComplete } from "@/lib/services/auth-service";
 import { sessionService, REFRESH_COOKIE_NAME, LEGACY_SESSION_COOKIE_NAME } from "./session";
 
 export const actorStorage = new AsyncLocalStorage<{ userId: string; sessionId?: string }>();
@@ -13,6 +14,8 @@ export type ActiveActor = {
   avatarUrl?: string | null;
   plan: CreditPlanKey;
   clientShareLinkExpiryDays: number;
+  onboardingStep: number;
+  isProfileComplete: boolean;
 };
 
 /**
@@ -69,5 +72,7 @@ export async function resolveActiveActor(req?: {
     avatarUrl: user.avatarUrl,
     plan: user.planKey as CreditPlanKey,
     clientShareLinkExpiryDays: user.clientShareLinkExpiryDays,
+    onboardingStep: user.onboardingStep,
+    isProfileComplete: isUserProfileComplete(user),
   };
 }

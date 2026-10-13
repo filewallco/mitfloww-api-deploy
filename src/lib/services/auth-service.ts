@@ -19,11 +19,27 @@ import { sessionService } from "@/lib/auth/session";
 import { verifyGoogleIdToken } from "@/lib/auth/google";
 import { emailService } from "@/lib/email/email-service";
 
+export function isUserProfileComplete(user: {
+  onboardingStep?: number | null;
+  firstName?: string | null;
+  displayName?: string | null;
+  phone?: string | null;
+} | null | undefined): boolean {
+  if (!user) return false;
+  if (typeof user.onboardingStep === "number" && user.onboardingStep >= 3) {
+    return true;
+  }
+  const hasName = Boolean(user.firstName?.trim() || user.displayName?.trim());
+  const hasPhone = Boolean(user.phone?.trim());
+  return hasName && hasPhone;
+}
+
 export type AuthResult = {
   accessToken?: string;
   refreshToken?: string;
   user?: UserRecord;
   isNewUser?: boolean;
+  isProfileComplete?: boolean;
   requiresReactivation?: boolean;
   status?: "deactivated" | "scheduled_for_deletion";
   deactivatedAt?: string;
@@ -164,20 +180,7 @@ export class AuthService {
       throw new AppError("Please enter a valid email address.", 400, "invalid_email");
     }
 
-    // Check if user already exists and has an active password
-    const [existing] = await db
-      .select()
-      .from(users)
-      .where(and(eq(users.email, normalizedEmail), isNull(users.deletedAt)))
-      .limit(1);
-
-    if (existing && existing.passwordHash) {
-      throw new AppError(
-        "An account with this email already exists. Please log in instead.",
-        400,
-        "account_exists",
-      );
-    }
+    // Existing users are allowed to complete OTP verification; no early error thrown
 
     const { otp } = await otpService.createChallenge(normalizedEmail, "SIGNUP_VERIFICATION");
     await emailService.sendSignupOtpEmail(normalizedEmail, otp);
@@ -199,6 +202,7 @@ export class AuthService {
   }): Promise<{
     isValid: boolean;
     isExistingUser?: boolean;
+    isProfileComplete?: boolean;
     accessToken?: string;
     refreshToken?: string;
     user?: UserRecord;
@@ -284,6 +288,7 @@ export class AuthService {
       return {
         isValid: true,
         isExistingUser: true,
+        isProfileComplete: isUserProfileComplete(existingUser),
         accessToken,
         refreshToken,
         user: existingUser,
@@ -391,6 +396,7 @@ export class AuthService {
       refreshToken,
       user,
       isNewUser,
+      isProfileComplete: isUserProfileComplete(user),
     };
   }
 
@@ -474,6 +480,7 @@ export class AuthService {
       accessToken,
       refreshToken,
       user,
+      isProfileComplete: isUserProfileComplete(user),
     };
   }
 
@@ -585,6 +592,7 @@ export class AuthService {
       accessToken,
       refreshToken,
       user,
+      isProfileComplete: isUserProfileComplete(user),
     };
   }
 
@@ -728,6 +736,7 @@ export class AuthService {
       refreshToken,
       user,
       isNewUser,
+      isProfileComplete: isUserProfileComplete(user),
     };
   }
 

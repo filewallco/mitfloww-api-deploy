@@ -1,5 +1,6 @@
 import { createScopedLogger } from "@/lib/logger";
-import puppeteer, { type Browser } from "puppeteer";
+import { puppeteerManager, resolveChromeExecutablePath } from "./puppeteer-manager.js";
+export { resolveChromeExecutablePath };
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import fs from "node:fs";
 import { generateInvoiceHtml, type InvoiceLineItem, type InvoiceRenderData } from "./invoice-html-renderer.js";
@@ -68,74 +69,10 @@ export interface InvoicePdfData {
   };
 }
 
-export function resolveChromeExecutablePath(): string | undefined {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  }
-  if (process.env.CHROME_BIN && fs.existsSync(process.env.CHROME_BIN)) {
-    return process.env.CHROME_BIN;
-  }
-
-  const candidates = [
-    // Windows Chrome
-    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-    // Windows Edge
-    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-    "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-    // Linux
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-    "/snap/bin/chromium",
-    // macOS
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  return undefined;
-}
 
 const scopedLogger = createScopedLogger("invoice-pdf-service");
 
 export class InvoicePdfService {
-  private browserPromise: Promise<Browser> | null = null;
-
-  private async getBrowser(): Promise<Browser> {
-    if (!this.browserPromise) {
-      const executablePath = resolveChromeExecutablePath();
-      this.browserPromise = puppeteer
-        .launch({
-          headless: true,
-          executablePath,
-          args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--font-render-hinting=none",
-          ],
-        })
-        .then((browser) => {
-          browser.on("disconnected", () => {
-            this.browserPromise = null;
-          });
-          return browser;
-        })
-        .catch((err) => {
-          this.browserPromise = null;
-          throw err;
-        });
-    }
-    return this.browserPromise;
-  }
 
   async generatePdfLibFallback(
     data: InvoicePdfData,
@@ -574,25 +511,14 @@ export class InvoicePdfService {
     const paperConfig = INVOICE_PAPER_CONFIG[paperKey] || INVOICE_PAPER_CONFIG.a4;
 
     try {
-      const browser = await this.getBrowser();
-      const page = await browser.newPage();
-
-      try {
-        await page.setViewport({
+      return await puppeteerManager.generatePdfFromHtml(html, {
+        viewport: {
           width: paperConfig.width,
           height: paperConfig.height,
           deviceScaleFactor: 2, // High resolution crisp text
-        });
-
-        await page.setContent(html, {
-          waitUntil: "load",
-          timeout: 30000,
-        });
-
-        // Explicitly wait for Google Fonts to be loaded into Chromium's font cache!
-        await page.evaluate(() => { const doc = (globalThis as any).document; return doc?.fonts?.ready ?? Promise.resolve(); });
-
-        const pdfBuffer = await page.pdf({
+        },
+        waitForFonts: true,
+        pdfOptions: {
           format: paperConfig.pdfFormat,
           printBackground: true,
           preferCSSPageSize: true,
@@ -602,12 +528,8 @@ export class InvoicePdfService {
             bottom: 0,
             left: 0,
           },
-        });
-
-        return Buffer.from(pdfBuffer);
-      } finally {
-        await page.close().catch(() => {});
-      }
+        },
+      });
     } catch (browserError) {
       scopedLogger.warn("Puppeteer launch failed (expected on serverless). Generating with pdf-lib fallback", { err: browserError });
       return await this.generatePdfLibFallback(data, lineItems);
