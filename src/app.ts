@@ -179,3 +179,4 @@ app.use("/api", api);
 
 // Global error handler
 app.use(errorHandler);
+export default app;

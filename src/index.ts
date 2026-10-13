@@ -12,21 +12,15 @@ import { puppeteerManager } from "./lib/services/puppeteer-manager";
 const PORT = parseInt(process.env.PORT || "4001", 10);
 const HOST = "0.0.0.0";
 
-// Clustering is enabled when NODE_CLUSTER is "true", or in production unless explicitly set to "false"
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+
+// Clustering is only enabled for long-running Node processes, NEVER in serverless/Vercel
 const isClusterEnabled =
-  process.env.NODE_CLUSTER === "true" ||
-  (process.env.NODE_ENV === "production" && process.env.NODE_CLUSTER !== "false");
+  !isServerless &&
+  (process.env.NODE_CLUSTER === "true" ||
+    (process.env.NODE_ENV === "production" && process.env.NODE_CLUSTER !== "false"));
 
-const availableCpus =
-  typeof os.availableParallelism === "function"
-    ? os.availableParallelism()
-    : os.cpus().length;
-
-const workerCount = process.env.WEB_CONCURRENCY
-  ? parseInt(process.env.WEB_CONCURRENCY, 10)
-  : Math.max(1, Math.min(availableCpus, 8)); // clamp to 8 max by default to balance RAM & throughput
-
-if (isClusterEnabled && cluster.isPrimary) {
+if (!isServerless && isClusterEnabled && cluster.isPrimary) {
   // --- PRIMARY (MASTER) PROCESS ---
   try {
     const execPath = process.argv[1] || fileURLToPath(import.meta.url);
@@ -36,6 +30,15 @@ if (isClusterEnabled && cluster.isPrimary) {
   } catch {}
   initLogDbSink(pool);
 
+  const availableCpus =
+    typeof os.availableParallelism === "function"
+      ? os.availableParallelism()
+      : os.cpus().length;
+
+  const workerCount = process.env.WEB_CONCURRENCY
+    ? parseInt(process.env.WEB_CONCURRENCY, 10)
+    : Math.max(1, Math.min(availableCpus, 8));
+
   logger.info(`[MitFloww Cluster] Primary process PID ${process.pid} orchestrating ${workerCount} workers across ${availableCpus} CPU cores`, {
     availableCpus,
     workerCount,
@@ -44,12 +47,10 @@ if (isClusterEnabled && cluster.isPrimary) {
 
   console.log(`[MitFloww Cluster] Primary PID ${process.pid} orchestrating ${workerCount} workers across ${availableCpus} CPU cores`);
 
-  // Fork initial worker processes
   for (let i = 0; i < workerCount; i++) {
     cluster.fork();
   }
 
-  // Periodic stale job reconciliation (runs ONLY on Primary process to prevent duplicate DB writes across workers)
   const staleJobTimer = setInterval(() => {
     fileService
       .reconcileStaleProcessingVersions()
@@ -60,14 +61,12 @@ if (isClusterEnabled && cluster.isPrimary) {
 
   let isShuttingDown = false;
 
-  // Self-healing: automatically fork replacement if a worker exits unexpectedly
   cluster.on("exit", (worker, code, signal) => {
     if (isShuttingDown) return;
     logger.warn(`[MitFloww Cluster] Worker PID ${worker.process.pid} exited (code: ${code}, signal: ${signal}). Spawning replacement...`);
     cluster.fork();
   });
 
-  // Graceful shutdown on Primary process
   const handlePrimaryShutdown = async (signal: string) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
@@ -86,8 +85,8 @@ if (isClusterEnabled && cluster.isPrimary) {
   process.on("SIGTERM", () => void handlePrimaryShutdown("SIGTERM"));
   process.on("SIGINT", () => void handlePrimaryShutdown("SIGINT"));
 
-} else {
-  // --- WORKER PROCESS (OR SINGLE-PROCESS MODE IN DEV) ---
+} else if (!isServerless) {
+  // --- WORKER PROCESS OR LOCAL DEV (LONG-RUNNING SERVER) ---
   initLogDbSink(pool);
 
   let staleJobTimer: NodeJS.Timeout | null = null;
@@ -103,7 +102,6 @@ if (isClusterEnabled && cluster.isPrimary) {
 
     console.log(`[MitFloww API] Server running on http://${HOST}:${PORT} [${processTag}] (operational & error logs routed to logs/ & database)`);
 
-    // In single-process mode, run the stale job reconciliation
     if (!isClusterEnabled) {
       staleJobTimer = setInterval(() => {
         fileService
@@ -126,4 +124,10 @@ if (isClusterEnabled && cluster.isPrimary) {
       await puppeteerManager.close().catch(() => {});
     },
   });
+} else {
+  // --- SERVERLESS / VERCEL ENVIRONMENT ---
+  initLogDbSink(pool);
 }
+
+export { app };
+export default app;
