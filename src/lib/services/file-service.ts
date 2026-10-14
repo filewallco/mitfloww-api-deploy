@@ -6425,6 +6425,8 @@ export class FileService {
           fileVersionId: v.id,
           fileName: v.fileName,
           originalName: v.originalName,
+          projectId: v.projectId,
+          projectName: v.projectName,
           jobId: v.processingJobId || "",
           revisionNumber: v.revisionNumber,
           status: v.processingStatus,
@@ -6464,10 +6466,18 @@ export class FileService {
       throw new NotFoundAppError("Processing job not found.");
     }
 
+    let projectName: string | null = null;
+    if (file.projectId) {
+      const p = await this.projectRepository.findById(file.projectId).catch(() => null);
+      projectName = p?.title ?? null;
+    }
+
     return {
       fileId: version.fileId,
       fileVersionId: version.id,
       jobId,
+      projectId: file.projectId,
+      projectName,
       revisionNumber: version.revisionNumber,
       status: version.processingStatus,
       errorCode: version.processingErrorCode,

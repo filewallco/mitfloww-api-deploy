@@ -736,12 +736,14 @@ export class DrizzleFileRepository implements FileRepository {
 
   async findActiveProcessingVersionsByUserId(
     userId: string,
-  ): Promise<Array<FileVersionRecord & { fileName: string }>> {
+  ): Promise<Array<FileVersionRecord & { fileName: string; projectId: string; projectName: string }>> {
     const records = await db
       .select({
         id: fileVersions.id,
         fileId: fileVersions.fileId,
         fileName: files.name,
+        projectId: files.projectId,
+        projectName: projects.title,
         revisionNumber: fileVersions.revisionNumber,
         revisionDescription: fileVersions.revisionDescription,
         revisionDescriptionSourceLocale:
