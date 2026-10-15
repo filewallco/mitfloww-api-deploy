@@ -47,15 +47,8 @@ function replaceTemplate(
   );
 }
 
-function getNotificationProjectSuffix(locale: AppLocale, projectTitle: string) {
-  if (!projectTitle) {
-    return "";
-  }
-
-  const messages = getMessages(locale).common;
-  return replaceTemplate(messages.notificationProjectSuffix, {
-    projectTitle,
-  });
+function getNotificationProjectSuffix(_locale: AppLocale, _projectTitle: string) {
+  return "";
 }
 
 function resolveNotificationText(input: {
@@ -174,12 +167,14 @@ function resolveNotificationText(input: {
 function toNotificationDTO(
   notification: NotificationRecord,
   text: { description: string; title: string },
+  context?: { fileName?: string | null; projectName?: string | null },
 ): NotificationDTO {
   return {
     category: notification.category,
     createdAt: notification.createdAt.toISOString(),
     description: text.description,
     fileId: notification.fileId,
+    fileName: context?.fileName ?? null,
     href: notification.fileId && notification.projectId
       ? `/projects/${notification.projectId}/files/${notification.fileId}`
       : notification.projectId
@@ -188,6 +183,7 @@ function toNotificationDTO(
     id: notification.id,
     metadata: notification.metadata,
     projectId: notification.projectId,
+    projectName: context?.projectName ?? null,
     read: notification.readAt != null,
     readAt: notification.readAt?.toISOString() ?? null,
     title: text.title,
@@ -363,8 +359,15 @@ export class NotificationService {
     const dependencies = await this.resolveNotificationDependencies(records);
     const rawTextById = this.resolveNotificationRawText(records);
 
-    return records.map((record) =>
-      toNotificationDTO(
+    return records.map((record) => {
+      const fileName = record.fileId
+        ? dependencies.fileNamesById.get(record.fileId) ?? null
+        : null;
+      const projectName = record.projectId
+        ? dependencies.projectTitlesById.get(record.projectId) ?? null
+        : null;
+
+      return toNotificationDTO(
         record,
         resolveNotificationText({
           dependencies,
@@ -372,8 +375,9 @@ export class NotificationService {
           notification: record,
           rawTextById,
         }),
-      ),
-    );
+        { fileName, projectName },
+      );
+    });
   }
 
   private async resolveNotificationDependencies(

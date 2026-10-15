@@ -84,38 +84,38 @@ export const enMessages: AppMessages = {
     markAllAsRead: "Mark all as read",
     notificationRead: "Read",
     notificationUnread: "Unread",
-    notificationProjectSuffix: " ({projectTitle})",
+    notificationProjectSuffix: "",
     notificationFileFallbackLabel: "This file",
     notificationFileProcessingCompletedTitle: "File processing completed",
     notificationFileProcessingFailedTitle: "File processing failed",
     notificationFileProcessingCompletedDescription:
-      "{fileName} finished processing successfully{projectSuffix}.",
+      "{fileName} finished processing successfully.",
     notificationFileProcessingFailedDescription:
-      "{fileName} could not be processed successfully{projectSuffix}.",
+      "{fileName} could not be processed successfully.",
     notificationFileProcessingStartFailedDescription:
-      "{fileName} could not start processing{projectSuffix}.",
+      "{fileName} could not start processing.",
     notificationClientRevisionMessageTitle: "Client sent a revision message",
     notificationClientRevisionMessageDescription:
-      "A client sent a new revision message for {fileName}{projectSuffix}.",
+      "A client sent a new revision message for {fileName}.",
     notificationClientRevisionReportedTitle: "Client reported a revision",
     notificationClientRevisionReportedDescription:
-      "A client reported {fileName} for review{projectSuffix}.",
+      "A client reported {fileName} for review.",
     notificationClientFinalDraftReportedTitle:
       "Client reported the final draft",
     notificationClientFinalDraftReportedDescription:
-      "A client reported the final draft for {fileName}{projectSuffix}.",
+      "A client reported the final draft for {fileName}.",
     notificationClientRevisionApprovedTitle: "Client approved a revision",
     notificationClientRevisionApprovedDescription:
-      "{fileName} was approved from the shared client review{projectSuffix}.",
+      "{fileName} was approved from the shared client review.",
     notificationClientApprovalCanceledTitle: "Client canceled approval",
     notificationClientApprovalCanceledDescription:
-      "Approval was canceled for {fileName} from the shared client review{projectSuffix}.",
+      "Approval was canceled for {fileName} from the shared client review.",
     notificationClientPaymentCompletedTitle: "Client completed payment",
     notificationClientPaymentCompletedDescription:
-      "The client completed payment for your project{projectSuffix}.",
+      "The client completed payment for your project.",
     notificationClientReviewSubmittedTitle: "Client submitted a review",
     notificationClientReviewSubmittedDescription:
-      "The client left a review for your project{projectSuffix}.",
+      "The client left a review for your project.",
     loadFailedTitle: "Couldn't load this yet",
     loadFailedDescription: "Please try again in a moment.",
     "errors.unexpected": "Something went wrong. Please try again.",

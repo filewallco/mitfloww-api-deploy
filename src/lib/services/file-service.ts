@@ -6487,7 +6487,7 @@ export class FileService {
     };
   }
 
-  async retryProcessingVersion(versionId: string, options?: { resetAttempts?: boolean }) {
+  async retryProcessingVersion(versionId: string, options?: { resetAttempts?: boolean; force?: boolean }) {
     const version = await this.repository.findVersionById(versionId);
 
     if (!version) {
@@ -6509,10 +6509,11 @@ export class FileService {
     }
 
     if (
-      version.processingStatus === FileProcessingStatus.Queued ||
-      version.processingStatus === FileProcessingStatus.Processing ||
-      version.processingStatus === FileProcessingStatus.Uploading ||
-      version.processingStatus === FileProcessingStatus.Retrying
+      !options?.force &&
+      (version.processingStatus === FileProcessingStatus.Queued ||
+        version.processingStatus === FileProcessingStatus.Processing ||
+        version.processingStatus === FileProcessingStatus.Uploading ||
+        version.processingStatus === FileProcessingStatus.Retrying)
     ) {
       throw new AppError(
         "File processing is already in progress.",
@@ -6945,14 +6946,29 @@ export class FileService {
 
     // Check if worker already reported a terminal outcome
     if (workerStatus) {
-      if (workerStatus.status === FileProcessingStatus.Completed && workerStatus.output) {
+      if (workerStatus.status === FileProcessingStatus.Completed) {
+        const processedOutput = workerStatus.output || workerStatus.processed || {
+          bucket: version.storageBucket,
+          key: buildProcessedStorageKey({
+            originalStorageKey: version.storageKey,
+            originalName: version.originalName,
+            processedExtension: version.extension,
+            revisionNumber: version.revisionNumber,
+          }),
+          mimeType: version.mimeType,
+          extension: version.extension,
+          sizeBytes: version.sizeBytes,
+        };
+
         await this.applyProcessingCallback({
           jobId: local.jobId,
           fileId: local.fileId,
           fileVersionId: local.fileVersionId,
           status: FileProcessingStatus.Completed,
-          processed: workerStatus.output,
-        }).catch(() => {});
+          processed: processedOutput,
+        }).catch((err) => {
+          scopedLogger.error("Failed to apply completed callback during reconciliation", { err });
+        });
         return (await this.getProcessingJobByJobId(local.jobId).catch(() => local)) as T;
       }
 
@@ -7053,7 +7069,7 @@ export class FileService {
     }
 
     try {
-      const retried = await this.retryProcessingVersion(version.id);
+      const retried = await this.retryProcessingVersion(version.id, { force: true });
       return (await this.getProcessingJobByJobId(retried.jobId).catch(() => ({
         ...local,
         jobId: retried.jobId,

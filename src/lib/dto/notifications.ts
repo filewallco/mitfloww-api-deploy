@@ -5,10 +5,12 @@ export type NotificationDTO = {
   createdAt: string;
   description: string;
   fileId: string | null;
+  fileName?: string | null;
   href: string | null;
   id: string;
   metadata: NotificationMetadata;
   projectId: string | null;
+  projectName?: string | null;
   read: boolean;
   readAt: string | null;
   title: string;
