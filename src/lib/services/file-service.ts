@@ -2923,6 +2923,7 @@ export class FileService {
         eventKey: `file-processing:${input.version.id}:${input.version.processingJobId}:${FileProcessingStatus.Failed}`,
         fileId: input.file.id,
         metadata: {
+          fileName: input.file.name,
           jobId: input.version.processingJobId,
           reason: workerFailure.code,
           status: FileProcessingStatus.Failed,
@@ -6392,6 +6393,7 @@ export class FileService {
         eventKey: `file-processing:${input.fileVersionId}:${input.jobId}:${input.status}`,
         fileId: file.id,
         metadata: {
+          fileName: file.name,
           errorCode: input.errorCode ?? null,
           jobId: input.jobId,
           status: input.status,
@@ -6672,6 +6674,7 @@ export class FileService {
         eventKey: `file-processing:${version.id}:${jobId}:${FileProcessingStatus.Failed}`,
         fileId: file.id,
         metadata: {
+          fileName: file.name,
           jobId,
           reason: workerFailure.code,
           status: FileProcessingStatus.Failed,

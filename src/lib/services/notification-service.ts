@@ -70,10 +70,15 @@ function resolveNotificationText(input: {
   }
 
   const messages = getMessages(locale).common;
-  const fileName = notification.fileId
-    ? dependencies.fileNamesById.get(notification.fileId) ??
-      messages.notificationFileFallbackLabel
-    : messages.notificationFileFallbackLabel;
+  const metaFileName =
+    typeof (notification.metadata as Record<string, unknown> | null)?.fileName === "string" &&
+    ((notification.metadata as Record<string, unknown>).fileName as string).trim().length > 0
+      ? ((notification.metadata as Record<string, unknown>).fileName as string).trim()
+      : null;
+  const fileName =
+    (notification.fileId ? dependencies.fileNamesById.get(notification.fileId) : null) ??
+    metaFileName ??
+    messages.notificationFileFallbackLabel;
   const projectTitle = notification.projectId
     ? dependencies.projectTitlesById.get(notification.projectId) ?? ""
     : "";
@@ -360,9 +365,15 @@ export class NotificationService {
     const rawTextById = this.resolveNotificationRawText(records);
 
     return records.map((record) => {
-      const fileName = record.fileId
-        ? dependencies.fileNamesById.get(record.fileId) ?? null
-        : null;
+      const metaFileName =
+        typeof (record.metadata as Record<string, unknown> | null)?.fileName === "string" &&
+        ((record.metadata as Record<string, unknown>).fileName as string).trim().length > 0
+          ? ((record.metadata as Record<string, unknown>).fileName as string).trim()
+          : null;
+      const fileName =
+        (record.fileId ? dependencies.fileNamesById.get(record.fileId) : null) ??
+        metaFileName ??
+        null;
       const projectName = record.projectId
         ? dependencies.projectTitlesById.get(record.projectId) ?? null
         : null;
@@ -416,7 +427,7 @@ export class NotificationService {
 
     if (missingFileIds.length > 0 || missingProjectIds.length > 0) {
       const [fetchedFiles, fetchedProjects] = await Promise.all([
-        Promise.all(missingFileIds.map((id) => this.fileRepository.findById(id))),
+        Promise.all(missingFileIds.map((id) => this.fileRepository.findById(id, { includeDeleted: true }))),
         Promise.all(missingProjectIds.map((id) => this.projectRepository.findById(id))),
       ]);
 
@@ -431,6 +442,19 @@ export class NotificationService {
         if (project) {
           projectTitlesById.set(project.id, project.title);
           entityNameCache.set(`project:${project.id}`, { name: project.title, expiresAt: now + ENTITY_CACHE_TTL_MS });
+        }
+      }
+    }
+
+    for (const record of records) {
+      if (record.fileId && !fileNamesById.has(record.fileId)) {
+        const metaFileName =
+          typeof (record.metadata as Record<string, unknown> | null)?.fileName === "string" &&
+          ((record.metadata as Record<string, unknown>).fileName as string).trim().length > 0
+            ? ((record.metadata as Record<string, unknown>).fileName as string).trim()
+            : null;
+        if (metaFileName) {
+          fileNamesById.set(record.fileId, metaFileName);
         }
       }
     }
