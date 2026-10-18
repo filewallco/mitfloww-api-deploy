@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import {
   files,
   fileVersions,
+  projects,
   storageAccounts,
   storageAccountMutations,
   type StorageAccountMutationRecord,
@@ -85,6 +86,7 @@ export interface StorageRepository {
     accountId: string;
     planKey: CreditPlanKey;
     storageLimitBytes: number;
+    scope?: Pick<CreateStorageAccountInput, "scopeId" | "scopeType">;
   }): Promise<{
     account: StorageAccountRecord;
     extraStorageBytes: number;
@@ -141,7 +143,7 @@ export class DrizzleStorageRepository implements StorageRepository {
   async calculateBootstrappedUsageBytes(
     scope: Pick<CreateStorageAccountInput, "scopeId" | "scopeType">,
   ): Promise<number> {
-    void scope;
+    const userId = scope.scopeId;
 
     const [versionUsage] = await db
       .select({
@@ -149,15 +151,26 @@ export class DrizzleStorageRepository implements StorageRepository {
       })
       .from(fileVersions)
       .innerJoin(files, eq(fileVersions.fileId, files.id))
-      .where(and(isNull(fileVersions.deletedAt), isNull(files.deletedAt)));
+      .innerJoin(projects, eq(files.projectId, projects.id))
+      .where(
+        and(
+          eq(projects.userId, userId),
+          isNull(projects.deletedAt),
+          isNull(files.deletedAt),
+          isNull(fileVersions.deletedAt),
+        ),
+      );
 
     const [legacyUsage] = await db
       .select({
         total: sql<number>`coalesce(sum(${files.sizeBytes}), 0)`,
       })
       .from(files)
+      .innerJoin(projects, eq(files.projectId, projects.id))
       .where(
         and(
+          eq(projects.userId, userId),
+          isNull(projects.deletedAt),
           isNull(files.deletedAt),
           sql`not exists (
             select 1
@@ -251,6 +264,7 @@ export class DrizzleStorageRepository implements StorageRepository {
     accountId: string;
     planKey: CreditPlanKey;
     storageLimitBytes: number;
+    scope?: Pick<CreateStorageAccountInput, "scopeId" | "scopeType">;
   }): Promise<{
     account: StorageAccountRecord;
     extraStorageBytes: number;
@@ -277,11 +291,25 @@ export class DrizzleStorageRepository implements StorageRepository {
       ? new Date(activeAddOns.maxExpiresAt).toISOString()
       : null;
 
+    let actualFilesBytes = 0;
+    if (input.scope) {
+      try {
+        actualFilesBytes = await this.calculateBootstrappedUsageBytes(input.scope);
+      } catch {
+        // Fall back gracefully if error
+      }
+    }
+
     const [account] = await db
       .update(storageAccounts)
       .set({
         planKey: input.planKey,
         storageLimitBytes: input.storageLimitBytes + activeAddOnBytes,
+        ...(actualFilesBytes > 0
+          ? {
+              usedStorageBytes: sql`greatest(${storageAccounts.usedStorageBytes}, ${actualFilesBytes})`,
+            }
+          : {}),
         updatedAt: new Date(),
       })
       .where(eq(storageAccounts.id, input.accountId))

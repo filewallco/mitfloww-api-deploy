@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, gt, lt, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, gt, isNull, lt, or, sql } from "drizzle-orm";
 
 import {
   CreditAccountNotFoundError,
@@ -1154,41 +1154,42 @@ export class DrizzleCreditRepository implements CreditRepository {
     scope: Pick<CreditBillingScope, "scopeId" | "scopeType">,
     now: Date,
   ): Promise<number> {
+    const [account] = await db
+      .select({
+        availablePurchasedCredits: creditAccounts.availablePurchasedCredits,
+      })
+      .from(creditAccounts)
+      .where(
+        and(
+          eq(creditAccounts.scopeId, scope.scopeId),
+          eq(creditAccounts.scopeType, scope.scopeType),
+        ),
+      )
+      .limit(1);
 
     const result = await db
       .select({
         total: sql<number>`
-          COALESCE(SUM(${creditLedgerEntries.credits}),0)
+          COALESCE(SUM(${creditLedgerEntries.credits}), 0)
         `,
       })
       .from(creditLedgerEntries)
       .where(
         and(
-          eq(
-            creditLedgerEntries.scopeId,
-            scope.scopeId,
+          eq(creditLedgerEntries.scopeId, scope.scopeId),
+          eq(creditLedgerEntries.scopeType, scope.scopeType),
+          eq(creditLedgerEntries.source, "purchased_pack"),
+          or(
+            isNull(creditLedgerEntries.expiresAt),
+            gt(creditLedgerEntries.expiresAt, now),
           ),
-
-          eq(
-            creditLedgerEntries.scopeType,
-            scope.scopeType,
-          ),
-
-          eq(
-            creditLedgerEntries.source,
-            "purchased_pack",
-          ),
-
-          gt(
-            creditLedgerEntries.expiresAt,
-            now,
-          ),
+          eq(creditLedgerEntries.isExpired, false),
         ),
       );
 
+    const ledgerTotal = Number(result[0]?.total ?? 0);
+    const accountTotal = Number(account?.availablePurchasedCredits ?? 0);
 
-    return Number(
-      result[0]?.total ?? 0,
-    );
+    return Math.max(ledgerTotal, accountTotal);
   }
 }

@@ -4,6 +4,8 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { CREDIT_PLAN_KEYS } from "@/lib/credits/config/plans";
 import type { CreditPlanKey } from "@/lib/credits";
 import { userService } from "@/lib/services/user-service";
+import { creditService } from "@/lib/services/credit-service";
+import { storageService } from "@/lib/services/storage-service";
 import { asyncHandler } from "@/lib/api/route";
 
 export const usersRouter = Router();
@@ -45,6 +47,22 @@ usersRouter.put("/me/plan", asyncHandler(async (req, res) => {
   }
 
   const updatedUser = await userService.updateUserPlan(actor.id, planKey as CreditPlanKey);
+
+  try {
+    await creditService.getOrCreateCreditAccountForScope({
+      actorUserId: actor.id,
+      scopeId: actor.id,
+      scopeType: "personal",
+    });
+    await storageService.getOrCreateStorageAccount({
+      actorUserId: actor.id,
+      scopeId: actor.id,
+      scopeType: "personal",
+    });
+  } catch (err) {
+    // Non-fatal if accounts don't exist yet, they will sync on next read
+  }
+
   return res.json({ user: updatedUser });
 }));
 

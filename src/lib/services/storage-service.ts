@@ -84,6 +84,7 @@ export class StorageService {
         accountId: existing.id,
         planKey: creditAccount.planKey,
         storageLimitBytes,
+        scope: resolvedScope,
       });
       return {
         account: synced.account,
