@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, isNull, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 
 import { db } from "@/lib/db/client";
 import { notifications, projects, type NewNotificationRecord, type NotificationRecord } from "@/lib/db/schema";
@@ -53,11 +53,16 @@ export class DrizzleNotificationRepository implements NotificationRepository {
     }
 
     if (options?.userId) {
-      conditions.push(eq(projects.userId, options.userId));
+      conditions.push(
+        or(
+          eq(projects.userId, options.userId),
+          sql`${notifications.metadata}->>'userId' = ${options.userId}`,
+        )!,
+      );
       const query = db
         .select({ count: count() })
         .from(notifications)
-        .innerJoin(projects, eq(projects.id, notifications.projectId));
+        .leftJoin(projects, eq(projects.id, notifications.projectId));
 
       const [result] = await query.where(and(...conditions));
       return Number(result?.count ?? 0);
@@ -83,7 +88,12 @@ export class DrizzleNotificationRepository implements NotificationRepository {
     }
 
     if (params.userId) {
-      conditions.push(eq(projects.userId, params.userId));
+      conditions.push(
+        or(
+          eq(projects.userId, params.userId),
+          sql`${notifications.metadata}->>'userId' = ${params.userId}`,
+        )!,
+      );
       const whereClause = and(...conditions);
 
       const recordsQuery = db
@@ -103,7 +113,7 @@ export class DrizzleNotificationRepository implements NotificationRepository {
           updatedAt: notifications.updatedAt,
         })
         .from(notifications)
-        .innerJoin(projects, eq(projects.id, notifications.projectId))
+        .leftJoin(projects, eq(projects.id, notifications.projectId))
         .where(whereClause)
         .orderBy(desc(notifications.createdAt), desc(notifications.id))
         .limit(params.limit)
@@ -117,7 +127,7 @@ export class DrizzleNotificationRepository implements NotificationRepository {
       const totalQuery = db
         .select({ count: count() })
         .from(notifications)
-        .innerJoin(projects, eq(projects.id, notifications.projectId))
+        .leftJoin(projects, eq(projects.id, notifications.projectId))
         .where(whereClause);
 
       const [records, totalResult] = await Promise.all([
@@ -175,9 +185,13 @@ export class DrizzleNotificationRepository implements NotificationRepository {
         .where(eq(projects.userId, userId));
 
       const projectIds = userProjects.map((p) => p.id);
-      if (projectIds.length === 0) {
-        return 0;
-      }
+
+      const userScopeCondition = projectIds.length > 0
+        ? or(
+            inArray(notifications.projectId, projectIds),
+            sql`${notifications.metadata}->>'userId' = ${userId}`,
+          )
+        : sql`${notifications.metadata}->>'userId' = ${userId}`;
 
       const records = await db
         .update(notifications)
@@ -188,7 +202,7 @@ export class DrizzleNotificationRepository implements NotificationRepository {
         .where(
           and(
             isNull(notifications.readAt),
-            inArray(notifications.projectId, projectIds),
+            userScopeCondition,
           ),
         )
         .returning({ id: notifications.id });
@@ -220,7 +234,16 @@ export class DrizzleNotificationRepository implements NotificationRepository {
         .where(eq(notifications.id, id))
         .limit(1);
 
-      if (!existing || (existing.notification.projectId && existing.projectUserId !== userId)) {
+      if (!existing) {
+        return null;
+      }
+
+      const isProjectOwner = existing.notification.projectId && existing.projectUserId === userId;
+      const isDirectUser =
+        existing.notification.metadata &&
+        (existing.notification.metadata as Record<string, unknown>).userId === userId;
+
+      if (!isProjectOwner && !isDirectUser) {
         return null;
       }
     }

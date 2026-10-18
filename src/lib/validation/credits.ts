@@ -67,9 +67,11 @@ export const creditHistoryQueryParamsSchema = z
         }
         return new Date(String(value));
       },
-      z.date({
-        invalid_type_error: "fromDate must be a valid date.",
-      }),
+      z
+        .date({
+          invalid_type_error: "fromDate must be a valid date.",
+        })
+        .optional(),
     ),
 
     toDate: z.preprocess(
@@ -79,9 +81,11 @@ export const creditHistoryQueryParamsSchema = z
         }
         return new Date(String(value));
       },
-      z.date({
-        invalid_type_error: "toDate must be a valid date.",
-      }),
+      z
+        .date({
+          invalid_type_error: "toDate must be a valid date.",
+        })
+        .optional(),
     ),
   })
   .strict();

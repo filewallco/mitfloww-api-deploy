@@ -402,24 +402,13 @@ export class CreditService {
     const { scope: resolvedScope } =
       await this.getOrCreateCreditAccountForScope(scope);
     const pagination = buildPaginationParams(paginationParams);
-    const now = new Date();
-    const monthStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1,
-    );
-    const monthEnd = new Date(
-      now.getFullYear(),
-      now.getMonth()+1,
-      1,
-    );
     const result =
     await this.repository.listLedgerEntries(
       resolvedScope,
       {
         ...pagination,
-        fromDate: monthStart,
-        toDate: monthEnd,
+        fromDate: paginationParams.fromDate ?? new Date(0),
+        toDate: paginationParams.toDate ?? new Date(Date.now() + 86400000),
       },
     );
 

@@ -18,8 +18,10 @@ import {
 import { createScopedLogger } from "@/lib/logger";
 
 const scopedLogger = createScopedLogger("cron-unread-notifications");
-import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { fileService } from "@/lib/services/file-service";
+import { notificationService } from "@/lib/services/notification-service";
+import { CreditLedgerSource, CreditLedgerType } from "@/lib/credits";
 import { PROJECT_FILE_DELETION_LOCK_HOURS } from "@/config/projects";
 import { asyncHandler } from "@/lib/api/route";
 
@@ -43,6 +45,9 @@ cronRouter.get("/cleanup-final-drafts", asyncHandler(async (_req, res) => {
 }));
 
 cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
+  const now = new Date();
+  const oneDayFromNow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
   // 1. Process Storage Add-On Expirations
   const expiredStorage = await db
     .select()
@@ -50,7 +55,7 @@ cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
     .where(
       and(
         eq(storageAccountMutations.isExpired, false),
-        lte(storageAccountMutations.expiresAt, new Date()),
+        lte(storageAccountMutations.expiresAt, now),
       ),
     );
 
@@ -78,6 +83,44 @@ cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
         })
         .where(eq(storageAccounts.id, mut.accountId));
     });
+
+    // In-app notification for storage expired
+    const targetUserId = mut.actorUserId || mut.scopeId;
+    if (targetUserId) {
+      await notificationService.createNotification({
+        category: "system",
+        title: "Extra storage expired",
+        description: "Your purchased extra storage add-on has expired. Your account has returned to the default storage limit.",
+        metadata: { userId: targetUserId, mutationId: mut.id },
+        eventKey: `storage_expired:${mut.id}`,
+      }).catch(() => {});
+    }
+  }
+
+  // 1b. In-App Notification: Extra Storage Expiring in 1 Day (24 hours)
+  const expiringSoonStorage = await db
+    .select()
+    .from(storageAccountMutations)
+    .where(
+      and(
+        eq(storageAccountMutations.isExpired, false),
+        isNotNull(storageAccountMutations.expiresAt),
+        gt(storageAccountMutations.expiresAt, now),
+        lte(storageAccountMutations.expiresAt, oneDayFromNow),
+      ),
+    );
+
+  for (const mut of expiringSoonStorage) {
+    const targetUserId = mut.actorUserId || mut.scopeId;
+    if (targetUserId) {
+      await notificationService.createNotification({
+        category: "system",
+        title: "Extra storage expiring tomorrow",
+        description: "Your purchased extra storage will expire in 24 hours. Manage your files to prevent reaching upload limits.",
+        metadata: { userId: targetUserId, mutationId: mut.id },
+        eventKey: `storage_expiring_soon:${mut.id}`,
+      }).catch(() => {});
+    }
   }
 
   // 2. Process Purchased Credit Expirations
@@ -87,20 +130,52 @@ cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
     .where(
       and(
         eq(creditLedgerEntries.isExpired, false),
-        lte(creditLedgerEntries.expiresAt, new Date()),
+        lte(creditLedgerEntries.expiresAt, now),
       ),
     );
 
   for (const cred of expiredCredits) {
     await db.transaction(async (tx) => {
+      const [account] = await tx
+        .select()
+        .from(creditAccounts)
+        .where(eq(creditAccounts.id, cred.accountId));
+
       if (cred.remainingCredits && cred.remainingCredits > 0) {
+        const balanceBefore = account ? account.availableCredits : 0;
+        const balanceAfter = Math.max(0, balanceBefore - cred.remainingCredits);
+
         await tx
           .update(creditAccounts)
           .set({
-            availableCredits: sql`${creditAccounts.availableCredits} - ${cred.remainingCredits}`,
-            availablePurchasedCredits: sql`${creditAccounts.availablePurchasedCredits} - ${cred.remainingCredits}`,
+            availableCredits: balanceAfter,
+            availablePurchasedCredits: sql`greatest(${creditAccounts.availablePurchasedCredits} - ${cred.remainingCredits}, 0)`,
+            lifetimeExpiredCredits: sql`${creditAccounts.lifetimeExpiredCredits} + ${cred.remainingCredits}`,
           })
           .where(eq(creditAccounts.id, cred.accountId));
+
+        // Insert audit ledger entry for credit expiration to show in billing history
+        await tx.insert(creditLedgerEntries).values({
+          accountId: cred.accountId,
+          scopeType: cred.scopeType,
+          scopeId: cred.scopeId,
+          ownerId: cred.ownerId,
+          actorUserId: cred.actorUserId,
+          type: CreditLedgerType.Expiry,
+          source: CreditLedgerSource.System,
+          descriptionKey: "creditsHistoryActionCreditExpired",
+          credits: -cred.remainingCredits,
+          remainingCredits: 0,
+          isExpired: true,
+          balanceBefore,
+          balanceAfter,
+          idempotencyKey: `credit_expiration:${cred.id}`,
+          metadata: {
+            originalEntryId: cred.id,
+            expiredCredits: cred.remainingCredits,
+          },
+          createdAt: new Date(),
+        });
       }
 
       await tx
@@ -108,6 +183,48 @@ cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
         .set({ isExpired: true, remainingCredits: 0 })
         .where(eq(creditLedgerEntries.id, cred.id));
     });
+
+    // In-app notification for expired credits
+    if (cred.remainingCredits && cred.remainingCredits > 0) {
+      const targetUserId = cred.actorUserId || cred.scopeId;
+      if (targetUserId) {
+        await notificationService.createNotification({
+          category: "system",
+          title: "Credits expired",
+          description: `${cred.remainingCredits} unused purchased credits have expired.`,
+          metadata: { userId: targetUserId, entryId: cred.id },
+          eventKey: `credits_expired:${cred.id}`,
+        }).catch(() => {});
+      }
+    }
+  }
+
+  // 2b. In-App Notification: Credits Expiring in 1 Day (24 hours)
+  const expiringSoonCredits = await db
+    .select()
+    .from(creditLedgerEntries)
+    .where(
+      and(
+        eq(creditLedgerEntries.isExpired, false),
+        eq(creditLedgerEntries.source, "purchased_pack"),
+        isNotNull(creditLedgerEntries.expiresAt),
+        gt(creditLedgerEntries.expiresAt, now),
+        lte(creditLedgerEntries.expiresAt, oneDayFromNow),
+        sql`COALESCE(${creditLedgerEntries.remainingCredits}, 0) > 0`,
+      ),
+    );
+
+  for (const cred of expiringSoonCredits) {
+    const targetUserId = cred.actorUserId || cred.scopeId;
+    if (targetUserId && cred.remainingCredits) {
+      await notificationService.createNotification({
+        category: "system",
+        title: "Credits expiring tomorrow",
+        description: `You have ${cred.remainingCredits} purchased credits expiring in 24 hours.`,
+        metadata: { userId: targetUserId, entryId: cred.id },
+        eventKey: `credits_expiring_soon:${cred.id}`,
+      }).catch(() => {});
+    }
   }
 
   // 3. Process Monthly Credit Refresh
@@ -130,58 +247,13 @@ cronRouter.get("/process-expirations", asyncHandler(async (_req, res) => {
     }
   }
 
-  // 4. Process Plan/Storage Expirations Email Alerts (3 days before expiration)
-  const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
-  const expiringStorage = await db
-    .select({
-      id: storageAccountMutations.id,
-      expiresAt: storageAccountMutations.expiresAt,
-      scopeId: storageAccountMutations.scopeId,
-      actorUserId: storageAccountMutations.actorUserId,
-    })
-    .from(storageAccountMutations)
-    .where(
-      and(
-        eq(storageAccountMutations.isExpired, false),
-        isNotNull(storageAccountMutations.expiresAt),
-        lte(storageAccountMutations.expiresAt, threeDaysFromNow),
-      ),
-    );
-
-  const notifiedUserIds = new Set<string>();
-  const appUrl = process.env.APP_URL || "https://mitfloww.com";
-
-  for (const mut of expiringStorage) {
-    const userId = mut.actorUserId || mut.scopeId;
-    if (!userId || notifiedUserIds.has(userId) || !mut.expiresAt) continue;
-    notifiedUserIds.add(userId);
-
-    const [user] = await db
-      .select({ email: users.email, displayName: users.displayName, firstName: users.firstName, planKey: users.planKey })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    if (user?.email) {
-      const daysRemaining = Math.max(1, Math.ceil((mut.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
-      const expiryDateFormatted = mut.expiresAt.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-      emailService.sendPlanExpiringEmail({
-        userEmail: user.email,
-        userName: user.displayName || user.firstName || undefined,
-        planName: user.planKey ? user.planKey.toUpperCase() : "Storage",
-        expiryDateFormatted,
-        daysRemaining,
-        renewUrl: `${appUrl}/settings`,
-      }).catch(() => {});
-    }
-  }
-
   return res.json({
     success: true,
     processedStorage: expiredStorage.length,
+    expiringStorageNotifications: expiringSoonStorage.length,
     processedCredits: expiredCredits.length,
+    expiringCreditsNotifications: expiringSoonCredits.length,
     refreshedAccounts: refreshCount,
-    expiringAlertsSent: notifiedUserIds.size,
   });
 }));
 
