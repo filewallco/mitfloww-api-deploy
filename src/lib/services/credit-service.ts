@@ -2,6 +2,7 @@ import {
   calculateFeatureCreditCost,
   CREDIT_EXPIRY_POLICIES,
   CREDIT_PLANS,
+  fromCreditPlanKeyDbValue,
   getCreditFeatureQuoteMessage,
   getCreditMultiplierForCurrency,
   getCreditRegionForCurrency,
@@ -42,6 +43,7 @@ import {
   type CreditRepository,
 } from "@/lib/repositories/credit-repository";
 import { resolveActiveActor } from "../auth/active-actor";
+import { userService } from "./user-service";
 import { findTestimonialTemplateById } from "@/lib/testimonials/testimonial-templates";
 
 
@@ -49,8 +51,9 @@ function addDays(baseDate: Date, days: number) {
   return new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-function resolvePlanDisplayName(planKey: CreditPlanKey) {
-  return CREDIT_PLANS[planKey].displayName;
+function resolvePlanDisplayName(planKey: CreditPlanKey | unknown) {
+  const key = fromCreditPlanKeyDbValue(planKey);
+  return CREDIT_PLANS[key]?.displayName ?? "Free";
 }
 
 function buildInitialGrantIdempotencyKey(
@@ -312,14 +315,26 @@ export class CreditService {
   async getOrCreateCreditAccountForScope(scope?: CreditBillingScope) {
     const resolvedScope = scope ?? (await resolveCreditBillingScope());
     const now = new Date();
-    const planKey = (await resolveActiveActor()).plan;
+    let planKey: CreditPlanKey;
+    if (scope?.actorUserId) {
+      try {
+        const u = await userService.getUser(scope.actorUserId);
+        planKey = fromCreditPlanKeyDbValue(u.planKey);
+      } catch {
+        planKey = (await resolveActiveActor()).plan;
+      }
+    } else {
+      planKey = (await resolveActiveActor()).plan;
+    }
 
     const existing = await this.repository.getAccountByScope(resolvedScope);
 
     if (existing) {
       if (existing.planKey !== planKey) {
         const newMonthlyCredits = getPlanMonthlyCredits(planKey);
-        const newAvailableCredits = Math.max(0, newMonthlyCredits - existing.currentUsedCredits);
+        const newAvailableCredits =
+          Math.max(0, newMonthlyCredits - existing.currentUsedCredits) +
+          (existing.availablePurchasedCredits ?? 0);
 
         const synced = await this.repository.syncAccountLimits({
           accountId: existing.id,
@@ -397,7 +412,7 @@ export class CreditService {
    */
   async getCreditHistory(
     scope: CreditBillingScope | undefined,
-    paginationParams: CreditHistoryPaginationParams,
+    paginationParams: Omit<CreditHistoryPaginationParams, "fromDate" | "toDate"> & { fromDate?: Date; toDate?: Date },
   ): Promise<PaginatedResult<CreditHistoryEntryDTO>> {
     const { scope: resolvedScope } =
       await this.getOrCreateCreditAccountForScope(scope);

@@ -142,6 +142,203 @@ function buildSqlStringList(values: readonly string[]) {
   return sql.raw(values.map((value) => `'${value}'`).join(","));
 }
 
+
+export const PROJECT_CONTRACT_STATUSES = ["none", "accepted", "pending"] as const;
+export type ProjectContractStatus = (typeof PROJECT_CONTRACT_STATUSES)[number];
+
+export const ProjectContractStatus = {
+  None: PROJECT_CONTRACT_STATUSES[0],
+  Accepted: PROJECT_CONTRACT_STATUSES[1],
+  Pending: PROJECT_CONTRACT_STATUSES[2],
+} as const satisfies Record<string, ProjectContractStatus>;
+
+export const PROJECT_CONTRACT_STATUS_DB_VALUES = [0, 1, 2] as const;
+export type ProjectContractStatusDbValue = (typeof PROJECT_CONTRACT_STATUS_DB_VALUES)[number];
+
+export const ProjectContractStatusDb = {
+  None: 0,
+  Accepted: 1,
+  Pending: 2,
+} as const;
+
+export function toProjectContractStatusDbValue(status: unknown): ProjectContractStatusDbValue {
+  if (status === ProjectContractStatus.None || status === 0 || status === "none") return ProjectContractStatusDb.None;
+  if (status === ProjectContractStatus.Accepted || status === 1 || status === "accepted") return ProjectContractStatusDb.Accepted;
+  if (status === ProjectContractStatus.Pending || status === 2 || status === "pending") return ProjectContractStatusDb.Pending;
+  return ProjectContractStatusDb.None;
+}
+
+export function fromProjectContractStatusDbValue(value: unknown): ProjectContractStatus {
+  if (typeof value === "string" && (PROJECT_CONTRACT_STATUSES as readonly string[]).includes(value)) {
+    return value as ProjectContractStatus;
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case ProjectContractStatusDb.None:
+      return ProjectContractStatus.None;
+    case ProjectContractStatusDb.Accepted:
+      return ProjectContractStatus.Accepted;
+    case ProjectContractStatusDb.Pending:
+      return ProjectContractStatus.Pending;
+    default:
+      return ProjectContractStatus.None;
+  }
+}
+
+const projectContractStatus = customType<{
+  data: ProjectContractStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toProjectContractStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromProjectContractStatusDbValue(value);
+  },
+});
+
+const DEFAULT_PROJECT_CONTRACT_STATUS =
+  toProjectContractStatusDbValue(ProjectContractStatus.None) as unknown as ProjectContractStatus;
+
+export const PROJECT_CONTRACT_VERSION_STATUSES = ["accepted", "superseded", "revoked"] as const;
+export type ProjectContractVersionStatus = (typeof PROJECT_CONTRACT_VERSION_STATUSES)[number];
+
+export const ProjectContractVersionStatus = {
+  Accepted: PROJECT_CONTRACT_VERSION_STATUSES[0],
+  Superseded: PROJECT_CONTRACT_VERSION_STATUSES[1],
+  Revoked: PROJECT_CONTRACT_VERSION_STATUSES[2],
+} as const satisfies Record<string, ProjectContractVersionStatus>;
+
+export const PROJECT_CONTRACT_VERSION_STATUS_DB_VALUES = [0, 1, 2] as const;
+export type ProjectContractVersionStatusDbValue = (typeof PROJECT_CONTRACT_VERSION_STATUS_DB_VALUES)[number];
+
+export const ProjectContractVersionStatusDb = {
+  Accepted: 0,
+  Superseded: 1,
+  Revoked: 2,
+} as const;
+
+export function toProjectContractVersionStatusDbValue(status: unknown): ProjectContractVersionStatusDbValue {
+  if (status === ProjectContractVersionStatus.Accepted || status === 0 || status === "accepted") return ProjectContractVersionStatusDb.Accepted;
+  if (status === ProjectContractVersionStatus.Superseded || status === 1 || status === "superseded") return ProjectContractVersionStatusDb.Superseded;
+  if (status === ProjectContractVersionStatus.Revoked || status === 2 || status === "revoked") return ProjectContractVersionStatusDb.Revoked;
+  return ProjectContractVersionStatusDb.Accepted;
+}
+
+export function fromProjectContractVersionStatusDbValue(value: unknown): ProjectContractVersionStatus {
+  if (typeof value === "string" && (PROJECT_CONTRACT_VERSION_STATUSES as readonly string[]).includes(value)) {
+    return value as ProjectContractVersionStatus;
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case ProjectContractVersionStatusDb.Accepted:
+      return ProjectContractVersionStatus.Accepted;
+    case ProjectContractVersionStatusDb.Superseded:
+      return ProjectContractVersionStatus.Superseded;
+    case ProjectContractVersionStatusDb.Revoked:
+      return ProjectContractVersionStatus.Revoked;
+    default:
+      return ProjectContractVersionStatus.Accepted;
+  }
+}
+
+const projectContractVersionStatus = customType<{
+  data: ProjectContractVersionStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toProjectContractVersionStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromProjectContractVersionStatusDbValue(value);
+  },
+});
+
+const DEFAULT_PROJECT_CONTRACT_VERSION_STATUS =
+  toProjectContractVersionStatusDbValue(ProjectContractVersionStatus.Accepted) as unknown as ProjectContractVersionStatus;
+
+export const PROJECT_CONTRACT_UPDATE_REQUEST_STATUSES = ["pending", "accepted", "rejected", "withdrawn", "cancelled"] as const;
+export type ProjectContractUpdateRequestStatus = (typeof PROJECT_CONTRACT_UPDATE_REQUEST_STATUSES)[number];
+
+export const ProjectContractUpdateRequestStatus = {
+  Pending: PROJECT_CONTRACT_UPDATE_REQUEST_STATUSES[0],
+  Accepted: PROJECT_CONTRACT_UPDATE_REQUEST_STATUSES[1],
+  Rejected: PROJECT_CONTRACT_UPDATE_REQUEST_STATUSES[2],
+  Withdrawn: PROJECT_CONTRACT_UPDATE_REQUEST_STATUSES[3],
+  Cancelled: PROJECT_CONTRACT_UPDATE_REQUEST_STATUSES[4],
+} as const satisfies Record<string, ProjectContractUpdateRequestStatus>;
+
+export const PROJECT_CONTRACT_UPDATE_REQUEST_STATUS_DB_VALUES = [0, 1, 2, 3, 4] as const;
+export type ProjectContractUpdateRequestStatusDbValue = (typeof PROJECT_CONTRACT_UPDATE_REQUEST_STATUS_DB_VALUES)[number];
+
+export const ProjectContractUpdateRequestStatusDb = {
+  Pending: 0,
+  Accepted: 1,
+  Rejected: 2,
+  Withdrawn: 3,
+  Cancelled: 4,
+} as const;
+
+export function toProjectContractUpdateRequestStatusDbValue(status: unknown): ProjectContractUpdateRequestStatusDbValue {
+  if (status === ProjectContractUpdateRequestStatus.Pending || status === 0 || status === "pending") return ProjectContractUpdateRequestStatusDb.Pending;
+  if (status === ProjectContractUpdateRequestStatus.Accepted || status === 1 || status === "accepted") return ProjectContractUpdateRequestStatusDb.Accepted;
+  if (status === ProjectContractUpdateRequestStatus.Rejected || status === 2 || status === "rejected") return ProjectContractUpdateRequestStatusDb.Rejected;
+  if (status === ProjectContractUpdateRequestStatus.Withdrawn || status === 3 || status === "withdrawn") return ProjectContractUpdateRequestStatusDb.Withdrawn;
+  if (status === ProjectContractUpdateRequestStatus.Cancelled || status === 4 || status === "cancelled") return ProjectContractUpdateRequestStatusDb.Cancelled;
+  return ProjectContractUpdateRequestStatusDb.Pending;
+}
+
+export function fromProjectContractUpdateRequestStatusDbValue(value: unknown): ProjectContractUpdateRequestStatus {
+  if (typeof value === "string" && (PROJECT_CONTRACT_UPDATE_REQUEST_STATUSES as readonly string[]).includes(value)) {
+    return value as ProjectContractUpdateRequestStatus;
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case ProjectContractUpdateRequestStatusDb.Pending:
+      return ProjectContractUpdateRequestStatus.Pending;
+    case ProjectContractUpdateRequestStatusDb.Accepted:
+      return ProjectContractUpdateRequestStatus.Accepted;
+    case ProjectContractUpdateRequestStatusDb.Rejected:
+      return ProjectContractUpdateRequestStatus.Rejected;
+    case ProjectContractUpdateRequestStatusDb.Withdrawn:
+      return ProjectContractUpdateRequestStatus.Withdrawn;
+    case ProjectContractUpdateRequestStatusDb.Cancelled:
+      return ProjectContractUpdateRequestStatus.Cancelled;
+    default:
+      return ProjectContractUpdateRequestStatus.Pending;
+  }
+}
+
+const projectContractUpdateRequestStatus = customType<{
+  data: ProjectContractUpdateRequestStatus;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toProjectContractUpdateRequestStatusDbValue(value);
+  },
+  fromDriver(value) {
+    return fromProjectContractUpdateRequestStatusDbValue(value);
+  },
+});
+
+const DEFAULT_PROJECT_CONTRACT_UPDATE_REQUEST_STATUS =
+  toProjectContractUpdateRequestStatusDbValue(ProjectContractUpdateRequestStatus.Pending) as unknown as ProjectContractUpdateRequestStatus;
+
 export const createProjectTables = (fw: PgSchema) => {
   const projects = fw.table(
     "projects",
@@ -220,7 +417,7 @@ export const createProjectTables = (fw: PgSchema) => {
         .notNull()
         .default(0),
       contractEnabled: boolean("contract_enabled").notNull().default(false),
-      contractStatus: varchar("contract_status", { length: 32 }).notNull().default("none"),
+      contractStatus: projectContractStatus("contract_status").notNull().default(DEFAULT_PROJECT_CONTRACT_STATUS),
       contractAcceptedAt: timestamp("contract_accepted_at", { mode: "date", withTimezone: true }),
       contractAcceptedVersion: integer("contract_accepted_version").notNull().default(0),
       contractPdfStorageKey: varchar("contract_pdf_storage_key", { length: 1024 }),
@@ -252,6 +449,7 @@ export const createProjectTables = (fw: PgSchema) => {
       uniqueIndex("projects_share_token_unique_idx").on(table.shareToken),
       uniqueIndex("projects_client_payment_reference_unique_idx").on(table.clientPaymentReference),
       uniqueIndex("projects_invoice_id_unique_idx").on(table.invoiceId),
+      check("projects_contract_status_check", sql`${table.contractStatus} >= 0 AND ${table.contractStatus} <= 2`),
       check(
         "projects_status_check",
         sql`${table.status} >= 0 AND ${table.status} <= 2`,
@@ -441,7 +639,7 @@ export const createProjectTables = (fw: PgSchema) => {
         }),
       userId: varchar("user_id", { length: 255 }).notNull(),
       version: integer("version").notNull(),
-      status: varchar("status", { length: 32 }).notNull().default("accepted"),
+      status: projectContractVersionStatus("status").notNull().default(DEFAULT_PROJECT_CONTRACT_VERSION_STATUS),
       snapshot: jsonb("snapshot").notNull(),
       pdfStorageBucket: varchar("pdf_storage_bucket", { length: 255 }),
       pdfStorageKey: varchar("pdf_storage_key", { length: 1024 }),
@@ -473,6 +671,7 @@ export const createProjectTables = (fw: PgSchema) => {
         table.projectId,
         table.version,
       ),
+      check("project_contracts_status_check", sql`${table.status} >= 0 AND ${table.status} <= 2`),
     ],
   );
 
@@ -489,7 +688,7 @@ export const createProjectTables = (fw: PgSchema) => {
       userId: varchar("user_id", { length: 255 }).notNull(),
       fromVersion: integer("from_version").notNull(),
       targetVersion: integer("target_version").notNull(),
-      status: varchar("status", { length: 32 }).notNull().default("pending"),
+      status: projectContractUpdateRequestStatus("status").notNull().default(DEFAULT_PROJECT_CONTRACT_UPDATE_REQUEST_STATUS),
       requestedChanges: jsonb("requested_changes").notNull(),
       proposedSnapshot: jsonb("proposed_snapshot").notNull(),
       proposedPdfStorageBucket: varchar("proposed_pdf_storage_bucket", {
@@ -527,6 +726,7 @@ export const createProjectTables = (fw: PgSchema) => {
         table.projectId,
       ),
       index("project_contract_update_requests_status_idx").on(table.status),
+      check("project_contract_update_requests_status_check", sql`${table.status} >= 0 AND ${table.status} <= 4`),
     ],
   );
 

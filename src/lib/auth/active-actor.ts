@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { CreditPlanKey } from "@/lib/credits";
+import { type CreditPlanKey, fromCreditPlanKeyDbValue } from "@/lib/credits";
 import { UnauthorizedAppError } from "@/lib/errors/app-error";
 import { userService } from "@/lib/services/user-service";
 import { isUserProfileComplete } from "@/lib/services/auth-service";
@@ -70,7 +70,7 @@ export async function resolveActiveActor(req?: {
     id: user.id,
     name: user.displayName ?? user.id,
     avatarUrl: user.avatarUrl,
-    plan: user.planKey as CreditPlanKey,
+    plan: fromCreditPlanKeyDbValue(user.planKey),
     clientShareLinkExpiryDays: user.clientShareLinkExpiryDays,
     onboardingStep: user.onboardingStep,
     isProfileComplete: isUserProfileComplete(user),

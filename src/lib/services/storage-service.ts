@@ -4,6 +4,7 @@ import { storageAccounts, storageAccountMutations } from "@/lib/db/schema";
 import {
   CREDIT_PLANS,
   FEATURE_CREDIT_COSTS,
+  fromCreditPlanKeyDbValue,
   type CreditPlanKey,
   type StorageAddOnKey,
 } from "@/lib/credits";
@@ -72,7 +73,8 @@ export class StorageService {
     const resolvedScope = scope ?? (await resolveStorageBillingScope());
     const { account: creditAccount } =
       await creditService.getOrCreateCreditAccountForScope(resolvedScope);
-    const storageLimitBytes = CREDIT_PLANS[creditAccount.planKey].storageLimitBytes;
+    const planKey = fromCreditPlanKeyDbValue(creditAccount.planKey);
+    const storageLimitBytes = CREDIT_PLANS[planKey].storageLimitBytes;
     const existing = await this.repository.getAccountByScope(resolvedScope);
 
     if (existing) {
@@ -82,7 +84,7 @@ export class StorageService {
       // still-active add-on.
       const synced = await this.repository.syncAccountLimits({
         accountId: existing.id,
-        planKey: creditAccount.planKey,
+        planKey,
         storageLimitBytes,
         scope: resolvedScope,
       });

@@ -33,6 +33,7 @@ import {
 } from "@/lib/storage/types";
 import type { createFileTables } from "./files";
 import type { createProjectTables } from "./projects";
+import { creditPlanKey, DEFAULT_CREDIT_PLAN_KEY_DB } from "./users";
 
 function buildSqlStringList(values: readonly string[]) {
   return sql.raw(values.map((value) => `'${value}'`).join(","));
@@ -92,9 +93,9 @@ export const createStorageTables = (
         .notNull()
         .default(DEFAULT_STORAGE_SCOPE_TYPE),
       scopeId: varchar("scope_id", { length: 255 }).notNull(),
-      planKey: varchar("plan_key", { length: 32 })
-        .$type<CreditPlanKey>()
-        .notNull(),
+      planKey: creditPlanKey("plan_key")
+        .notNull()
+        .default(DEFAULT_CREDIT_PLAN_KEY_DB),
       storageLimitBytes: bigint("storage_limit_bytes", { mode: "number" })
         .notNull()
         .default(0),
@@ -125,7 +126,7 @@ export const createStorageTables = (
       ),
       check(
         "storage_accounts_plan_key_check",
-        sql`${table.planKey} IN (${buildSqlStringList(CREDIT_PLAN_KEYS)})`,
+        sql`${table.planKey} >= 0 AND ${table.planKey} <= 4`,
       ),
       check(
         "storage_accounts_storage_limit_bytes_check",

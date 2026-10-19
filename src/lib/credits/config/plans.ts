@@ -13,12 +13,54 @@ export type CreditPlanKey = (typeof CREDIT_PLAN_KEYS)[number];
 
 export const DEFAULT_CREDIT_PLAN_KEY: CreditPlanKey = "free";
 
+export const CREDIT_PLAN_KEY_DB_VALUES = [0, 1, 2, 3, 4] as const;
+export type CreditPlanKeyDbValue = (typeof CREDIT_PLAN_KEY_DB_VALUES)[number];
+
+export const CreditPlanKeyDb = {
+  Free: 0,
+  Standard: 1,
+  Pro: 2,
+  Studio: 3,
+  Business: 4,
+} as const satisfies Record<string, CreditPlanKeyDbValue>;
+
+export function toCreditPlanKeyDbValue(key: unknown): CreditPlanKeyDbValue {
+  if (key === "free" || key === 0 || key === CreditPlanKeyDb.Free) return CreditPlanKeyDb.Free;
+  if (key === "standard" || key === 1 || key === CreditPlanKeyDb.Standard) return CreditPlanKeyDb.Standard;
+  if (key === "pro" || key === 2 || key === CreditPlanKeyDb.Pro) return CreditPlanKeyDb.Pro;
+  if (key === "studio" || key === 3 || key === CreditPlanKeyDb.Studio) return CreditPlanKeyDb.Studio;
+  if (key === "business" || key === 4 || key === CreditPlanKeyDb.Business) return CreditPlanKeyDb.Business;
+  return CreditPlanKeyDb.Free;
+}
+
+export function fromCreditPlanKeyDbValue(value: unknown): CreditPlanKey {
+  if (value === "free" || value === "standard" || value === "pro" || value === "studio" || value === "business") {
+    return value;
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case CreditPlanKeyDb.Free:
+      return "free";
+    case CreditPlanKeyDb.Standard:
+      return "standard";
+    case CreditPlanKeyDb.Pro:
+      return "pro";
+    case CreditPlanKeyDb.Studio:
+      return "studio";
+    case CreditPlanKeyDb.Business:
+      return "business";
+    default:
+      return "free";
+  }
+}
+
+
 /**
  * These plan values define the current subscription limits and included
  * monthly credits. They are user-facing business settings and can be changed
  * later without touching calculator or route code.
  */
-export const CREDIT_PLANS = {
+const BASE_CREDIT_PLANS = {
   free: {
     activeProjectsLimit: 5,
     displayName: "Free",
@@ -104,3 +146,22 @@ export const CREDIT_PLANS = {
     workspaceAccess: boolean,
   }
 >;
+
+export type CreditPlanConfig = (typeof BASE_CREDIT_PLANS)[CreditPlanKey];
+
+export const CREDIT_PLANS: Record<CreditPlanKey, CreditPlanConfig> &
+  Record<number, CreditPlanConfig> = new Proxy(
+  BASE_CREDIT_PLANS as any,
+  {
+    get(target, prop) {
+      if (typeof prop === "string" || typeof prop === "number") {
+        if (prop in target) {
+          return target[prop];
+        }
+        const resolvedKey = fromCreditPlanKeyDbValue(prop);
+        return target[resolvedKey] ?? target.free;
+      }
+      return target[prop];
+    },
+  },
+);

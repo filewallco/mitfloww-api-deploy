@@ -22,6 +22,11 @@ dashboardRouter.get(
   asyncHandler(async (req, res) => {
     const actor = await resolveActiveActor(req);
     const viewerLocale = getRequestLocale(req);
+    const personalBillingScope = {
+      actorUserId: actor.id,
+      scopeId: actor.id,
+      scopeType: "personal" as const,
+    };
 
     const [
       profile,
@@ -67,11 +72,11 @@ dashboardRouter.get(
         scopedLogger.warn("Failed to load dashboard reviews", { err });
         return [];
       }),
-      storageService.getStorageBalance().catch((err) => {
+      storageService.getStorageBalance(personalBillingScope).catch((err) => {
         scopedLogger.warn("Failed to load dashboard storage", { err });
         return null;
       }),
-      creditService.getCreditBalance().catch((err) => {
+      creditService.getCreditBalance(personalBillingScope).catch((err) => {
         scopedLogger.warn("Failed to load dashboard credits", { err });
         return null;
       }),

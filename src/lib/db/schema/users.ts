@@ -1,7 +1,14 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, customType, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import type { CreditPlanKey } from "@/lib/credits";
+import {
+  CREDIT_PLAN_KEY_DB_VALUES,
+  CreditPlanKeyDb,
+  DEFAULT_CREDIT_PLAN_KEY,
+  fromCreditPlanKeyDbValue,
+  toCreditPlanKeyDbValue,
+  type CreditPlanKey,
+} from "@/lib/credits";
 
 export interface NotificationPreferences {
   email: {
@@ -65,6 +72,9 @@ export function toUserStatusDbValue(status: unknown): UserStatusDbValue {
 }
 
 export function fromUserStatusDbValue(value: unknown): UserStatus {
+  if (typeof value === "string" && (USER_STATUSES as readonly string[]).includes(value)) {
+    return value as UserStatus;
+  }
   const numeric = typeof value === "number" ? value : Number(value);
   switch (numeric) {
     case UserStatusDb.Active:
@@ -95,6 +105,27 @@ const userStatus = customType<{
   },
 });
 
+
+export const creditPlanKey = customType<{
+  data: CreditPlanKey;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() {
+    return "smallint";
+  },
+  toDriver(value) {
+    return toCreditPlanKeyDbValue(value);
+  },
+  fromDriver(value) {
+    return fromCreditPlanKeyDbValue(value);
+  },
+});
+
+export const DEFAULT_CREDIT_PLAN_KEY_DB =
+  toCreditPlanKeyDbValue(DEFAULT_CREDIT_PLAN_KEY) as unknown as CreditPlanKey;
+
 const DEFAULT_USER_STATUS =
   toUserStatusDbValue(UserStatus.Active) as unknown as UserStatus;
 
@@ -123,10 +154,9 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
     lastLoginAt: timestamp("last_login_at", { withTimezone: true, mode: "date" }),
     onboardingStep: integer("onboarding_step").notNull().default(0),
     status: userStatus("status").notNull().default(DEFAULT_USER_STATUS),
-    planKey: varchar("plan_key", { length: 50 })
-      .$type<CreditPlanKey>()
+    planKey: creditPlanKey("plan_key")
       .notNull()
-      .default("free"),
+      .default(DEFAULT_CREDIT_PLAN_KEY_DB),
     clientShareLinkExpiryDays: integer("client_share_link_expiry_days")
       .notNull()
       .default(1),
@@ -142,6 +172,7 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
       .defaultNow(),
   }, (table) => [
     check("users_status_check", sql`${table.status} >= 0 AND ${table.status} <= 2`),
+    check("users_plan_key_check", sql`${table.planKey} >= 0 AND ${table.planKey} <= 4`),
   ]);
 
   const companies = schema.table("companies", {

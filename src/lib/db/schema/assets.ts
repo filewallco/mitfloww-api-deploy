@@ -38,6 +38,9 @@ export function toAssetStatusDbValue(status: unknown): AssetStatusDbValue {
 }
 
 export function fromAssetStatusDbValue(value: unknown): AssetStatus {
+  if (typeof value === "string" && (ASSET_STATUSES as readonly string[]).includes(value)) {
+    return value as AssetStatus;
+  }
   const numeric = typeof value === "number" ? value : Number(value);
   switch (numeric) {
     case AssetStatusDb.Draft:
@@ -77,6 +80,53 @@ export const ASSET_TEMPLATES = [
 ] as const;
 export type AssetTemplateKey = (typeof ASSET_TEMPLATES)[number];
 
+export const ASSET_TEMPLATE_KEY_DB_VALUES = [0, 1, 2, 3] as const;
+export type AssetTemplateKeyDbValue = (typeof ASSET_TEMPLATE_KEY_DB_VALUES)[number];
+
+export const AssetTemplateKeyDb = {
+  MinimalModern: 0,
+  NeonCyber: 1,
+  CleanStudio: 2,
+  BoldEditorial: 3,
+} as const;
+
+export function toAssetTemplateKeyDbValue(val: unknown): AssetTemplateKeyDbValue {
+  if (val === "minimal-modern" || val === 0 || val === AssetTemplateKeyDb.MinimalModern) return AssetTemplateKeyDb.MinimalModern;
+  if (val === "neon-cyber" || val === 1 || val === AssetTemplateKeyDb.NeonCyber) return AssetTemplateKeyDb.NeonCyber;
+  if (val === "clean-studio" || val === 2 || val === AssetTemplateKeyDb.CleanStudio) return AssetTemplateKeyDb.CleanStudio;
+  if (val === "bold-editorial" || val === 3 || val === AssetTemplateKeyDb.BoldEditorial) return AssetTemplateKeyDb.BoldEditorial;
+  return AssetTemplateKeyDb.MinimalModern;
+}
+
+export function fromAssetTemplateKeyDbValue(value: unknown): AssetTemplateKey {
+  if (typeof value === "string" && (ASSET_TEMPLATES as readonly string[]).includes(value)) {
+    return value as AssetTemplateKey;
+  }
+  const numeric = typeof value === "number" ? value : Number(value);
+  switch (numeric) {
+    case AssetTemplateKeyDb.MinimalModern: return "minimal-modern";
+    case AssetTemplateKeyDb.NeonCyber: return "neon-cyber";
+    case AssetTemplateKeyDb.CleanStudio: return "clean-studio";
+    case AssetTemplateKeyDb.BoldEditorial: return "bold-editorial";
+    default: return "minimal-modern";
+  }
+}
+
+const assetTemplateKey = customType<{
+  data: AssetTemplateKey;
+  driverData: number;
+  notNull: true;
+  default: true;
+}>({
+  dataType() { return "smallint"; },
+  toDriver(val) { return toAssetTemplateKeyDbValue(val); },
+  fromDriver(val) { return fromAssetTemplateKeyDbValue(val); },
+});
+
+const DEFAULT_ASSET_TEMPLATE_KEY =
+  toAssetTemplateKeyDbValue("minimal-modern") as unknown as AssetTemplateKey;
+
+
 function buildSqlStringList(values: readonly string[]) {
   return sql.raw(values.map((value) => `'${value}'`).join(","));
 }
@@ -93,10 +143,9 @@ export const createAssetTables = (fw: PgSchema) => {
       currency: varchar("currency", { length: 3 })
         .notNull()
         .default(DEFAULT_PROJECT_CURRENCY),
-      templateKey: varchar("template_key", { length: 64 })
-        .$type<AssetTemplateKey>()
+      templateKey: assetTemplateKey("template_key")
         .notNull()
-        .default("minimal-modern"),
+        .default(DEFAULT_ASSET_TEMPLATE_KEY),
       status: assetStatus("status")
         .notNull()
         .default(DEFAULT_ASSET_STATUS),
@@ -125,6 +174,7 @@ export const createAssetTables = (fw: PgSchema) => {
         sql`${table.status} >= 0 AND ${table.status} <= 1`,
       ),
       check("assets_amount_cents_check", sql`${table.amountCents} > 0`),
+      check("assets_template_key_check", sql`${table.templateKey} >= 0 AND ${table.templateKey} <= 3`),
     ],
   );
 

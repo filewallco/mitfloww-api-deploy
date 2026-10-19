@@ -39,6 +39,7 @@ import {
 import type { CreditLedgerMetadata } from "@/lib/credits";
 import type { createFileTables } from "./files";
 import type { createProjectTables } from "./projects";
+import { creditPlanKey, DEFAULT_CREDIT_PLAN_KEY_DB } from "./users";
 
 const creditLedgerType = customType<{
   data: CreditLedgerType;
@@ -133,9 +134,9 @@ export const createCreditTables = (
         .default(DEFAULT_CREDIT_SCOPE_TYPE),
       scopeId: varchar("scope_id", { length: 255 }).notNull(),
       ownerId: varchar("owner_id", { length: 255 }).notNull(),
-      planKey: varchar("plan_key", { length: 32 })
-        .$type<CreditPlanKey>()
-        .notNull(),
+      planKey: creditPlanKey("plan_key")
+        .notNull()
+        .default(DEFAULT_CREDIT_PLAN_KEY_DB),
       availableCredits: integer("available_credits").notNull().default(0),
       availablePurchasedCredits: integer("available_purchased_credits")
         .notNull()
@@ -176,7 +177,7 @@ export const createCreditTables = (
       ),
       check(
         "credit_accounts_plan_key_check",
-        sql`${table.planKey} IN ('free','standard','pro','studio','business')`,
+        sql`${table.planKey} >= 0 AND ${table.planKey} <= 4`,
       ),
       check(
         "credit_accounts_available_credits_check",
