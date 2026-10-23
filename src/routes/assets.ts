@@ -26,13 +26,31 @@ assetsRouter.get(
     const status = typeof req.query.status === "string" ? (req.query.status as any) : undefined;
     const search = typeof req.query.search === "string" ? req.query.search : undefined;
     const sort = typeof req.query.sort === "string" ? (req.query.sort as any) : undefined;
+    const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+    const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
 
-    const data = await assetService.listUserAssets(actor.id, {
+    const result = await assetService.listUserAssets(actor.id, {
       status,
       search,
       sort,
+      page,
+      limit,
     });
-    return sendSuccess(res, data);
+
+    if (limit && limit > 0 && typeof result === "object" && !Array.isArray(result) && "items" in result) {
+      return sendSuccess(res, (result as any).items, {
+        meta: {
+          pagination: {
+            page: (result as any).page,
+            limit: (result as any).limit,
+            total: (result as any).total,
+            hasMore: (result as any).hasMore,
+          },
+        },
+      });
+    }
+
+    return sendSuccess(res, result);
   })
 );
 

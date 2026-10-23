@@ -119,6 +119,8 @@ export interface ListAssetsQuery {
   status?: "all" | "draft" | "active";
   search?: string;
   sort?: "newest" | "oldest" | "title-asc" | "amount-desc";
+  page?: number;
+  limit?: number;
 }
 
 const scopedLogger = createScopedLogger("asset-service");
@@ -153,13 +155,39 @@ export class AssetService {
       orderBy = desc(assets.amountCents);
     }
 
-    const items = await db
+    let totalCount: number | null = null;
+    if (query?.limit && query.limit > 0) {
+      const [countRow] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(assets)
+        .where(and(...conditions));
+      totalCount = countRow?.count ?? 0;
+    }
+
+    let queryBuilder = db
       .select()
       .from(assets)
       .where(and(...conditions))
       .orderBy(orderBy);
 
+    if (query?.limit && query.limit > 0) {
+      const page = query.page && query.page > 0 ? query.page : 1;
+      const offset = (page - 1) * query.limit;
+      queryBuilder = queryBuilder.limit(query.limit).offset(offset) as any;
+    }
+
+    const items = await queryBuilder;
+
     if (items.length === 0) {
+      if (query?.limit && query.limit > 0) {
+        return {
+          items: [],
+          total: totalCount ?? 0,
+          page: query.page || 1,
+          limit: query.limit,
+          hasMore: false,
+        };
+      }
       return [];
     }
 
@@ -222,7 +250,7 @@ export class AssetService {
       purchaseStatsMap.set(row.assetId, { count: row.count, totalRevenue: Number(row.totalRevenue || 0), latestPaidAt: row.latestPaidAt });
     }
 
-    return items.map((item) => ({
+    const resultItems = items.map((item) => ({
       ...item,
       previewFiles: (previewsByAssetId.get(item.id) || []).map((p) => ({
         ...p,
@@ -234,6 +262,18 @@ export class AssetService {
       totalRevenueCents: purchaseStatsMap.get(item.id)?.totalRevenue || 0,
       latestPaymentDate: purchaseStatsMap.get(item.id)?.latestPaidAt || null,
     }));
+
+    if (query?.limit && query.limit > 0) {
+      return {
+        items: resultItems,
+        total: totalCount ?? resultItems.length,
+        page: query.page || 1,
+        limit: query.limit,
+        hasMore: ((query.page || 1) * query.limit) < (totalCount ?? resultItems.length),
+      };
+    }
+
+    return resultItems;
   }
 
   async getAssetById(id: string, userId: string) {
