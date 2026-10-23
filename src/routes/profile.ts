@@ -10,6 +10,34 @@ import { Readable } from "node:stream";
 
 export const profileRouter = Router();
 
+const COUNTRY_PHONE_CONFIG: Record<string, { lengths: number[]; allowedPrefixes?: string[]; label: string }> = {
+  "+91": { lengths: [10], allowedPrefixes: ["6", "7", "8", "9"], label: "Indian" },
+  "+1": { lengths: [10], allowedPrefixes: ["2", "3", "4", "5", "6", "7", "8", "9"], label: "US/Canada" },
+  "+971": { lengths: [9], allowedPrefixes: ["5"], label: "UAE" },
+  "+966": { lengths: [9], allowedPrefixes: ["5"], label: "Saudi Arabia" },
+  "+974": { lengths: [8], label: "Qatar" },
+  "+965": { lengths: [8], label: "Kuwait" },
+  "+973": { lengths: [8], label: "Bahrain" },
+  "+968": { lengths: [8], label: "Oman" },
+  "+962": { lengths: [9], label: "Jordan" },
+  "+20": { lengths: [10], label: "Egyptian" },
+  "+44": { lengths: [10], allowedPrefixes: ["7"], label: "UK" },
+  "+61": { lengths: [9], label: "Australian" },
+  "+65": { lengths: [8], allowedPrefixes: ["8", "9"], label: "Singapore" },
+  "+49": { lengths: [10, 11], label: "German" },
+  "+33": { lengths: [9], label: "French" },
+  "+39": { lengths: [10], label: "Italian" },
+  "+34": { lengths: [9], label: "Spanish" },
+  "+31": { lengths: [9], label: "Netherlands" },
+  "+41": { lengths: [9], label: "Swiss" },
+  "+81": { lengths: [10], label: "Japanese" },
+  "+86": { lengths: [11], label: "Chinese" },
+  "+55": { lengths: [10, 11], label: "Brazilian" },
+  "+52": { lengths: [10], label: "Mexican" },
+  "+27": { lengths: [9], label: "South African" },
+  "+64": { lengths: [8, 9, 10], label: "New Zealand" },
+};
+
 const accountUpdateSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required").max(100).optional(),
   lastName: z.string().trim().max(100).optional(),
@@ -24,13 +52,82 @@ const accountUpdateSchema = z.object({
   bio: z.string().trim().max(1000).optional(),
 }).superRefine((data, ctx) => {
   if (data.phone) {
-    const digits = data.phone.replace(/\D/g, "");
-    if (digits.length < 7 || digits.length > 15) {
+    const raw = data.phone.trim();
+    // 1. Strictly verify no alphanumeric letters or invalid symbols
+    if (/[^\d\s-]/.test(raw)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["phone"],
-        message: "Phone number must contain between 7 and 15 digits",
+        message: "Phone number can only contain numbers",
       });
+      return;
+    }
+
+    let digits = raw.replace(/\D/g, "");
+    if (!digits) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["phone"],
+        message: "Phone number cannot be empty",
+      });
+      return;
+    }
+
+    // Determine dial code from countryCode or country name
+    let dialCode = data.countryCode ? (data.countryCode.startsWith("+") ? data.countryCode : `+${data.countryCode}`) : "";
+    if (!dialCode && data.country) {
+      const c = data.country.toLowerCase();
+      if (c === "india" || c === "in") dialCode = "+91";
+      else if (c === "united states" || c === "us" || c === "canada" || c === "ca") dialCode = "+1";
+      else if (c === "united arab emirates" || c === "uae" || c === "ae") dialCode = "+971";
+      else if (c === "united kingdom" || c === "uk" || c === "gb") dialCode = "+44";
+      else if (c === "saudi arabia" || c === "sa") dialCode = "+966";
+      else if (c === "qatar" || c === "qa") dialCode = "+974";
+      else if (c === "kuwait" || c === "kw") dialCode = "+965";
+      else if (c === "singapore" || c === "sg") dialCode = "+65";
+      else if (c === "australia" || c === "au") dialCode = "+61";
+    }
+    if (!dialCode) dialCode = "+91";
+
+    const codeDigits = dialCode.replace(/\D/g, "");
+    if (digits.startsWith(codeDigits) && digits.length > codeDigits.length) {
+      digits = digits.slice(codeDigits.length);
+    }
+    if (digits.startsWith("0") && digits.length > 7) {
+      digits = digits.slice(1);
+    }
+
+    const config = COUNTRY_PHONE_CONFIG[dialCode];
+    if (config) {
+      if (!config.lengths.includes(digits.length)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["phone"],
+          message: `${config.label} phone number must be ${config.lengths.join(" or ")} digits`,
+        });
+        return;
+      }
+
+      if (config.allowedPrefixes && config.allowedPrefixes.length > 0) {
+        const hasValidPrefix = config.allowedPrefixes.some((p) => digits.startsWith(p));
+        if (!hasValidPrefix) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["phone"],
+            message: `${config.label} mobile number must start with ${config.allowedPrefixes.join(", ")}`,
+          });
+          return;
+        }
+      }
+    } else {
+      if (digits.length < 7 || digits.length > 15) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["phone"],
+          message: "Phone number must contain between 7 and 15 digits",
+        });
+        return;
+      }
     }
   }
 
@@ -126,7 +223,12 @@ profileRouter.patch("/account", asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Invalid account input", details: parsed.error.issues });
   }
 
-  const updated = await userService.updateAccount(actor.id, parsed.data);
+  const payload = { ...parsed.data };
+  if (payload.phone) {
+    payload.phone = payload.phone.replace(/\D/g, "");
+  }
+
+  const updated = await userService.updateAccount(actor.id, payload);
   return res.json({ user: updated });
 }));
 
