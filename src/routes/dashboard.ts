@@ -11,6 +11,7 @@ import { creditService } from "@/lib/services/credit-service";
 import { notificationService } from "@/lib/services/notification-service";
 import { clientService } from "@/lib/services/client-service";
 import { assetService } from "@/lib/services/asset-service";
+import { TransactionPaymentStatus } from "@/lib/db/schema";
 
 const scopedLogger = createScopedLogger("dashboard");
 
@@ -32,13 +33,12 @@ dashboardRouter.get(
       profile,
       projectsResult,
       transactions,
-      transactionMetrics,
       reviewsResult,
       storageData,
       creditsData,
       notificationsResult,
       clientMasters,
-      assetShares,
+      assetSharesResult,
     ] = await Promise.all([
       userService.getProfile(actor.id).catch((err) => {
         scopedLogger.warn("Failed to load dashboard profile", { err });
@@ -48,7 +48,7 @@ dashboardRouter.get(
         .listProjects(
           {
             userId: actor.id,
-            limit: 100,
+            limit: 25,
             page: 1,
             includeTotal: false,
             order: "desc",
@@ -63,10 +63,6 @@ dashboardRouter.get(
       transactionService.listUserTransactions(actor.id).catch((err) => {
         scopedLogger.warn("Failed to load dashboard transactions", { err });
         return [];
-      }),
-      transactionService.getTransactionMetrics(actor.id).catch((err) => {
-        scopedLogger.warn("Failed to load dashboard transaction metrics", { err });
-        return null;
       }),
       projectService.getPaidProjectsWithReviews(actor.id).catch((err) => {
         scopedLogger.warn("Failed to load dashboard reviews", { err });
@@ -94,11 +90,40 @@ dashboardRouter.get(
         scopedLogger.warn("Failed to load dashboard client masters", { err });
         return [];
       }),
-      assetService.listUserAssets(actor.id, {}).catch((err) => {
+      assetService.listUserAssets(actor.id, { limit: 20 }).catch((err) => {
         scopedLogger.warn("Failed to load dashboard assets", { err });
         return [];
       }),
     ]);
+
+    const userTransactions = transactions || [];
+    const totalNetEarningsCents = userTransactions.reduce(
+      (sum, t) => sum + (t.paymentStatus === TransactionPaymentStatus.Paid ? t.netAmountCents : 0),
+      0
+    );
+    const totalGrossPaidCents = userTransactions.reduce(
+      (sum, t) => sum + (t.paymentStatus === TransactionPaymentStatus.Paid ? t.amountCents : 0),
+      0
+    );
+    const totalCommissionCents = userTransactions.reduce(
+      (sum, t) => sum + (t.paymentStatus === TransactionPaymentStatus.Paid ? t.commissionCents : 0),
+      0
+    );
+    const pendingPayoutsCents = userTransactions.reduce(
+      (sum, t) => sum + (t.paymentStatus === TransactionPaymentStatus.Pending ? t.netAmountCents : 0),
+      0
+    );
+    const count = userTransactions.length;
+    const avgProjectValueCents = count > 0 ? Math.round(totalGrossPaidCents / count) : 0;
+
+    const transactionMetrics = {
+      totalNetEarningsCents,
+      totalGrossPaidCents,
+      totalCommissionCents,
+      pendingPayoutsCents,
+      avgProjectValueCents,
+      transactionsCount: count,
+    };
 
     const reviews = reviewsResult.map(({ project, review }) => ({
       clientEmail: project.clientEmail,
@@ -112,6 +137,10 @@ dashboardRouter.get(
       submittedAt: review.submittedAt.toISOString(),
       title: project.title,
     }));
+
+    const assetShares = Array.isArray(assetSharesResult)
+      ? assetSharesResult
+      : (assetSharesResult as any)?.items || [];
 
     return sendSuccess(res, {
       profile,
@@ -127,4 +156,3 @@ dashboardRouter.get(
     });
   })
 );
-
