@@ -11,6 +11,7 @@ import { createClientTables } from "./clients";
 import { createTransactionTables } from "./transactions";
 import { createAssetTables } from "./assets";
 import { createAuthTables } from "./auth";
+import { createDashboardTables } from "./dashboard";
 
 export const fw = pgSchema("mitfloww");
 
@@ -58,6 +59,7 @@ export const { notifications } = createNotificationTables(fw, {
 export const { users, companies, creatorWorkProfiles } = createUserTables(fw);
 export const { authIdentities, sessions, otpChallenges } = createAuthTables(fw, { users });
 export const { invoiceSettings } = createInvoiceTables(fw, { users });
+export const { dashboardPresets, dashboardPresetItems, dashboardUserState } = createDashboardTables(fw, { users });
 export const { clientMasters } = createClientTables(fw, { users });
 export const { transactions } = createTransactionTables(fw, { users, projects });
 export const {
@@ -133,8 +135,14 @@ export type {
   CreatorWorkProfileRecord,
   NewCreatorWorkProfileRecord,
   NotificationPreferences,
+  NavigationPreferences,
+  ConfigurableNavKey,
 } from "./users";
-export { DEFAULT_NOTIFICATION_PREFERENCES } from "./users";
+export {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  DEFAULT_NAVIGATION_PREFERENCES,
+  CONFIGURABLE_NAV_KEYS,
+} from "./users";
 export type {
   TransactionRecord,
   NewTransactionRecord,
@@ -293,3 +301,12 @@ export {
   toAssetTemplateKeyDbValue,
   fromAssetTemplateKeyDbValue,
 } from "./assets";
+
+export type {
+  DashboardPresetRecord,
+  NewDashboardPresetRecord,
+  DashboardPresetItemRecord,
+  NewDashboardPresetItemRecord,
+  DashboardUserStateRecord,
+  NewDashboardUserStateRecord,
+} from "./dashboard";

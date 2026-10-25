@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { type CreditPlanKey, fromCreditPlanKeyDbValue } from "@/lib/credits";
 import { UnauthorizedAppError } from "@/lib/errors/app-error";
 import { userService } from "@/lib/services/user-service";
+import { type NavigationPreferences, DEFAULT_NAVIGATION_PREFERENCES } from "@/lib/db/schema";
 import { isUserProfileComplete } from "@/lib/services/auth-service";
 import { sessionService, REFRESH_COOKIE_NAME, LEGACY_SESSION_COOKIE_NAME } from "./session";
 
@@ -14,6 +15,8 @@ export type ActiveActor = {
   avatarUrl?: string | null;
   plan: CreditPlanKey;
   clientShareLinkExpiryDays: number;
+  navigationPreferences: NavigationPreferences;
+  navigationPreferencesVersion: number;
   onboardingStep: number;
   isProfileComplete: boolean;
 };
@@ -72,6 +75,8 @@ export async function resolveActiveActor(req?: {
     avatarUrl: user.avatarUrl,
     plan: fromCreditPlanKeyDbValue(user.planKey),
     clientShareLinkExpiryDays: user.clientShareLinkExpiryDays,
+    navigationPreferences: user.navigationPreferences ?? DEFAULT_NAVIGATION_PREFERENCES,
+    navigationPreferencesVersion: user.navigationPreferencesVersion ?? 1,
     onboardingStep: user.onboardingStep,
     isProfileComplete: isUserProfileComplete(user),
   };

@@ -7,11 +7,13 @@ import { userService } from "@/lib/services/user-service";
 import { creditService } from "@/lib/services/credit-service";
 import { storageService } from "@/lib/services/storage-service";
 import { asyncHandler } from "@/lib/api/route";
+import { CONFIGURABLE_NAV_KEYS } from "@/lib/db/schema";
 
 export const usersRouter = Router();
 
 const settingsUpdateSchema = z.object({
   clientShareLinkExpiryDays: z.number().int().positive().optional(),
+  navigationPreferences: z.record(z.string(), z.boolean()).optional(),
 });
 
 const notificationPreferencesSchema = z.object({
@@ -88,6 +90,21 @@ usersRouter.patch("/me/settings", asyncHandler(async (req, res) => {
   const parsed = settingsUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid input" });
+  }
+
+  if (parsed.data.navigationPreferences !== undefined) {
+    const allowedKeys = [...CONFIGURABLE_NAV_KEYS, "dashboardNav"];
+    const invalidKeys = Object.keys(parsed.data.navigationPreferences).filter(
+      (k) => !allowedKeys.includes(k as any)
+    );
+    if (invalidKeys.length > 0) {
+      return res.status(400).json({ error: `Invalid navigation item key(s): ${invalidKeys.join(", ")}` });
+    }
+    const projectsSelected = parsed.data.navigationPreferences.projectsNav !== false;
+    const assetsSelected = parsed.data.navigationPreferences.assetsNav !== false;
+    if (!projectsSelected && !assetsSelected) {
+      return res.status(400).json({ error: "Select at least one of these: Projects or Assets" });
+    }
   }
 
   if (parsed.data.clientShareLinkExpiryDays !== undefined) {

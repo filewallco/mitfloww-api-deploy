@@ -1,3 +1,6 @@
+import { z } from "zod";
+import { dashboardPresetService } from "@/lib/services/dashboard-preset-service";
+import { ValidationAppError } from "@/lib/errors/app-error";
 import { createScopedLogger } from "@/lib/logger";
 import { Router } from "express";
 import { getRequestLocale } from "@/middleware/locale";
@@ -154,5 +157,116 @@ dashboardRouter.get(
       clientMasters,
       assetShares,
     });
+  })
+);
+
+const activePresetSchema = z.object({
+  activePresetKey: z.string().min(1),
+  activePresetId: z.string().uuid().nullable().optional(),
+});
+
+const createPresetSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  items: z
+    .array(
+      z.object({
+        widgetKey: z.string(),
+        position: z.number().int().nonnegative(),
+        isVisible: z.boolean(),
+      })
+    )
+    .optional(),
+});
+
+const updateLayoutSchema = z.object({
+  items: z.array(
+    z.object({
+      widgetKey: z.string(),
+      position: z.number().int().nonnegative(),
+      isVisible: z.boolean(),
+    })
+  ),
+});
+
+// GET /api/dashboard/presets - Get all presets and user active selection
+dashboardRouter.get(
+  "/presets",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const result = await dashboardPresetService.getUserPresets(actor.id);
+    return sendSuccess(res, result);
+  })
+);
+
+// PATCH /api/dashboard/presets/active - Set active preset
+dashboardRouter.patch(
+  "/presets/active",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const parsed = activePresetSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationAppError("Invalid active preset payload.", {
+        errors: parsed.error.issues,
+      });
+    }
+    const result = await dashboardPresetService.setActivePreset(actor.id, parsed.data);
+    return sendSuccess(res, result);
+  })
+);
+
+// POST /api/dashboard/presets - Create custom preset
+dashboardRouter.post(
+  "/presets",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const parsed = createPresetSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationAppError("Invalid preset creation payload.", {
+        errors: parsed.error.issues,
+      });
+    }
+    const result = await dashboardPresetService.createCustomPreset(actor.id, parsed.data as any);
+    return sendSuccess(res, result, { status: 201 });
+  })
+);
+
+// PATCH /api/dashboard/presets/:id - Save preset layout items (transactional)
+dashboardRouter.patch(
+  "/presets/:id",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const parsed = updateLayoutSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationAppError("Invalid layout update payload.", {
+        errors: parsed.error.issues,
+      });
+    }
+    const result = await dashboardPresetService.savePresetLayout(
+      actor.id,
+      String(req.params.id),
+      parsed.data.items as any
+    );
+    return sendSuccess(res, result);
+  })
+);
+
+// DELETE /api/dashboard/presets/:id - Delete custom preset
+dashboardRouter.delete(
+  "/presets/:id",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const result = await dashboardPresetService.deleteCustomPreset(actor.id, String(req.params.id));
+    return sendSuccess(res, result);
+  })
+);
+
+// POST /api/dashboard/presets/:presetKey/reset - Reset built-in preset to defaults
+dashboardRouter.post(
+  "/presets/:presetKey/reset",
+  asyncHandler(async (req, res) => {
+    const actor = await resolveActiveActor(req);
+    const key = String(req.params.presetKey) as any;
+    const result = await dashboardPresetService.resetBuiltInPreset(actor.id, key);
+    return sendSuccess(res, { presetKey: key, items: result });
   })
 );

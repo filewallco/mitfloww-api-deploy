@@ -29,6 +29,30 @@ export interface NotificationPreferences {
   };
 }
 
+
+export const CONFIGURABLE_NAV_KEYS = [
+  "dashboardNav",
+  "projectsNav",
+  "assetsNav",
+  "transactionsNav",
+  "invoicesNav",
+  "teamNav",
+  "testimonialsNav",
+] as const;
+
+export type ConfigurableNavKey = (typeof CONFIGURABLE_NAV_KEYS)[number];
+export type NavigationPreferences = Record<ConfigurableNavKey, boolean>;
+
+export const DEFAULT_NAVIGATION_PREFERENCES: NavigationPreferences = {
+  dashboardNav: true,
+  projectsNav: true,
+  assetsNav: true,
+  transactionsNav: true,
+  invoicesNav: true,
+  teamNav: true,
+  testimonialsNav: true,
+};
+
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   email: {
     clientReply: true,
@@ -163,6 +187,13 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
     notificationPreferences: jsonb("notification_preferences")
       .$type<NotificationPreferences>()
       .default(DEFAULT_NOTIFICATION_PREFERENCES),
+    navigationPreferences: jsonb("navigation_preferences")
+      .$type<NavigationPreferences>()
+      .notNull()
+      .default(DEFAULT_NAVIGATION_PREFERENCES),
+    navigationPreferencesVersion: integer("navigation_preferences_version")
+      .notNull()
+      .default(1),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()

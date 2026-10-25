@@ -15,10 +15,14 @@ import {
   UserStatus,
   type NotificationPreferences,
   DEFAULT_NOTIFICATION_PREFERENCES,
+  type NavigationPreferences,
+  DEFAULT_NAVIGATION_PREFERENCES,
+  type ConfigurableNavKey,
+  CONFIGURABLE_NAV_KEYS,
 } from "@/lib/db/schema";
 import type { CompanyRecord, CreatorWorkProfileRecord, UserRecord } from "@/lib/db/schema";
 import { ProjectPaymentStatus, toProjectPaymentStatusDbValue } from "@/lib/dto/projects";
-import { AppError } from "@/lib/errors/app-error";
+import { AppError, ValidationAppError } from "@/lib/errors/app-error";
 import { getPasswordValidationError } from "@/lib/auth/password";
 import { storage } from "@/lib/storage";
 import {
@@ -504,11 +508,35 @@ export class UserService {
 
   async updateUserSettings(
     id: string,
-    settings: { clientShareLinkExpiryDays?: number },
+    settings: {
+      clientShareLinkExpiryDays?: number;
+      navigationPreferences?: Partial<Record<ConfigurableNavKey, boolean>>;
+    },
   ): Promise<UserRecord> {
+    const existing = await this.getUser(id);
     const updates: Partial<UserRecord> = { updatedAt: new Date() };
     if (settings.clientShareLinkExpiryDays !== undefined) {
       updates.clientShareLinkExpiryDays = settings.clientShareLinkExpiryDays;
+    }
+
+    if (settings.navigationPreferences !== undefined) {
+      const currentPrefs: NavigationPreferences =
+        (existing.navigationPreferences as NavigationPreferences) ||
+        DEFAULT_NAVIGATION_PREFERENCES;
+      const merged: NavigationPreferences = {
+        ...DEFAULT_NAVIGATION_PREFERENCES,
+        ...currentPrefs,
+      };
+      for (const key of CONFIGURABLE_NAV_KEYS) {
+        if (typeof settings.navigationPreferences[key] === "boolean") {
+          merged[key] = settings.navigationPreferences[key]!;
+        }
+      }
+      if (merged.projectsNav === false && merged.assetsNav === false) {
+        throw new ValidationAppError("Select at least one of these: Projects or Assets");
+      }
+      updates.navigationPreferences = merged;
+      updates.navigationPreferencesVersion = (existing.navigationPreferencesVersion ?? 1) + 1;
     }
 
     const [user] = await db
