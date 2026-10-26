@@ -6,3 +6,4 @@ dist
 logs/
 scripts/
 /scripts
+/logs
