@@ -51,5 +51,22 @@ export class UnauthorizedAppError extends AppError {
 }
 
 export function isAppError(error: unknown): error is AppError {
-  return error instanceof AppError;
+  if (error instanceof AppError) {
+    return true;
+  }
+  if (typeof error === "object" && error !== null) {
+    const err = error as Record<string, unknown>;
+    const hasStatus = typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode < 600;
+    const hasCode = typeof err.code === "string" && err.code.length > 0;
+    const isAppErrorName =
+      err.name === "AppError" ||
+      err.name === "ValidationAppError" ||
+      err.name === "ConflictAppError" ||
+      err.name === "NotFoundAppError" ||
+      err.name === "ForbiddenAppError" ||
+      err.name === "UnauthorizedAppError";
+
+    return (hasStatus && hasCode) || (isAppErrorName && hasStatus);
+  }
+  return false;
 }

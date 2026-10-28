@@ -76,6 +76,7 @@ fileProcessingRouter.get("/active", asyncHandler(async (req, res) => {
 }));
 
 fileProcessingRouter.get("/jobs", asyncHandler(async (req, res) => {
+  await resolveActiveActor(req);
   const jobIds = readJobIds(req);
 
   if (jobIds.length === 0) {

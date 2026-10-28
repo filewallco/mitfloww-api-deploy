@@ -27,6 +27,36 @@ import { asyncHandler } from "@/lib/api/route";
 
 export const cronRouter = Router();
 
+// Enforce CRON_SECRET authorization on all background cron endpoints
+cronRouter.use((req, res, next) => {
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  const authHeader = req.headers["authorization"] || "";
+  const customHeader = req.headers["x-cron-secret"];
+  const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : null;
+
+  const providedSecret = bearerToken || (typeof customHeader === "string" ? customHeader : null);
+
+  if (cronSecret) {
+    if (!providedSecret || providedSecret !== cronSecret) {
+      return res.status(401).json({
+        error: { code: "unauthorized", message: "Invalid or missing cron secret authorization." },
+      });
+    }
+    return next();
+  }
+
+  // In production environments (including Vercel), reject unauthenticated cron calls
+  if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+    return res.status(401).json({
+      error: { code: "unauthorized", message: "CRON_SECRET environment variable is not configured." },
+    });
+  }
+
+  next();
+});
+
 cronRouter.get("/reconcile-stale-jobs", asyncHandler(async (_req, res) => {
   const result = await fileService.reconcileStaleProcessingVersions();
   return res.json({

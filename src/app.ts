@@ -4,6 +4,7 @@ import { requestContextStorage } from "@/lib/logger/context";
 import { resolvePublicAppBaseUrl } from "@/lib/services/project-service";
 import express from "express";
 import cors from "cors";
+import { corsOptions } from "@/lib/config/cors";
 import cookieParser from "cookie-parser";
 import { localeMiddleware } from "@/middleware/locale";
 import { errorHandler } from "@/middleware/error-handler";
@@ -37,13 +38,16 @@ export const app = express();
 // Trust proxy for reverse proxy from web/Next.js
 app.set("trust proxy", true);
 
-// Enable CORS
-app.use(
-  cors({
-    credentials: true,
-    origin: true,
-  }),
-);
+// Security headers for API
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
+// Enable CORS with restricted origin allowlist
+app.use(cors(corsOptions));
 
 // Cookie parser
 app.use(cookieParser());
@@ -176,6 +180,16 @@ app.get("/s/:token", (req, res) => {
 });
 
 app.use("/api", api);
+
+// Uniform 404 JSON catch-all for undefined API endpoints
+app.use("/api", (req, res) => {
+  return res.status(404).json({
+    error: {
+      code: "not_found",
+      message: `Endpoint ${req.method} ${req.originalUrl || req.url} not found`,
+    },
+  });
+});
 
 // Global error handler
 app.use(errorHandler);

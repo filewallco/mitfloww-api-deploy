@@ -27,6 +27,15 @@ type SafeErrorMapping = {
 };
 
 const SAFE_ERROR_MAPPINGS: Record<string, SafeErrorMapping> = {
+  invalid_credentials: {
+    messageKey: "common.errors.invalidCredentials",
+  },
+  unauthorized: {
+    messageKey: "common.errors.unauthorized",
+  },
+  email_delivery_failed: {
+    messageKey: "common.errors.emailDeliveryFailed",
+  },
   file_has_revisions: {
     messageKey: "projectsPage.deliverableDeleteBlockedRevisionsDescription",
   },

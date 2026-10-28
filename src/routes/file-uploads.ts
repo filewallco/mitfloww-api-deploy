@@ -16,6 +16,12 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
 
 export const fileUploadsRouter = Router();
 
+// Require active authentication for all file-upload and storage operations
+fileUploadsRouter.use(asyncHandler(async (req, _res, next) => {
+  await resolveActiveActor(req);
+  next();
+}));
+
 fileUploadsRouter.post("/sessions", asyncHandler(async (req, res) => {
   await resolveActiveActor(req);
   const input = parseWithSchema(uploadSessionInitSchema, req.body);

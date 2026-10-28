@@ -217,7 +217,7 @@ export class InvoiceService {
       effectiveTemplateId &&
       PREMIUM_TEMPLATES.includes(effectiveTemplateId)
     ) {
-      const { scope } = await creditService.getOrCreateCreditAccountForScope();
+      const { scope } = await creditService.getOrCreateCreditAccountForScope({ actorUserId: userId, scopeId: userId, scopeType: "personal" });
       await creditService.calculateAndDeductFeatureCredits({
         idempotencyKey: `invoice-template-customize:${userId}:${effectiveTemplateId}:${getInvoiceCreditMonthKey()}`,
         featureParams: {
@@ -259,7 +259,7 @@ export class InvoiceService {
     const premiumTemplates = new Set(["corporate", "agency", "minimal", "compact"]);
     if (!premiumTemplates.has(templateId)) return;
 
-    const { scope } = await creditService.getOrCreateCreditAccountForScope();
+    const { scope } = await creditService.getOrCreateCreditAccountForScope({ actorUserId: userId, scopeId: userId, scopeType: "personal" });
     await creditService.calculateAndDeductFeatureCredits({
       idempotencyKey: `invoice-template-use:${userId}:${templateId}:${getInvoiceCreditMonthKey()}`,
       featureParams: {
@@ -313,7 +313,7 @@ export class InvoiceService {
     const existingIndex = existingTemplates.findIndex((t) => t.id === templateId);
 
     if (existingIndex < 0) {
-      const { scope } = await creditService.getOrCreateCreditAccountForScope();
+      const { scope } = await creditService.getOrCreateCreditAccountForScope({ actorUserId: userId, scopeId: userId, scopeType: "personal" });
       await creditService.calculateAndDeductFeatureCredits({
         idempotencyKey: `invoice-template-create-${userId}-${templateId}`,
         featureParams: {

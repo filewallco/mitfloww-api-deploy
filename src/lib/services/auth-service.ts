@@ -1,3 +1,6 @@
+// Precomputed Argon2id hash for constant-time comparison on nonexistent accounts
+const DUMMY_ARGON2_HASH = "$argon2id$v=19$m=65536,t=3,p=4$dHVtbXlzYWx0MTIzNDU2Nw$Q9Z4D0eX49L0e/GqZ3eYyA";
+
 import { createScopedLogger } from "@/lib/logger";
 import crypto from "node:crypto";
 import { and, eq, isNull, lte, or } from "drizzle-orm";
@@ -183,7 +186,12 @@ export class AuthService {
     // Existing users are allowed to complete OTP verification; no early error thrown
 
     const { otp } = await otpService.createChallenge(normalizedEmail, "SIGNUP_VERIFICATION");
-    await emailService.sendSignupOtpEmail(normalizedEmail, otp);
+    try {
+      await emailService.sendSignupOtpEmail(normalizedEmail, otp);
+    } catch (sendErr) {
+      scopedLogger.error("Failed to send signup verification email", { emailDomain: normalizedEmail.split("@")[1], err: sendErr });
+      throw new AppError("Unable to send verification code. Please check your email address or try again shortly.", 422, "email_delivery_failed");
+    }
     scopedLogger.info("Signup OTP requested", { emailDomain: normalizedEmail.split("@")[1] });
 
     return {
@@ -420,6 +428,8 @@ export class AuthService {
       .limit(1);
 
     if (!user || !user.passwordHash) {
+      // Execute dummy password verification to eliminate timing difference on nonexistent accounts
+      await verifyPassword(input.password, DUMMY_ARGON2_HASH).catch(() => ({ isValid: false, needsRehash: false }));
       throw new AppError("Invalid email or password.", 401, "invalid_credentials");
     }
 
