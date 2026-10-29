@@ -194,6 +194,8 @@ export function createUserTables(schema: ReturnType<typeof import("drizzle-orm/p
     navigationPreferencesVersion: integer("navigation_preferences_version")
       .notNull()
       .default(1),
+    githubTokenCiphertext: text("github_token_ciphertext"),
+    githubUsername: varchar("github_username", { length: 100 }),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()

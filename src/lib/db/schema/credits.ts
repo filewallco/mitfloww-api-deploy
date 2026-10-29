@@ -43,52 +43,70 @@ import { creditPlanKey, DEFAULT_CREDIT_PLAN_KEY_DB } from "./users";
 
 const creditLedgerType = customType<{
   data: CreditLedgerType;
-  driverData: number;
+  driverData: string;
   notNull: true;
   default: true;
 }>({
   dataType() {
-    return "smallint";
+    return "varchar(32)";
   },
   toDriver(value) {
-    return toCreditLedgerTypeDbValue(value);
+    if (typeof value === "number") {
+      return fromCreditLedgerTypeDbValue(value);
+    }
+    return String(value);
   },
   fromDriver(value) {
-    return fromCreditLedgerTypeDbValue(value);
+    if (typeof value === "number") {
+      return fromCreditLedgerTypeDbValue(value);
+    }
+    return value as CreditLedgerType;
   },
 });
 
 const creditLedgerSource = customType<{
   data: CreditLedgerSource;
-  driverData: number;
+  driverData: string;
   notNull: true;
   default: true;
 }>({
   dataType() {
-    return "smallint";
+    return "varchar(32)";
   },
   toDriver(value) {
-    return toCreditLedgerSourceDbValue(value);
+    if (typeof value === "number") {
+      return fromCreditLedgerSourceDbValue(value);
+    }
+    return String(value);
   },
   fromDriver(value) {
-    return fromCreditLedgerSourceDbValue(value);
+    if (typeof value === "number") {
+      return fromCreditLedgerSourceDbValue(value);
+    }
+    return value as CreditLedgerSource;
   },
 });
 
 const creditReservationStatus = customType<{
   data: CreditReservationStatus;
-  driverData: number;
+  driverData: string;
   notNull: true;
   default: true;
 }>({
   dataType() {
-    return "smallint";
+    return "varchar(32)";
   },
   toDriver(value) {
-    return toCreditReservationStatusDbValue(value);
+    if (typeof value === "number") {
+      return fromCreditReservationStatusDbValue(value);
+    }
+    return String(value);
   },
   fromDriver(value) {
-    return fromCreditReservationStatusDbValue(value);
+    if (typeof value === "number") {
+      return fromCreditReservationStatusDbValue(value);
+    }
+    return value as CreditReservationStatus;
   },
 });
 
@@ -113,9 +131,7 @@ const DEFAULT_CREDIT_SCOPE_TYPE = toCreditScopeTypeDbValue(
   CreditScopeType.Personal,
 ) as unknown as CreditScopeType;
 
-const DEFAULT_CREDIT_RESERVATION_STATUS = toCreditReservationStatusDbValue(
-  CreditReservationStatus.Active,
-) as unknown as CreditReservationStatus;
+const DEFAULT_CREDIT_RESERVATION_STATUS = CreditReservationStatus.Active;
 
 export const createCreditTables = (
   fw: PgSchema,
@@ -280,11 +296,11 @@ export const createCreditTables = (
       ),
       check(
         "credit_ledger_entries_type_check",
-        sql`${table.type} >= 0 AND ${table.type} <= 8`,
+        sql`${table.type} in ('grant', 'purchase', 'deduction', 'refund', 'adjustment', 'expiry', 'reservation', 'reservation_release', 'reservation_capture')`,
       ),
       check(
         "credit_ledger_entries_source_check",
-        sql`${table.source} >= 0 AND ${table.source} <= 6`,
+        sql`${table.source} in ('monthly_plan', 'purchased_pack', 'promotional', 'feature_usage', 'admin_adjustment', 'refund', 'system')`,
       ),
       check(
         "credit_ledger_entries_balance_after_check",
@@ -292,7 +308,7 @@ export const createCreditTables = (
       ),
       check(
         "credit_ledger_entries_credit_value_check",
-        sql`(${table.credits} <> 0) OR (${table.type} = 8)`,
+        sql`(${table.credits} <> 0) OR (${table.type} = 'reservation_capture')`,
       ),
     ],
   );
@@ -358,7 +374,7 @@ export const createCreditTables = (
       ),
       check(
         "credit_reservations_status_check",
-        sql`${table.status} >= 0 AND ${table.status} <= 3`,
+        sql`${table.status} in ('active', 'captured', 'released', 'expired')`,
       ),
       check(
         "credit_reservations_credits_check",

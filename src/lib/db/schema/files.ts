@@ -580,14 +580,16 @@ export const createFileTables = (
         .default("files"),
 
       currentVersionId: uuid("current_version_id"),
-      approvalStatus: fileApprovalStatus("approval_status")
+      approvalStatus: varchar("approval_status", { length: 32 })
+        .$type<FileApprovalStatus>()
         .notNull()
-        .default(DEFAULT_FILE_APPROVAL_STATUS),
+        .default(FileApprovalStatus.Pending),
       approvedVersionId: uuid("approved_version_id"),
       finalDraftVersionId: uuid("final_draft_version_id"),
-      finalDraftReportStatus: fileFinalDraftReportStatus("final_draft_report_status")
+      finalDraftReportStatus: varchar("final_draft_report_status", { length: 32 })
+        .$type<FileFinalDraftReportStatus>()
         .notNull()
-        .default(DEFAULT_FILE_FINAL_DRAFT_REPORT_STATUS),
+        .default(FileFinalDraftReportStatus.None),
       finalDraftReportedAt: timestamp("final_draft_reported_at", {
         mode: "date",
         withTimezone: true,
@@ -609,6 +611,13 @@ export const createFileTables = (
         .notNull()
         .default(DEFAULT_FILE_UPLOAD_STATUS),
       uploadedBy: varchar("uploaded_by", { length: 255 }),
+      fileKind: integer("file_kind").notNull().default(0),
+      repoOwner: varchar("repo_owner", { length: 120 }),
+      repoName: varchar("repo_name", { length: 120 }),
+      repoUrl: varchar("repo_url", { length: 1024 }),
+      repoBranch: varchar("repo_branch", { length: 120 }),
+      githubTokenCiphertext: text("github_token_ciphertext"),
+      isSyncFrozen: boolean("is_sync_frozen").notNull().default(false),
       deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
@@ -642,11 +651,11 @@ export const createFileTables = (
       ),
       check(
         "files_approval_status_check",
-        sql`${table.approvalStatus} >= 0 AND ${table.approvalStatus} <= 2`,
+        sql`${table.approvalStatus} IN ('pending','approved')`,
       ),
       check(
         "files_final_draft_report_status_check",
-        sql`${table.finalDraftReportStatus} >= 0 AND ${table.finalDraftReportStatus} <= 4`,
+        sql`${table.finalDraftReportStatus} IN ('none','reported','under_review','resolved','dismissed')`,
       ),
     ],
   );
@@ -704,10 +713,16 @@ export const createFileTables = (
       deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
       deletedBy: varchar("deleted_by", { length: 255 }),
       deleteReason: text("delete_reason"),
+      commitHash: varchar("commit_hash", { length: 64 }),
+      commitMessage: text("commit_message"),
+      committedAt: timestamp("committed_at", { mode: "date", withTimezone: true }),
+      commitAuthor: varchar("commit_author", { length: 120 }),
+      previewUrl: varchar("preview_url", { length: 1024 }),
 
-      processingStatus: fileProcessingStatus("processing_status")
+      processingStatus: varchar("processing_status", { length: 32 })
+        .$type<FileProcessingStatus>()
         .notNull()
-        .default(DEFAULT_FILE_PROCESSING_STATUS),
+        .default(FileProcessingStatus.Queued),
       processingJobId: varchar("processing_job_id", { length: 128 }),
       processingErrorCode: varchar("processing_error_code", { length: 128 }),
       processingErrorMessage: text("processing_error_message"),
@@ -757,7 +772,7 @@ export const createFileTables = (
       ),
       check(
         "file_versions_processing_status_check",
-        sql`${table.processingStatus} >= 0 AND ${table.processingStatus} <= 8`,
+        sql`${table.processingStatus} IN ('queued','processing','uploading','completed','retrying','failed','corrupt','skipped','cancelled')`,
       ),
     ],
   );
@@ -779,9 +794,10 @@ export const createFileTables = (
       sourceLocale: varchar("source_locale", { length: 16 })
         .notNull()
         .default("und"),
-      status: fileRevisionCommentStatus("status")
+      status: varchar("status", { length: 32 })
+        .$type<FileRevisionCommentStatus>()
         .notNull()
-        .default(DEFAULT_FILE_REVISION_COMMENT_STATUS),
+        .default(FileRevisionCommentStatus.Pending),
       createdBy: varchar("created_by", { length: 255 }),
       updatedBy: varchar("updated_by", { length: 255 }),
       deletedAt: timestamp("deleted_at", { mode: "date", withTimezone: true }),
@@ -803,7 +819,7 @@ export const createFileTables = (
       index("revision_comments_created_at_idx").on(table.createdAt),
       check(
         "revision_comments_status_check",
-        sql`${table.status} >= 0 AND ${table.status} <= 1`,
+        sql`${table.status} IN ('pending','resolved')`,
       ),
     ],
   );
@@ -824,9 +840,10 @@ export const createFileTables = (
       projectId: uuid("project_id")
         .notNull()
         .references(() => projects.id, { onDelete: "restrict" }),
-      type: revisionCommentMarkerType("type")
+      type: varchar("type", { length: 32 })
+        .$type<RevisionCommentMarkerType>()
         .notNull()
-        .default(DEFAULT_REVISION_COMMENT_MARKER_TYPE),
+        .default(RevisionCommentMarkerType.Region),
       labelNumber: integer("label_number").notNull(),
       pageNumber: integer("page_number"),
       xBp: integer("x_bp").notNull(),
@@ -851,7 +868,7 @@ export const createFileTables = (
       index("revision_comment_markers_deleted_at_idx").on(table.deletedAt),
       check(
         "revision_comment_markers_type_check",
-        sql`${table.type} >= 0`,
+        sql`${table.type} IN ('region')`,
       ),
       check(
         "revision_comment_markers_label_number_check",
@@ -986,9 +1003,10 @@ export const createFileTables = (
       sourceLocale: varchar("source_locale", { length: 16 })
         .notNull()
         .default("und"),
-      status: fileVersionReportStatus("status")
+      status: varchar("status", { length: 32 })
+        .$type<FileVersionReportStatus>()
         .notNull()
-        .default(DEFAULT_FILE_VERSION_REPORT_STATUS),
+        .default(FileVersionReportStatus.Reported),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
         .defaultNow(),
@@ -1003,7 +1021,7 @@ export const createFileTables = (
       index("file_version_reports_status_idx").on(table.status),
       check(
         "file_version_reports_status_check",
-        sql`${table.status} >= 0 AND ${table.status} <= 3`,
+        sql`${table.status} IN ('reported','under_review','resolved','dismissed')`,
       ),
     ],
   );
@@ -1030,9 +1048,10 @@ export const createFileTables = (
       sourceLocale: varchar("source_locale", { length: 16 })
         .notNull()
         .default("und"),
-      status: fileRevisionCommentReportStatus("status")
+      status: varchar("status", { length: 32 })
+        .$type<FileRevisionCommentReportStatus>()
         .notNull()
-        .default(DEFAULT_FILE_REVISION_COMMENT_REPORT_STATUS),
+        .default(FileRevisionCommentReportStatus.Reported),
       createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
         .notNull()
         .defaultNow(),
@@ -1052,7 +1071,7 @@ export const createFileTables = (
       ),
       check(
         "revision_comment_reports_status_check",
-        sql`${table.status} >= 0 AND ${table.status} <= 3`,
+        sql`${table.status} IN ('reported','under_review','resolved','dismissed')`,
       ),
     ],
   );

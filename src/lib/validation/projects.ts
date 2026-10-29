@@ -188,11 +188,36 @@ const projectMutationObjectSchema = z.object({
       invalid_type_error: "contractEnabledInvalid",
     })
     .default(false),
+  isCodeBased: z
+    .boolean({
+      invalid_type_error: "isCodeBasedInvalid",
+    })
+    .default(false),
+  deploymentUrl: z
+    .string({
+      invalid_type_error: "deploymentUrlMustBeString",
+    })
+    .trim()
+    .max(1024, "deploymentUrlTooLong")
+    .nullable()
+    .optional()
+    .refine((val) => !val || /^https?:\/\/.+/i.test(val), {
+      message: "deploymentUrlInvalid",
+    }),
 });
 
 export const projectMutationSchema = projectMutationObjectSchema
   .strict()
   .superRefine((value, ctx) => {
+    if (value.isCodeBased) {
+      if (!value.deploymentUrl || value.deploymentUrl.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "deploymentUrlRequired",
+          path: ["deploymentUrl"],
+        });
+      }
+    }
     const amountValidationError = toValidationMessageKey(
       getProjectAmountValidationError({
         amount: centsToCurrencyAmount(value.amountCents),

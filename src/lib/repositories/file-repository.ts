@@ -23,7 +23,7 @@ import {
   fileVersionReports,
   FileApprovalStatus,
   FileProcessingStatus,
-  FileFinalDraftReportStatusDb,
+  FileFinalDraftReportStatus,
   FileProcessingStatusDb,
   FileVersionReportStatus,
   revisionComments,
@@ -781,6 +781,11 @@ export class DrizzleFileRepository implements FileRepository {
         processingCompletedAt: fileVersions.processingCompletedAt,
         uploadedBy: fileVersions.uploadedBy,
         createdAt: fileVersions.createdAt,
+                commitHash: fileVersions.commitHash,
+        commitMessage: fileVersions.commitMessage,
+        committedAt: fileVersions.committedAt,
+        commitAuthor: fileVersions.commitAuthor,
+        previewUrl: fileVersions.previewUrl,
         updatedAt: fileVersions.updatedAt,
       })
       .from(fileVersions)
@@ -849,6 +854,11 @@ export class DrizzleFileRepository implements FileRepository {
         processingCompletedAt: fileVersions.processingCompletedAt,
         uploadedBy: fileVersions.uploadedBy,
         createdAt: fileVersions.createdAt,
+                commitHash: fileVersions.commitHash,
+        commitMessage: fileVersions.commitMessage,
+        committedAt: fileVersions.committedAt,
+        commitAuthor: fileVersions.commitAuthor,
+        previewUrl: fileVersions.previewUrl,
         updatedAt: fileVersions.updatedAt,
       })
       .from(fileVersions)
@@ -1246,7 +1256,7 @@ export class DrizzleFileRepository implements FileRepository {
         approvedRevisionCount: sql<number>`cast(coalesce(sum(case when ${files.approvedVersionId} is not null then 1 else 0 end), 0) as int)`.as(
           "approvedRevisionCount",
         ),
-        finalDraftCount: sql<number>`cast(coalesce(sum(case when ${files.finalDraftVersionId} is not null then 1 else 0 end), 0) as int)`.as(
+        finalDraftCount: sql<number>`cast(coalesce(sum(case when ${files.finalDraftVersionId} is not null or ${files.fileKind} = 1 then 1 else 0 end), 0) as int)`.as(
           "finalDraftCount",
         ),
       })
@@ -1263,7 +1273,7 @@ export class DrizzleFileRepository implements FileRepository {
     // Count unresolved final-draft reports (reported or under_review)
     const [unresolvedRow] = await db
       .select({
-        unresolvedFinalDraftReportCount: sql<number>`cast(coalesce(sum(case when ${files.finalDraftReportStatus} in (${FileFinalDraftReportStatusDb.Reported}, ${FileFinalDraftReportStatusDb.UnderReview}) then 1 else 0 end), 0) as int)`.as(
+        unresolvedFinalDraftReportCount: sql<number>`cast(coalesce(sum(case when ${files.finalDraftReportStatus} in (${FileFinalDraftReportStatus.Reported}, ${FileFinalDraftReportStatus.UnderReview}) then 1 else 0 end), 0) as int)`.as(
           "unresolvedFinalDraftReportCount",
         ),
       })
@@ -1274,7 +1284,7 @@ export class DrizzleFileRepository implements FileRepository {
     // is incomplete (no processed/preview artifacts or processing not completed).
     const [processingIncompleteRow] = await db
       .select({
-        finalDraftProcessingIncompleteCount: sql<number>`cast(coalesce(count(*) filter (where ${files.finalDraftVersionId} is not null and ${fileVersions.processingStatus} is distinct from ${FileProcessingStatusDb.Completed}), 0) as int)`.as(
+        finalDraftProcessingIncompleteCount: sql<number>`cast(coalesce(count(*) filter (where ${files.finalDraftVersionId} is not null and ${fileVersions.processingStatus} is distinct from ${FileProcessingStatus.Completed}), 0) as int)`.as(
           "finalDraftProcessingIncompleteCount",
         ),
       })

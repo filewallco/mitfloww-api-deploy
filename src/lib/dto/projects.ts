@@ -331,6 +331,8 @@ export type ProjectShareClientProjectDTO = {
   contractStatus?: string;
   contractAcceptedAt?: string | null;
   contractAcceptedVersion?: number;
+  isCodeBased?: boolean;
+  deploymentUrl?: string | null;
 };
 
 export type ProjectShareClientStateDTO = {
@@ -395,6 +397,8 @@ export type ProjectDTO = {
   testimonialRequestSentAt?: string | null;
   hasClientReview?: boolean;
   hasRevisionRequested?: boolean;
+  isCodeBased?: boolean;
+  deploymentUrl?: string | null;
 };
 
 export type ProjectClientReviewDTO = {

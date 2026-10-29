@@ -35,8 +35,9 @@ import {
 import { Readable } from "node:stream";
 import { storage } from "@/lib/storage";
 import { db } from "@/lib/db/client";
-import { projects } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { files, projects } from "@/lib/db/schema";
+import { and, eq, isNull } from "drizzle-orm";
+import { AppError } from "@/lib/errors/app-error";
 import { sendSuccess, parseWithSchema, asyncHandler } from "@/lib/api/route";
 
 export const shareLinksRouter = Router();
@@ -567,6 +568,35 @@ shareLinksRouter.post("/:token/files/:fileId/versions/:versionId/approve", async
     projectId: project.id,
     versionId: params.versionId,
   });
+
+  // For code deliverables, freeze sync and check auto project approval
+  const [fileRecord] = await db
+    .select()
+    .from(files)
+    .where(eq(files.id, params.fileId))
+    .limit(1);
+
+  if (fileRecord && fileRecord.fileKind === 1) {
+    await db
+      .update(files)
+      .set({ isSyncFrozen: true })
+      .where(eq(files.id, fileRecord.id));
+
+    if (project.isCodeBased) {
+      const allFiles = await db
+        .select()
+        .from(files)
+        .where(and(eq(files.projectId, project.id), isNull(files.deletedAt)));
+      const allApproved = allFiles.every(f => f.id === fileRecord.id || f.approvalStatus === "approved");
+      if (allApproved) {
+        await db
+          .update(projects)
+          .set({ clientApprovedAt: new Date(), status: "approved" })
+          .where(eq(projects.id, project.id));
+      }
+    }
+  }
+
   return sendSuccess(res, result);
 }));
 
@@ -659,4 +689,34 @@ shareLinksRouter.post("/:token/contract-update/confirm", asyncHandler(async (req
     ip: req.ip,
   });
   return sendSuccess(res, result);
+}));
+
+shareLinksRouter.post("/:token/files/:fileId/unapprove", asyncHandler(async (req, res) => {
+  const params = parseWithSchema(clientShareFileParamsSchema, req.params);
+  const project = await requireAuthorizedShareProject(req, params.token);
+
+  if (project.paymentStatus === "paid" || (project.paymentStatus as any) === 1) {
+    throw new AppError("Cannot cancel approval after payment is completed.", 400, "project_already_paid");
+  }
+
+  await db
+    .update(files)
+    .set({
+      approvalStatus: "pending",
+      approvedVersionId: null,
+      isSyncFrozen: false,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(files.id, params.fileId), eq(files.projectId, project.id)));
+
+  await db
+    .update(projects)
+    .set({
+      clientApprovedAt: null,
+      status: "active",
+      updatedAt: new Date(),
+    })
+    .where(eq(projects.id, project.id));
+
+  return sendSuccess(res, { success: true, message: "Approval cancelled successfully." });
 }));

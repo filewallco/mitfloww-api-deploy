@@ -1,3 +1,7 @@
+import crypto from "crypto";
+import { githubService } from "@/lib/services/github-service";
+import { revisionComments } from "@/lib/db/schema";
+import { storage } from "@/lib/storage";
 import { contractService } from "@/lib/services/contract-service";
 import { requestProjectUpdateBodySchema } from "@/lib/validation/projects";
 import { emailService } from "@/lib/email/email-service";
@@ -11,7 +15,7 @@ import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { projectService } from "@/lib/services/project-service";
 import { fileService } from "@/lib/services/file-service";
 import { db } from "@/lib/db/client";
-import { fileVersions, files, projects } from "@/lib/db/schema";
+import { authIdentities, fileVersions, files, projects, users } from "@/lib/db/schema";
 import { DrizzleProjectRepository } from "@/lib/repositories/project-repository";
 import {
   projectListQueryParamsSchema,
@@ -205,6 +209,394 @@ projectsRouter.get("/reviews", asyncHandler(async (req, res) => {
       submittedAt: review.submittedAt.toISOString(),
       title: project.title,
     })),
+  });
+}));
+
+
+// ----------------------------------------------------
+// GitHub OAuth & Repository Integration (Vercel-style)
+// ----------------------------------------------------
+
+/**
+ * Check GitHub OAuth status for current actor
+ */
+projectsRouter.get("/github/status", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+
+  const [userRecord] = await db
+    .select({
+      githubUsername: users.githubUsername,
+      githubTokenCiphertext: users.githubTokenCiphertext,
+    })
+    .from(users)
+    .where(eq(users.id, actor.id))
+    .limit(1);
+
+  return res.json({
+    configured: Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+    connected: Boolean(userRecord?.githubTokenCiphertext),
+    username: userRecord?.githubUsername || null,
+  });
+}));
+
+/**
+ * Initiate GitHub OAuth authorization (Redirect to GitHub)
+ */
+projectsRouter.get("/github/connect", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  if (!clientId || !process.env.GITHUB_CLIENT_SECRET) {
+    const redirectTarget =
+      typeof req.query.redirect === "string" &&
+      req.query.redirect.startsWith("/") &&
+      !req.query.redirect.startsWith("//")
+        ? req.query.redirect
+        : "/projects";
+    const separator = redirectTarget.includes("?") ? "&" : "?";
+    return res.redirect(redirectTarget + separator + "github_error=oauth_not_configured");
+  }
+
+  // Generate cryptographically secure CSRF state
+  const state = crypto.randomBytes(32).toString("hex");
+
+  // Prevent Open Redirect: validate redirect is a relative path starting with /
+  const rawRedirect = typeof req.query.redirect === "string" && req.query.redirect.startsWith("/") && !req.query.redirect.startsWith("//")
+    ? req.query.redirect
+    : "/projects";
+  const separator = rawRedirect.includes("?") ? "&" : "?";
+  const redirectTarget = `${rawRedirect}${separator}github_connected=1&modal=link_repo`;
+
+  const isProd = process.env.NODE_ENV === "production";
+  const isPopup = req.query.popup === "1";
+
+  res.cookie("github_oauth_state", state, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "lax",
+    maxAge: 10 * 60 * 1000, // 10 minutes
+    path: "/",
+  });
+
+  res.cookie("github_oauth_redirect", redirectTarget, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "lax",
+    maxAge: 10 * 60 * 1000,
+    path: "/",
+  });
+
+  if (isPopup) {
+    res.cookie("github_oauth_popup", "1", {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      maxAge: 10 * 60 * 1000,
+      path: "/",
+    });
+  }
+
+  const forwardedHost = req.get("x-forwarded-host");
+  const forwardedProto = req.get("x-forwarded-proto");
+  const publicBase = (
+    process.env.APP_URL ||
+    (forwardedHost ? `${forwardedProto || "http"}://${forwardedHost}` : `${req.protocol}://${req.get("host")}`)
+  ).replace(/\/+$/, "");
+
+  const redirectUri = `${publicBase}/api/projects/github/callback`;
+  const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo,read:user&state=${state}`;
+
+  return res.redirect(githubAuthUrl);
+}));
+
+/**
+ * GitHub OAuth Callback
+ */
+projectsRouter.get("/github/callback", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+
+  const { code, state, error: ghError, error_description } = req.query;
+
+  // Clear state cookie regardless
+  const cookieState = req.cookies?.github_oauth_state;
+  const redirectTarget = req.cookies?.github_oauth_redirect || "/projects?github_connected=1&modal=link_repo";
+  const isPopup = req.cookies?.github_oauth_popup === "1";
+
+  res.clearCookie("github_oauth_state", { path: "/" });
+  res.clearCookie("github_oauth_redirect", { path: "/" });
+  res.clearCookie("github_oauth_popup", { path: "/" });
+
+  if (ghError) {
+    const errorMsg = typeof error_description === "string" ? error_description : "GitHub authorization denied.";
+    if (isPopup) {
+      return res.send(`<!DOCTYPE html>
+<html>
+<head><title>GitHub Authorization Error</title></head>
+<body style="background:#0b0f17;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <script>
+    if (window.opener) {
+      window.opener.postMessage({ type: "MITFLOWW_GITHUB_ERROR", error: ${JSON.stringify(errorMsg)} }, "*");
+      window.close();
+    } else {
+      window.location.href = "${redirectTarget.includes("?") ? redirectTarget + "&" : redirectTarget + "?"}github_error=" + encodeURIComponent(${JSON.stringify(errorMsg)});
+    }
+  </script>
+</body>
+</html>`);
+    }
+    const sep = redirectTarget.includes("?") ? "&" : "?";
+    return res.redirect(`${redirectTarget}${sep}github_error=${encodeURIComponent(errorMsg)}`);
+  }
+
+  if (!code || typeof code !== "string" || !state || typeof state !== "string" || state !== cookieState) {
+    throw new AppError("Invalid or expired OAuth state (CSRF verification failed).", 403, "invalid_oauth_state");
+  }
+
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new AppError("GitHub OAuth not configured.", 500, "github_oauth_not_configured");
+  }
+
+  // Exchange code for access token
+  const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "MitFloww-App",
+    },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+    }),
+  });
+
+  const tokenData = await tokenRes.json() as any;
+
+  if (!tokenRes.ok || !tokenData.access_token) {
+    const errorMsg = tokenData.error_description || "Failed to exchange GitHub authorization code.";
+    throw new AppError(errorMsg, 400, "github_token_exchange_failed");
+  }
+
+  const accessToken = tokenData.access_token as string;
+
+  // Fetch GitHub user profile
+  const profileRes = await fetch("https://api.github.com/user", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "MitFloww-App",
+    },
+  });
+
+  if (!profileRes.ok) {
+    throw new AppError("Failed to fetch GitHub profile with OAuth token.", 502, "github_profile_failed");
+  }
+
+  const ghProfile = await profileRes.json() as any;
+
+  // Encrypt access token at rest using AES-256-GCM
+  const encryptedToken = githubService.encryptToken(accessToken);
+
+  // Update user with encrypted token and GitHub username
+  await db
+    .update(users)
+    .set({
+      githubTokenCiphertext: encryptedToken,
+      githubUsername: ghProfile.login,
+    })
+    .where(eq(users.id, actor.id));
+
+  // Also record auth identity
+  try {
+    await db
+      .insert(authIdentities)
+      .values({
+        userId: actor.id,
+        provider: "github",
+        providerUserId: String(ghProfile.id),
+        email: ghProfile.email || null,
+        emailVerified: true,
+      })
+      .onConflictDoNothing();
+  } catch {
+    // Identity might already exist, continue safely
+  }
+
+  if (isPopup) {
+    return res.send(`<!DOCTYPE html>
+<html>
+<head><title>GitHub Connected</title></head>
+<body style="background:#0b0f17;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <div style="text-align:center;padding:20px;">
+    <p style="font-size:16px;font-weight:600;margin-bottom:8px;">Connected to GitHub!</p>
+    <p style="font-size:13px;color:#94a3b8;margin:0;">Closing window and returning to MitFloww...</p>
+  </div>
+  <script>
+    if (window.opener) {
+      window.opener.postMessage({ type: "MITFLOWW_GITHUB_CONNECTED", username: ${JSON.stringify(ghProfile.login)} }, "*");
+      window.close();
+    } else {
+      window.location.href = ${JSON.stringify(redirectTarget)};
+    }
+  </script>
+</body>
+</html>`);
+  }
+
+  return res.redirect(redirectTarget);
+}));
+
+/**
+ * Disconnect GitHub Account
+ */
+projectsRouter.post("/github/disconnect", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+
+  await db
+    .update(users)
+    .set({
+      githubTokenCiphertext: null,
+      githubUsername: null,
+    })
+    .where(eq(users.id, actor.id));
+
+  return sendSuccess(res, { message: "GitHub disconnected successfully." });
+}));
+
+const listGithubReposQuerySchema = z.object({
+  user: z.string().trim().optional(),
+  token: z.string().trim().optional(),
+});
+
+/**
+ * Fetch Repositories:
+ * - If actor has connected GitHub: loads user's repos automatically (including private!)
+ * - If user parameter provided: loads that user's/org's public repos
+ */
+projectsRouter.get("/github-repos", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const input = parseWithSchema(listGithubReposQuerySchema, req.query);
+
+  const [userRecord] = await db
+    .select({
+      githubUsername: users.githubUsername,
+      githubTokenCiphertext: users.githubTokenCiphertext,
+    })
+    .from(users)
+    .where(eq(users.id, actor.id))
+    .limit(1);
+
+  let connectedToken: string | undefined = undefined;
+  if (userRecord?.githubTokenCiphertext) {
+    try {
+      connectedToken = githubService.decryptToken(userRecord.githubTokenCiphertext);
+    } catch {
+      // Token corrupted or session secret changed
+    }
+  }
+
+  const effectiveToken = input.token?.trim() || connectedToken || undefined;
+
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github.v3+json",
+    "User-Agent": "MitFloww-App",
+  };
+  if (effectiveToken) {
+    headers.Authorization = `Bearer ${effectiveToken}`;
+  }
+
+  let repos: any[] = [];
+  let resolvedOwner = userRecord?.githubUsername || "";
+
+  // Mode 1: Specific username / URL passed
+  if (input.user && input.user.trim()) {
+    const cleaned = input.user.replace(/^https?:\/\/github\.com\//i, "").replace(/\/+$/, "");
+    const segments = cleaned.split("/").filter(Boolean);
+    const owner = segments[0];
+
+    if (!owner) {
+      throw new AppError("Invalid GitHub username or URL.", 400, "invalid_github_user");
+    }
+
+    resolvedOwner = owner;
+
+    // If specific repo was passed (e.g. owner/repo)
+    if (segments.length >= 2) {
+      const specificRepoUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(segments[1])}`;
+      try {
+        const specificRes = await fetch(specificRepoUrl, { headers });
+        if (specificRes.ok) {
+          const specificRepo = await specificRes.json();
+          repos.push(specificRepo);
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    const listUrl = `https://api.github.com/users/${encodeURIComponent(owner)}/repos?sort=updated&per_page=50`;
+    const response = await fetch(listUrl, { headers });
+
+    if (!response.ok) {
+      if (response.status === 404 && repos.length === 0) {
+        throw new AppError(`GitHub account or organization "${owner}" not found.`, 404, "github_user_not_found");
+      }
+      if (response.status === 403) {
+        const msg = await response.text();
+        if (msg.includes("rate limit")) {
+          throw new AppError("GitHub API rate limit reached. Please connect your GitHub account or provide a token.", 429, "rate_limit_exceeded");
+        }
+      }
+      if (repos.length === 0) {
+        throw new AppError(`Failed to load GitHub repositories (${response.status}).`, 502, "github_api_error");
+      }
+    } else {
+      const userRepos = await response.json();
+      if (Array.isArray(userRepos)) {
+        for (const r of userRepos) {
+          if (!repos.some(existing => existing.id === r.id)) {
+            repos.push(r);
+          }
+        }
+      }
+    }
+  } else if (connectedToken) {
+    // Mode 2: User is connected via GitHub OAuth - fetch user's own repos (including private!)
+    const userReposUrl = "https://api.github.com/user/repos?sort=updated&per_page=100&affiliation=owner,collaborator,organization_member";
+    const response = await fetch(userReposUrl, { headers });
+
+    if (!response.ok) {
+      throw new AppError(`Failed to load your GitHub repositories (${response.status}).`, 502, "github_api_error");
+    }
+
+    const userRepos = await response.json();
+    if (Array.isArray(userRepos)) {
+      repos = userRepos;
+    }
+  }
+
+  const formatted = repos.map((repo: any) => ({
+    id: repo.id,
+    name: repo.name,
+    full_name: repo.full_name,
+    html_url: repo.html_url,
+    description: repo.description || null,
+    default_branch: repo.default_branch || "main",
+    language: repo.language || null,
+    stargazers_count: repo.stargazers_count || 0,
+    updated_at: repo.updated_at,
+    private: Boolean(repo.private),
+  }));
+
+  return sendSuccess(res, {
+    owner: resolvedOwner,
+    connected: Boolean(connectedToken),
+    username: userRecord?.githubUsername || null,
+    repos: formatted,
   });
 }));
 
@@ -545,6 +937,7 @@ projectsRouter.get("/:id/contract/pdf", asyncHandler(async (req, res) => {
   return res.send(pdfBuffer);
 }));
 
+
 projectsRouter.post("/:id/contract/request-update", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor(req);
   const params = parseWithSchema(projectIdParamsSchema, req.params);
@@ -558,4 +951,282 @@ projectsRouter.post("/:id/contract/request-update", asyncHandler(async (req, res
   });
 
   return sendSuccess(res, requestRecord, { status: 201 });
+}));
+
+const linkRepositoryBodySchema = z.object({
+  repoUrl: z.string().min(1, "Repository URL is required"),
+  branch: z.string().trim().optional(),
+  githubToken: z.string().trim().optional(),
+  name: z.string().trim().max(120).optional(),
+});
+
+projectsRouter.post("/:id/repositories", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const params = parseWithSchema(projectIdParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
+  const input = parseWithSchema(linkRepositoryBodySchema, req.body);
+
+  const { owner, repo } = githubService.parseRepoUrl(input.repoUrl);
+
+  // If no explicit token provided, use user's connected GitHub OAuth token if available
+  let effectiveToken = input.githubToken?.trim() || undefined;
+  if (!effectiveToken) {
+    const [userRecord] = await db
+      .select({ githubTokenCiphertext: users.githubTokenCiphertext })
+      .from(users)
+      .where(eq(users.id, actor.id))
+      .limit(1);
+    if (userRecord?.githubTokenCiphertext) {
+      try {
+        effectiveToken = githubService.decryptToken(userRecord.githubTokenCiphertext);
+      } catch {
+        // Fallback
+      }
+    }
+  }
+  const repoMeta = await githubService.verifyRepository(effectiveToken, owner, repo);
+  const targetBranch = input.branch?.trim() || repoMeta.defaultBranch;
+
+  const commit = await githubService.fetchLatestCommit(effectiveToken, owner, repo, targetBranch);
+  const fileId = crypto.randomUUID();
+  const defaultBucket = storage.getDefaultBucket();
+  const storageKey = `projects/${project.id}/repos/${fileId}/rev-1-${commit.sha}.zip`;
+  const estimatedSizeBytes = (repoMeta.sizeKb || 0) * 1024;
+
+  const encryptedToken = effectiveToken ? githubService.encryptToken(effectiveToken) : null;
+  const deliverableName = input.name?.trim() || repoMeta.name;
+
+  const [createdFile] = await db
+    .insert(files)
+    .values({
+      id: fileId,
+      projectId: project.id,
+      name: deliverableName,
+      originalName: `${repoMeta.name}-${commit.shortSha}.zip`,
+      mimeType: "application/zip",
+      extension: "zip",
+      sizeBytes: estimatedSizeBytes,
+      storageKey,
+      storageBucket: defaultBucket,
+      fileKind: 1,
+      repoOwner: owner,
+      repoName: repoMeta.name,
+      repoUrl: repoMeta.htmlUrl,
+      repoBranch: targetBranch,
+      githubTokenCiphertext: encryptedToken,
+      isSyncFrozen: false,
+      approvalStatus: "pending",
+      uploadStatus: "uploaded",
+    })
+    .returning();
+
+  const [createdVersion] = await db
+    .insert(fileVersions)
+    .values({
+      fileId: createdFile.id,
+      revisionNumber: 1,
+      originalName: `${repoMeta.name}-${commit.shortSha}.zip`,
+      mimeType: "application/zip",
+      extension: "zip",
+      sizeBytes: estimatedSizeBytes,
+      storageBucket: defaultBucket,
+      storageKey,
+      commitHash: commit.sha,
+      commitMessage: commit.commitMessage,
+      committedAt: commit.committedAt,
+      commitAuthor: commit.commitAuthor,
+      previewUrl: project.deploymentUrl ?? null,
+      processingStatus: "completed",
+    })
+    .returning();
+
+  await db
+    .update(files)
+    .set({ currentVersionId: createdVersion.id })
+    .where(eq(files.id, createdFile.id));
+
+  // Asynchronously download repository snapshot and save to storage for offline archival
+  // Deliverable linking is instant (< 300ms) and never blocks on large zipball downloads
+  void (async () => {
+    try {
+      const { buffer, sizeBytes } = await githubService.downloadZipball(effectiveToken, owner, repo, commit.sha);
+      await storage.uploadFile({
+        bucket: defaultBucket,
+        key: storageKey,
+        body: buffer,
+        contentType: "application/zip",
+      });
+      await db.update(files).set({ sizeBytes }).where(eq(files.id, fileId));
+      await db.update(fileVersions).set({ sizeBytes }).where(eq(fileVersions.id, createdVersion.id));
+      scopedLogger.info("Repository snapshot zip archived successfully", { fileId, commitSha: commit.sha, sizeBytes });
+    } catch (archiveErr) {
+      scopedLogger.warn("Non-fatal: Background repo zip archival deferred", {
+        fileId,
+        commitSha: commit.sha,
+        error: archiveErr instanceof Error ? archiveErr.message : String(archiveErr),
+      });
+    }
+  })();
+
+  return sendSuccess(res, {
+    file: {
+      ...createdFile,
+      currentVersionId: createdVersion.id,
+    },
+    version: createdVersion,
+    commit,
+  }, { status: 201 });
+}));
+
+projectsRouter.post("/:id/repositories/:fileId/sync", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const params = parseWithSchema(projectFileReviewParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
+
+  const [file] = await db
+    .select()
+    .from(files)
+    .where(and(eq(files.id, params.fileId), eq(files.projectId, project.id)))
+    .limit(1);
+
+  if (!file) {
+    throw new NotFoundAppError("Deliverable file not found.");
+  }
+
+  if (file.fileKind !== 1 || !file.repoOwner || !file.repoName || !file.repoBranch) {
+    throw new AppError("This deliverable is not a linked code repository.", 400, "not_a_code_repo");
+  }
+
+  if (file.isSyncFrozen) {
+    throw new AppError(
+      "Repository synchronization is frozen because this milestone has already been approved by the client.",
+      400,
+      "sync_frozen"
+    );
+  }
+
+  let token: string | null = null;
+  if (file.githubTokenCiphertext) {
+    token = githubService.decryptToken(file.githubTokenCiphertext);
+  }
+
+  const latestCommit = await githubService.fetchLatestCommit(token, file.repoOwner, file.repoName, file.repoBranch);
+
+  const [currentVersion] = await db
+    .select()
+    .from(fileVersions)
+    .where(eq(fileVersions.id, file.currentVersionId!))
+    .limit(1);
+
+  if (currentVersion && currentVersion.commitHash === latestCommit.sha) {
+    return sendSuccess(res, {
+      upToDate: true,
+      message: "Repository deliverable is already up to date with the latest commit.",
+      currentCommit: latestCommit,
+      version: currentVersion,
+    });
+  }
+
+  const nextRevisionNumber = (currentVersion?.revisionNumber ?? 0) + 1;
+  const defaultBucket = storage.getDefaultBucket();
+  const storageKey = `projects/${project.id}/repos/${file.id}/rev-${nextRevisionNumber}-${latestCommit.sha}.zip`;
+  const estimatedSizeBytes = file.sizeBytes || 0;
+
+  const [newVersion] = await db
+    .insert(fileVersions)
+    .values({
+      fileId: file.id,
+      revisionNumber: nextRevisionNumber,
+      originalName: `${file.repoName}-${latestCommit.shortSha}.zip`,
+      mimeType: "application/zip",
+      extension: "zip",
+      sizeBytes: estimatedSizeBytes,
+      storageBucket: defaultBucket,
+      storageKey,
+      commitHash: latestCommit.sha,
+      commitMessage: latestCommit.commitMessage,
+      committedAt: latestCommit.committedAt,
+      commitAuthor: latestCommit.commitAuthor,
+      previewUrl: project.deploymentUrl ?? null,
+      processingStatus: "completed",
+    })
+    .returning();
+
+  await db
+    .update(files)
+    .set({
+      currentVersionId: newVersion.id,
+      originalName: `${file.repoName}-${latestCommit.shortSha}.zip`,
+      storageKey,
+      approvalStatus: "pending",
+      updatedAt: new Date(),
+    })
+    .where(eq(files.id, file.id));
+
+  // Background archival for the new commit zip
+  void (async () => {
+    try {
+      const { buffer, sizeBytes } = await githubService.downloadZipball(token, file.repoOwner!, file.repoName!, latestCommit.sha);
+      await storage.uploadFile({
+        bucket: defaultBucket,
+        key: storageKey,
+        body: buffer,
+        contentType: "application/zip",
+      });
+      await db.update(files).set({ sizeBytes }).where(eq(files.id, file.id));
+      await db.update(fileVersions).set({ sizeBytes }).where(eq(fileVersions.id, newVersion.id));
+      scopedLogger.info("Synced commit zip archived successfully", { fileId: file.id, commitSha: latestCommit.sha, sizeBytes });
+    } catch (archiveErr) {
+      scopedLogger.warn("Non-fatal: Background synced commit zip archival deferred", {
+        fileId: file.id,
+        commitSha: latestCommit.sha,
+        error: archiveErr instanceof Error ? archiveErr.message : String(archiveErr),
+      });
+    }
+  })();
+
+  // Automatically mark all pending revision comments from previous version as resolved
+  await db
+    .update(revisionComments)
+    .set({
+      status: "resolved",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(revisionComments.fileId, file.id),
+        eq(revisionComments.status, "pending"),
+        isNull(revisionComments.deletedAt),
+      ),
+    );
+
+  return sendSuccess(res, {
+    upToDate: false,
+    message: `Fetched new version (revision #${nextRevisionNumber}) with commit ${latestCommit.shortSha}.`,
+    version: newVersion,
+    commit: latestCommit,
+  }, { status: 201 });
+}));
+
+projectsRouter.post("/:id/repositories/:fileId/unfreeze", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const params = parseWithSchema(projectFileReviewParamsSchema, req.params);
+  const project = await getAuthorizedProject(params.id, actor.id);
+
+  const [file] = await db
+    .select()
+    .from(files)
+    .where(and(eq(files.id, params.fileId), eq(files.projectId, project.id)))
+    .limit(1);
+
+  if (!file) {
+    throw new NotFoundAppError("Deliverable file not found.");
+  }
+
+  await db
+    .update(files)
+    .set({ isSyncFrozen: false, updatedAt: new Date() })
+    .where(eq(files.id, file.id));
+
+  return sendSuccess(res, { success: true, isSyncFrozen: false });
 }));

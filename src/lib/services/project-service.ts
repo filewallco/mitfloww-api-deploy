@@ -1,7 +1,7 @@
 import { contractService } from "@/lib/services/contract-service";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { projects, users } from "@/lib/db/schema";
+import { files, fileVersions, projects, users } from "@/lib/db/schema";
 import { emailService } from "@/lib/email/email-service";
 import { createScopedLogger } from "@/lib/logger";
   import { resolveActiveActor } from "@/lib/auth/active-actor";
@@ -398,6 +398,8 @@ import { createScopedLogger } from "@/lib/logger";
         }),
       updatedAt: project.updatedAt.toISOString(),
       watermarkEnabled: project.watermarkEnabled,
+      isCodeBased: Boolean(project.isCodeBased),
+      deploymentUrl: project.deploymentUrl ?? null,
       contractEnabled: Boolean(project.contractEnabled),
       contractStatus: project.contractStatus || "none",
       contractAcceptedAt: project.contractAcceptedAt?.toISOString() ?? null,
@@ -466,6 +468,8 @@ import { createScopedLogger } from "@/lib/logger";
             contractStatus: project.contractStatus || "none",
             contractAcceptedAt: project.contractAcceptedAt?.toISOString() ?? null,
             contractAcceptedVersion: project.contractAcceptedVersion ?? 0,
+            isCodeBased: Boolean(project.isCodeBased),
+            deploymentUrl: project.deploymentUrl ?? null,
           }
         : null,
       remainingAttempts: getProjectShareRemainingAttempts(
@@ -663,6 +667,8 @@ export class ProjectService {
         titleSourceLocale,
         watermarkEnabled: input.watermarkEnabled,
         contractEnabled: Boolean(input.contractEnabled),
+        isCodeBased: Boolean(input.isCodeBased),
+        deploymentUrl: input.deploymentUrl ? input.deploymentUrl.trim() : null,
         clientNameSourceLocale,
         clientPaymentCompletedAt: null,
         clientPaymentReference: null,
@@ -896,13 +902,28 @@ export class ProjectService {
         title,
         titleSourceLocale,
         updatedAt: new Date(),
-        watermarkEnabled: input.watermarkEnabled,
+        watermarkEnabled: input.isCodeBased ? false : input.watermarkEnabled,
         contractEnabled: Boolean(input.contractEnabled),
+        isCodeBased: Boolean(input.isCodeBased),
+        deploymentUrl: input.deploymentUrl ? input.deploymentUrl.trim() : null,
         clientNameSourceLocale,
       });
 
       if (!record) {
         throw new NotFoundAppError("Project not found.");
+      }
+
+      if (input.deploymentUrl !== undefined) {
+        const nextUrl = input.deploymentUrl ? input.deploymentUrl.trim() : null;
+        await db
+          .update(fileVersions)
+          .set({ previewUrl: nextUrl })
+          .where(
+            inArray(
+              fileVersions.fileId,
+              db.select({ id: files.id }).from(files).where(eq(files.projectId, record.id))
+            )
+          );
       }
 
       const fullRecord = await this.repository.findById(record.id);

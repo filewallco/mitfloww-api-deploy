@@ -104,6 +104,12 @@ export type FileDTO = {
   unresolvedVersionReportCount: number;
   deleteBlockReason: FileDeleteBlockReason | null;
   deleteRequiresWarning: boolean;
+  fileKind?: number;
+  repoOwner?: string | null;
+  repoName?: string | null;
+  repoUrl?: string | null;
+  repoBranch?: string | null;
+  isSyncFrozen?: boolean;
 };
 
 export type DeletedFileDTO = {

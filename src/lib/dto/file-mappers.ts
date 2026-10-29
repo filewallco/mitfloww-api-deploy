@@ -91,6 +91,12 @@ export function toFileDTO<T extends FileDTORecord>(
     currentVersion: versionDTO,
     currentVersionId: record.currentVersionId ?? currentVersion?.id ?? null,
     deletedAt: toIsoString(record.deletedAt),
+    fileKind: (record as any).fileKind ?? 0,
+    repoOwner: (record as any).repoOwner ?? null,
+    repoName: (record as any).repoName ?? null,
+    repoUrl: (record as any).repoUrl ?? null,
+    repoBranch: (record as any).repoBranch ?? null,
+    isSyncFrozen: Boolean((record as any).isSyncFrozen),
 
     extension: currentVersion?.extension ?? record.extension,
     finalDraftReportMessage: record.finalDraftReportMessage,

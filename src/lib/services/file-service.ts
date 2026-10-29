@@ -951,6 +951,11 @@ function toFileReviewVersionDTO(input: {
     originalName: version.originalName,
     isSoftWatermarked: version.useSoftWatermark,
     watermarkEnabled: Boolean(version.watermarkEnabled),
+    commitHash: version.commitHash ?? null,
+    commitMessage: version.commitMessage ?? null,
+    committedAt: version.committedAt?.toISOString() ?? null,
+    commitAuthor: version.commitAuthor ?? null,
+    previewUrl: version.previewUrl ?? null,
     preview,
     previewPurgedAt: version.previewPurgedAt?.toISOString() ?? null,
     previewRetentionUntil: version.previewRetentionUntil?.toISOString() ?? null,
@@ -1590,7 +1595,8 @@ export class FileService {
       (version) =>
         version.deletedAt == null &&
         (version.id === fileWithVersions.file.finalDraftVersionId ||
-          version.isFinalDraft),
+          version.isFinalDraft ||
+          (fileWithVersions.file.fileKind === 1 && (version.id === fileWithVersions.file.approvedVersionId || version.id === fileWithVersions.file.currentVersionId))),
     );
 
     if (!finalDraftVersion) {
@@ -7237,6 +7243,12 @@ export class FileService {
         uploadedBy: file.uploadedBy,
         uploadStatus: file.uploadStatus,
         uploadMode,
+        fileKind: (file as any).fileKind ?? 0,
+        repoOwner: (file as any).repoOwner ?? null,
+        repoName: (file as any).repoName ?? null,
+        repoUrl: (file as any).repoUrl ?? null,
+        repoBranch: (file as any).repoBranch ?? null,
+        isSyncFrozen: Boolean((file as any).isSyncFrozen),
       },
       project: {
         advancePaymentEnabled: project.advancePaymentEnabled,
@@ -7259,6 +7271,8 @@ export class FileService {
         titleText: projectTitleText,
         totalRevisionCount,
         watermarkEnabled: project.watermarkEnabled,
+        isCodeBased: Boolean(project.isCodeBased),
+        deploymentUrl: project.deploymentUrl ?? null,
         creatorName,
         creatorAvatarUrl,
         clientEmail: project.clientEmail ?? null,

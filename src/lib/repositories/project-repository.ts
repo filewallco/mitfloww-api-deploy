@@ -21,8 +21,9 @@ import {
   projectClientReviews,
   projects,
   revisionComments,
-  FileFinalDraftReportStatusDb,
-  FileProcessingStatusDb,
+  FileFinalDraftReportStatus,
+  FileProcessingStatus,
+  FileRevisionCommentStatus,
   type ProjectClientReviewRecord,
   type ProjectRecord,
 } from "@/lib/db/schema";
@@ -130,9 +131,9 @@ const projectFileMetrics = db
     isPendingPayment: sql<boolean>`
       cast(count(distinct ${files.id}) as int) > 0
       AND cast(count(distinct case when ${files.approvedVersionId} is not null then ${files.id} end) as int) = cast(count(distinct ${files.id}) as int)
-      AND cast(count(distinct case when ${files.finalDraftVersionId} is not null then ${files.id} end) as int) = cast(count(distinct ${files.id}) as int)
-      AND cast(count(distinct case when ${files.finalDraftReportStatus} in (${FileFinalDraftReportStatusDb.Reported}, ${FileFinalDraftReportStatusDb.UnderReview}) then ${files.id} end) as int) = 0
-      AND cast(count(distinct case when ${files.finalDraftVersionId} is not null and ${finalDraftVersions.processingStatus} is distinct from ${FileProcessingStatusDb.Completed} then ${files.id} end) as int) = 0
+      AND cast(count(distinct case when ${files.finalDraftVersionId} is not null or ${files.fileKind} = 1 then ${files.id} end) as int) = cast(count(distinct ${files.id}) as int)
+      AND cast(count(distinct case when ${files.finalDraftReportStatus} in (${FileFinalDraftReportStatus.Reported}, ${FileFinalDraftReportStatus.UnderReview}) then ${files.id} end) as int) = 0
+      AND cast(count(distinct case when ${files.finalDraftVersionId} is not null and ${finalDraftVersions.processingStatus} is distinct from ${FileProcessingStatus.Completed} then ${files.id} end) as int) = 0
     `.as("isPendingPayment"),
   })
   .from(files)
@@ -154,7 +155,7 @@ const projectRecordWithMetricsColumns = {
   totalSizeBytes: projectFileMetrics.totalSizeBytes,
   isPendingPayment: projectFileMetrics.isPendingPayment,
   hasClientReview: sql<boolean>`EXISTS (SELECT 1 FROM ${projectClientReviews} WHERE ${projectClientReviews.projectId} = ${projects.id})`,
-  hasRevisionRequested: sql<boolean>`EXISTS (SELECT 1 FROM ${revisionComments} WHERE ${revisionComments.projectId} = ${projects.id} AND ${revisionComments.deletedAt} IS NULL AND ${revisionComments.status} = 0)`,
+  hasRevisionRequested: sql<boolean>`EXISTS (SELECT 1 FROM ${revisionComments} WHERE ${revisionComments.projectId} = ${projects.id} AND ${revisionComments.deletedAt} IS NULL AND ${revisionComments.status} = 'pending')`,
 };
 
 function getSortColumn(sortField: ProjectSortField) {

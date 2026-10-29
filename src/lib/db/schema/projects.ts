@@ -422,6 +422,8 @@ export const createProjectTables = (fw: PgSchema) => {
       contractAcceptedVersion: integer("contract_accepted_version").notNull().default(0),
       contractPdfStorageKey: varchar("contract_pdf_storage_key", { length: 1024 }),
       watermarkEnabled: boolean("watermark_enabled").notNull().default(true),
+      isCodeBased: boolean("is_code_based").notNull().default(false),
+      deploymentUrl: varchar("deployment_url", { length: 1024 }),
       deliverablesRequestedAt: timestamp("deliverables_requested_at", {
         mode: "date",
         withTimezone: true,

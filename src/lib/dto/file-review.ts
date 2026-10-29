@@ -94,6 +94,11 @@ export type FileReviewVersionDTO = {
   storageBucket: string;
   storageKey: string;
   unresolvedReportCount: number;
+  commitHash?: string | null;
+  commitMessage?: string | null;
+  committedAt?: string | null;
+  commitAuthor?: string | null;
+  previewUrl?: string | null;
   updatedAt: string;
   uploadedBy: string | null;
 };
@@ -123,6 +128,12 @@ export type FileReviewFileDTO = {
   uploadedBy: string | null;
   uploadStatus: FileUploadStatus;
   uploadMode: FileReviewUploadMode;
+  fileKind?: number;
+  repoOwner?: string | null;
+  repoName?: string | null;
+  repoUrl?: string | null;
+  repoBranch?: string | null;
+  isSyncFrozen?: boolean;
 };
 
 export type FileReviewProjectDTO = {
@@ -154,6 +165,8 @@ export type FileReviewProjectDTO = {
   clientEmail?: string | null;
   averageRating?: number | null;
   reviewCount?: number | null;
+  isCodeBased?: boolean;
+  deploymentUrl?: string | null;
 };
 
 export type FileReviewProjectFileNavDTO = {
