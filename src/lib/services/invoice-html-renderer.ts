@@ -90,7 +90,7 @@ export function generateInvoiceHtml(data: InvoiceRenderData): string {
   const isPaid = String(data.paymentStatus || "PAID").toUpperCase() === "PAID";
   const statusLabel = isPaid ? "PAID" : String(data.paymentStatus || "PENDING").toUpperCase();
 
-  const companyName = data.company.name || data.user.name || "My Design Company";
+  const companyName = data.company.name || data.user.name || "";
   const clientName = data.clientName || "Valued Client";
   const invoiceNumber = data.invoiceNumber && data.invoiceNumber !== "<invoice_number>" ? data.invoiceNumber : "INV-2026-0001";
   const invoiceDate = data.invoiceDate || "<date>";

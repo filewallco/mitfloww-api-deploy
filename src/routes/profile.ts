@@ -154,23 +154,6 @@ const companyUpdateSchema = z.object({
   yearFounded: z.string().trim().max(10).optional(),
   companySize: z.string().trim().max(50).optional(),
 }).superRefine((data, ctx) => {
-  if (data.name && data.name.trim().length > 0) {
-    if (!data.website || !data.website.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["website"],
-        message: "Company website is required when company name is provided",
-      });
-    }
-    if (!data.email || !data.email.trim()) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["email"],
-        message: "Company email is required when company name is provided",
-      });
-    }
-  }
-
   if (data.yearFounded && data.yearFounded.trim()) {
     const currentYear = new Date().getFullYear();
     const yearNum = parseInt(data.yearFounded.trim(), 10);
