@@ -44,6 +44,14 @@ const SENSITIVE_KEYS = new Set([
   "cardnumber",
   "cvv",
   "cvc",
+  "razorpay_signature",
+  "razorpaysignature",
+  "signature",
+  "key_secret",
+  "webhook_secret",
+  "keysecret",
+  "webhooksecret",
+  "x-razorpay-signature",
 ]);
 
 /**

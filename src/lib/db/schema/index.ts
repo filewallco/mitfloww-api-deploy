@@ -12,6 +12,7 @@ import { createTransactionTables } from "./transactions";
 import { createAssetTables } from "./assets";
 import { createAuthTables } from "./auth";
 import { createDashboardTables } from "./dashboard";
+import { createPaymentTables } from "./payments";
 
 export const fw = pgSchema("mitfloww");
 
@@ -68,6 +69,13 @@ export const {
   assetFiles,
   assetPurchases,
 } = createAssetTables(fw);
+export const {
+  paymentTransactions,
+  paymentRefunds,
+  paymentWebhookEvents,
+  paymentOutboxEvents,
+  paymentAuditLogs,
+} = createPaymentTables(fw, { users });
 
 export type {
   CreditAccountRecord,
@@ -310,3 +318,24 @@ export type {
   DashboardUserStateRecord,
   NewDashboardUserStateRecord,
 } from "./dashboard";
+
+export {
+  PAYMENT_TRANSACTION_STATUSES,
+  PAYMENT_WEBHOOK_STATUSES,
+  PAYMENT_OUTBOX_STATUSES,
+  PAYMENT_REFUND_STATUSES,
+  type PaymentTransactionStatus,
+  type PaymentWebhookStatus,
+  type PaymentOutboxStatus,
+  type PaymentRefundStatus,
+  type PaymentTransactionRecord,
+  type NewPaymentTransactionRecord,
+  type PaymentRefundRecord,
+  type NewPaymentRefundRecord,
+  type PaymentWebhookEventRecord,
+  type NewPaymentWebhookEventRecord,
+  type PaymentOutboxEventRecord,
+  type NewPaymentOutboxEventRecord,
+  type PaymentAuditLogRecord,
+  type NewPaymentAuditLogRecord,
+} from "./payments";

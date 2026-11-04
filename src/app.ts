@@ -32,6 +32,7 @@ import { transactionsRouter } from "@/routes/transactions";
 import { currencyRouter } from "@/routes/currency";
 import { assetsRouter } from "@/routes/assets";
 import { dashboardRouter } from "@/routes/dashboard";
+import { paymentRouter } from "@/routes/payment";
 
 export const app = express();
 
@@ -134,7 +135,7 @@ app.use(
 );
 
 // Standard JSON body parser
-app.use(express.json({ limit: "50mb" }));
+app.use(express.json({ limit: "50mb", verify: (req: any, _res: any, buf: Buffer) => { req.rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // Locale detection middleware
@@ -150,6 +151,7 @@ api.use("/plans", plansRouter);
 api.use("/credits", creditsRouter);
 api.use("/storage", storageRouter);
 api.use("/cron", cronRouter);
+api.use("/payment", paymentRouter);
 api.use("/i18n", i18nRouter);
 api.use("/notifications", notificationsRouter);
 api.use("/testimonials", testimonialsRouter);

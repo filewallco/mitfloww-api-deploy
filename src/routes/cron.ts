@@ -1,3 +1,4 @@
+import { paymentOutboxWorker } from "@/lib/services/payment/payment-outbox-worker";
 import { emailService } from "@/lib/email/email-service";
 import { users } from "@/lib/db/schema";
 import { DELETED_RESOURCE_RETENTION_DAYS } from "@/config/retention";
@@ -550,5 +551,14 @@ cronRouter.get("/cleanup-deleted-resources", asyncHandler(async (_req, res) => {
     retentionDays: DELETED_RESOURCE_RETENTION_DAYS,
     cleanedProjects: 0,
     cleanedAssets: 0,
+  });
+}));
+
+cronRouter.post("/payment-outbox", asyncHandler(async (_req, res) => {
+  const result = await paymentOutboxWorker.processPending();
+  return res.json({
+    success: true,
+    processed: result.processed,
+    failed: result.failed,
   });
 }));

@@ -46,8 +46,9 @@ export class TransactionService {
     };
   }
 
-  async recordAdvanceTransaction(projectId: string): Promise<TransactionRecord | null> {
-    const [project] = await db
+  async recordAdvanceTransaction(projectId: string, tx?: any): Promise<TransactionRecord | null> {
+    const executor = tx || db;
+    const [project] = await executor
       .select()
       .from(projects)
       .where(eq(projects.id, projectId))
@@ -64,7 +65,7 @@ export class TransactionService {
     const paidAt = project.advancePaymentCompletedAt ?? new Date();
     const isPaid = project.advancePaymentStatus === ProjectPaymentStatus.Paid;
 
-    const [record] = await db
+    const [record] = await executor
       .insert(transactions)
       .values({
         userId: project.userId,
@@ -101,8 +102,9 @@ export class TransactionService {
     return record;
   }
 
-  async recordProjectTransaction(projectId: string): Promise<TransactionRecord | null> {
-    const [project] = await db
+  async recordProjectTransaction(projectId: string, tx?: any): Promise<TransactionRecord | null> {
+    const executor = tx || db;
+    const [project] = await executor
       .select()
       .from(projects)
       .where(eq(projects.id, projectId))
@@ -142,7 +144,7 @@ export class TransactionService {
     const isPaid = project.paymentStatus === ProjectPaymentStatus.Paid;
     const currency = project.currency || "INR";
 
-    const [record] = await db
+    const [record] = await executor
       .insert(transactions)
       .values({
         userId: project.userId,
