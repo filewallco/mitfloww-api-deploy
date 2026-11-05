@@ -33,6 +33,9 @@ export interface GatewayOrderResult {
       contact?: string;
     };
     themeColor?: string | null;
+    paymentSessionId?: string;
+    environment?: "sandbox" | "production";
+    isMock?: boolean;
   };
 }
 

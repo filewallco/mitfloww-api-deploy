@@ -364,12 +364,49 @@ export function createPaymentTables(
     ],
   );
 
+  const paymentGatewayConfigs = fw.table(
+    "payment_gateway_configs",
+    {
+      id: uuid("id").defaultRandom().primaryKey(),
+      provider: varchar("provider", { length: 32 }).notNull().unique(),
+      displayName: varchar("display_name", { length: 64 }).notNull(),
+      description: varchar("description", { length: 255 }),
+      isEnabled: boolean("is_enabled").notNull().default(true),
+      supportedCurrencies: jsonb("supported_currencies")
+        .$type<string[]>()
+        .notNull()
+        .default(["INR"]),
+      environment: varchar("environment", { length: 16 })
+        .notNull()
+        .default("sandbox"),
+      feePercentageBasisPoints: integer("fee_percentage_basis_points")
+        .notNull()
+        .default(230),
+      fixedFeeCents: integer("fixed_fee_cents").notNull().default(0),
+      taxRateBasisPoints: integer("tax_rate_basis_points")
+        .notNull()
+        .default(1800),
+      feePassingEnabled: boolean("fee_passing_enabled").notNull().default(true),
+      isDefault: boolean("is_default").notNull().default(false),
+      createdAt: timestamp("created_at", { mode: "date", withTimezone: true })
+        .notNull()
+        .defaultNow(),
+      updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true })
+        .notNull()
+        .defaultNow(),
+    },
+    (table) => [
+      uniqueIndex("payment_gateway_configs_provider_idx").on(table.provider),
+    ],
+  );
+
   return {
     paymentTransactions,
     paymentRefunds,
     paymentWebhookEvents,
     paymentOutboxEvents,
     paymentAuditLogs,
+    paymentGatewayConfigs,
   };
 }
 
@@ -408,3 +445,10 @@ export type NewPaymentAuditLogRecord = InferInsertModel<
   ReturnType<typeof createPaymentTables>["paymentAuditLogs"]
 >;
 
+
+export type PaymentGatewayConfigRecord = InferSelectModel<
+  ReturnType<typeof createPaymentTables>["paymentGatewayConfigs"]
+>;
+export type NewPaymentGatewayConfigRecord = InferInsertModel<
+  ReturnType<typeof createPaymentTables>["paymentGatewayConfigs"]
+>;

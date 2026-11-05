@@ -75,6 +75,7 @@ export const {
   paymentWebhookEvents,
   paymentOutboxEvents,
   paymentAuditLogs,
+  paymentGatewayConfigs,
 } = createPaymentTables(fw, { users });
 
 export type {
@@ -338,4 +339,6 @@ export {
   type NewPaymentOutboxEventRecord,
   type PaymentAuditLogRecord,
   type NewPaymentAuditLogRecord,
+  type PaymentGatewayConfigRecord,
+  type NewPaymentGatewayConfigRecord,
 } from "./payments";

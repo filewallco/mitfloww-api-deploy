@@ -10,17 +10,57 @@ import {
 import { paymentService } from "@/lib/services/payment/payment-service";
 import { paymentWebhookService } from "@/lib/services/payment/payment-webhook-service";
 import { paymentOutboxWorker } from "@/lib/services/payment/payment-outbox-worker";
+import { gatewayConfigService } from "@/lib/services/payment/gateway-config-service";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { AppError } from "@/lib/errors/app-error";
 
 export const paymentRouter = Router();
+
+async function resolveOptionalActorId(req: any): Promise<string | null> {
+  try {
+    const actor = await resolveActiveActor(req);
+    return actor?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+// GET /api/payment/gateways - Returns currently active gateways and display metadata for currency
+paymentRouter.get(
+  "/gateways",
+  asyncHandler(async (req, res) => {
+    const currency = String(req.query.currency || "INR").toUpperCase();
+    const gateways = await gatewayConfigService.getAvailableGateways(currency);
+    return sendSuccess(res, { currency, gateways });
+  }),
+);
+
+// GET /api/payment/admin/gateways - Admin view of all gateway configurations
+paymentRouter.get(
+  "/admin/gateways",
+  asyncHandler(async (_req, res) => {
+    const gateways = await gatewayConfigService.getAllGatewayConfigs();
+    return sendSuccess(res, { gateways });
+  }),
+);
+
+// PUT /api/payment/admin/gateways/:provider - Admin endpoint to enable/disable or configure a gateway
+paymentRouter.put(
+  "/admin/gateways/:provider",
+  asyncHandler(async (req, res) => {
+    const provider = String(req.params.provider || "").toLowerCase();
+    const actor = await resolveActiveActor(req);
+    const updated = await gatewayConfigService.updateGatewayConfig(provider, req.body, actor.id);
+    return sendSuccess(res, { gateway: updated });
+  }),
+);
 
 // GET /api/payment/fee-preview - Transparent calculation breakdown
 paymentRouter.get(
   "/fee-preview",
   asyncHandler(async (req, res) => {
     const query = parseWithSchema(feePreviewQuerySchema, req.query);
-    const actorUserId = (req as any).authenticatedUserId || null;
+    const actorUserId = await resolveOptionalActorId(req);
 
     const result = await paymentService.getFeePreview({
       referenceType: query.referenceType,
@@ -39,7 +79,7 @@ paymentRouter.post(
   "/orders",
   asyncHandler(async (req, res) => {
     const input = parseWithSchema(createPaymentOrderSchema, req.body);
-    const actorUserId = (req as any).authenticatedUserId || null;
+    const actorUserId = await resolveOptionalActorId(req);
 
     const result = await paymentService.createOrder({
       ...input,

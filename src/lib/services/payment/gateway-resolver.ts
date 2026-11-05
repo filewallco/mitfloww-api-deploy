@@ -2,6 +2,8 @@ import { getPaymentConfig } from "@/config/payment";
 import { AppError } from "@/lib/errors/app-error";
 import type { PaymentGatewayAdapter } from "./payment-gateway.interface";
 import { razorpayAdapter } from "./razorpay.adapter";
+import { cashfreeAdapter } from "./cashfree.adapter";
+import { gatewayConfigService } from "./gateway-config-service";
 
 export class GatewayResolver {
   resolveProvider(params: {
@@ -10,43 +12,49 @@ export class GatewayResolver {
   }): "razorpay" | "cashfree" | "stripe" {
     const config = getPaymentConfig();
     const currency = (params.currency || "INR").toUpperCase();
+    const isNonProd = process.env.NODE_ENV !== "production";
+
+    // In non-production, ensure at least one provider is considered enabled for testing
+    const razorpayActive = config.providers.razorpay.enabled || isNonProd;
+    const cashfreeActive = config.providers.cashfree.enabled || isNonProd;
+    const stripeActive = config.providers.stripe.enabled || (isNonProd && currency !== "INR");
 
     if (params.preferredProvider) {
       const preferred = params.preferredProvider.toLowerCase() as "razorpay" | "cashfree" | "stripe";
-      if (preferred === "razorpay" && config.providers.razorpay.enabled) {
+      if (preferred === "razorpay" && razorpayActive) {
         return "razorpay";
       }
-      if (preferred === "cashfree" && config.providers.cashfree.enabled) {
+      if (preferred === "cashfree" && cashfreeActive) {
         return "cashfree";
       }
-      if (preferred === "stripe" && config.providers.stripe.enabled) {
+      if (preferred === "stripe" && stripeActive) {
         return "stripe";
       }
     }
 
     // Default regional routing
     if (currency === "INR") {
-      if (config.providers.razorpay.enabled) {
+      if (razorpayActive) {
         return "razorpay";
       }
-      if (config.providers.cashfree.enabled) {
+      if (cashfreeActive) {
         return "cashfree";
       }
     } else {
-      if (config.providers.stripe.enabled) {
+      if (stripeActive) {
         return "stripe";
       }
-      if (config.providers.razorpay.enabled) {
+      if (razorpayActive) {
         return "razorpay";
       }
     }
 
-    if (config.providers.razorpay.enabled) {
+    if (razorpayActive) {
       return "razorpay";
     }
 
     throw new AppError(
-      "No payment gateway is configured or enabled for currency " + currency,
+      `No payment gateway is configured or enabled for currency ${currency}. Please check payment gateway configuration in settings.`,
       503,
       "gateway_unavailable",
     );
@@ -57,7 +65,7 @@ export class GatewayResolver {
       case "razorpay":
         return razorpayAdapter;
       case "cashfree":
-        throw new AppError("Cashfree adapter is not active yet.", 501, "provider_not_implemented");
+        return cashfreeAdapter;
       case "stripe":
         throw new AppError("Stripe adapter is not active yet.", 501, "provider_not_implemented");
       default:
@@ -67,4 +75,3 @@ export class GatewayResolver {
 }
 
 export const gatewayResolver = new GatewayResolver();
-

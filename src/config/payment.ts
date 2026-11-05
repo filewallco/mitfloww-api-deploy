@@ -75,9 +75,9 @@ export function getPaymentConfig(): PaymentConfig {
         secretKey: (process.env.CASHFREE_SECRET_KEY || "").trim(),
         webhookSecret: (process.env.CASHFREE_WEBHOOK_SECRET || "").trim(),
         fee: {
-          feePercentage: 1.9,
-          fixedFee: 0,
-          taxRate: 18.0,
+          feePercentage: parseFloat(process.env.CASHFREE_FEE_PERCENT || "2.0") || 2.0,
+          fixedFee: parseInt(process.env.CASHFREE_FIXED_FEE || "0", 10) || 0,
+          taxRate: parseFloat(process.env.CASHFREE_TAX_RATE || "18.0") || 18.0,
           feePassingEnabled,
           configVersion: "v1",
         },
@@ -88,9 +88,9 @@ export function getPaymentConfig(): PaymentConfig {
         secretKey: (process.env.STRIPE_SECRET_KEY || "").trim(),
         webhookSecret: (process.env.STRIPE_WEBHOOK_SECRET || "").trim(),
         fee: {
-          feePercentage: 2.9,
-          fixedFee: 30, // 30 cents fixed fee
-          taxRate: 0.0,
+          feePercentage: parseFloat(process.env.STRIPE_FEE_PERCENT || "2.9") || 2.9,
+          fixedFee: parseInt(process.env.STRIPE_FIXED_FEE || "30", 10) || 30,
+          taxRate: parseFloat(process.env.STRIPE_TAX_RATE || "0.0") || 0.0,
           feePassingEnabled,
           configVersion: "v1",
         },

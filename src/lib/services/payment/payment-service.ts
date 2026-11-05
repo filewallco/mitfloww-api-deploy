@@ -1,3 +1,4 @@
+import { gatewayConfigService } from "./gateway-config-service";
 import crypto from "node:crypto";
 import { db } from "@/lib/db/client";
 import {
@@ -264,10 +265,12 @@ export class PaymentService {
       preferredProvider: params.preferredProvider,
     });
 
+    const feeConfig = await gatewayConfigService.getProviderFeeConfig(provider);
     const feeBreakdown = feeCalculator.calculate({
       originalAmount: authoritative.originalAmount,
       currency: authoritative.currency,
       provider,
+      customConfig: feeConfig,
     });
 
     return {
@@ -298,10 +301,12 @@ export class PaymentService {
     });
     const adapter = gatewayResolver.getAdapter(provider);
 
+    const feeConfig = await gatewayConfigService.getProviderFeeConfig(provider);
     const feeSnapshot = feeCalculator.calculate({
       originalAmount: authoritative.originalAmount,
       currency: authoritative.currency,
       provider,
+      customConfig: feeConfig,
     });
 
     const idempotencyKey =
