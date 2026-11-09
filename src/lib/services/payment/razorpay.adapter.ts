@@ -67,28 +67,37 @@ export class RazorpayAdapter implements PaymentGatewayAdapter {
     const config = getPaymentConfig();
     const rzp = config.providers.razorpay;
 
-    const keyId = this.configOverride?.keyId || rzp.keyId;
-    const keySecret = this.configOverride?.keySecret || rzp.keySecret;
-    const webhookSecret = this.configOverride?.webhookSecret || rzp.webhookSecret || keySecret;
+    const keyId = (this.configOverride?.keyId || rzp.keyId || "").trim();
+    const keySecret = (this.configOverride?.keySecret || rzp.keySecret || "").trim();
+    const webhookSecret = (this.configOverride?.webhookSecret || rzp.webhookSecret || keySecret).trim();
     const autoCapture = this.configOverride?.autoCapture ?? config.autoCapture;
 
-    if (!keyId || !keySecret) {
+    const isExplicitMock = Boolean(
+      this.configOverride?.isMock ||
+      this.configOverride?.keyId === "rzp_test_mock_key_id" ||
+      process.env.NODE_ENV === "test"
+    );
+    const isTestEnvironment = process.env.NODE_ENV === "test";
+
+    const isPlaceholder =
+      !keyId ||
+      !keySecret ||
+      keyId === "rzp_test_mock_key_id" ||
+      keyId.startsWith("rzp_test_mitfloww") ||
+      keyId.startsWith("rzp_test_mock") ||
+      keyId === "rzp_test_your_razorpay_key_id" ||
+      keySecret.startsWith("rzp_sec_mitfloww") ||
+      keySecret.startsWith("test_secret");
+
+    if (isPlaceholder && !isExplicitMock && !isTestEnvironment) {
       throw new AppError(
-        "Razorpay credentials are not configured.",
-        500,
+        "Razorpay payments are temporarily unavailable. Please choose another payment method or try again later.",
+        400,
         "razorpay_credentials_missing",
       );
     }
 
-    const isMock = Boolean(
-      this.configOverride?.isMock ||
-        keyId === "rzp_test_mock_key_id" ||
-        keyId.startsWith("rzp_test_mitfloww") ||
-        keyId.startsWith("rzp_test_mock") ||
-        keyId === "rzp_test_your_razorpay_key_id" ||
-        keySecret.startsWith("rzp_sec_mitfloww") ||
-        keySecret.startsWith("test_secret")
-    );
+    const isMock = isExplicitMock || (isTestEnvironment && isPlaceholder);
 
     return {
       keyId,

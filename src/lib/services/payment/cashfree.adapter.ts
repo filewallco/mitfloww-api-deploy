@@ -62,17 +62,39 @@ export class CashfreeAdapter implements PaymentGatewayAdapter {
     const config = getPaymentConfig();
     const cf = config.providers.cashfree;
 
-    const appId = this.configOverride?.appId || cf.appId || (process.env.NODE_ENV !== "production" ? "cf_test_mock_app_id" : "");
-    const secretKey = this.configOverride?.secretKey || cf.secretKey || (process.env.NODE_ENV !== "production" ? "cf_test_mock_secret_key" : "");
-    const webhookSecret = this.configOverride?.webhookSecret || cf.webhookSecret || secretKey;
+    const appId = (this.configOverride?.appId || cf.appId || "").trim();
+    const secretKey = (this.configOverride?.secretKey || cf.secretKey || "").trim();
+    const webhookSecret = (this.configOverride?.webhookSecret || cf.webhookSecret || secretKey).trim();
     const environment: "sandbox" | "production" =
       this.configOverride?.environment ||
       (process.env.CASHFREE_ENVIRONMENT?.toLowerCase() === "production" ? "production" : "sandbox");
 
-    if (!appId || !secretKey) {
+    const isExplicitMock = Boolean(
+      this.configOverride?.isMock ||
+      this.configOverride?.appId === "TEST123456" ||
+      process.env.NODE_ENV === "test"
+    );
+    const isTestEnvironment = process.env.NODE_ENV === "test";
+
+    const isPlaceholder =
+      !appId ||
+      !secretKey ||
+      appId === "cf_test_mock_app_id" ||
+      appId === "cf_test_mitfloww_sandbox" ||
+      appId === "your_cashfree_app_id" ||
+      secretKey === "cf_sec_mitfloww_sandbox_secret" ||
+      secretKey === "your_cashfree_secret_key" ||
+      secretKey.startsWith("test_secret_key");
+
+    if (isPlaceholder && !isExplicitMock && !isTestEnvironment) {
+      void paymentLogger.warn("cashfree.credentials_missing", {
+        data: {
+          hint: "Please set valid CASHFREE_APP_ID (starts with TEST...) and CASHFREE_SECRET_KEY in api/.env",
+        },
+      });
       throw new AppError(
-        "Cashfree credentials are not configured.",
-        500,
+        "Cashfree payments are temporarily unavailable. Please choose another payment method or try again later.",
+        400,
         "cashfree_credentials_missing",
       );
     }
@@ -82,13 +104,7 @@ export class CashfreeAdapter implements PaymentGatewayAdapter {
         ? "https://api.cashfree.com/pg"
         : "https://sandbox.cashfree.com/pg";
 
-    const isMock = Boolean(
-      this.configOverride?.isMock ||
-        appId === "cf_test_mock_app_id" ||
-        appId.startsWith("TEST") ||
-        appId.startsWith("cf_test") ||
-        secretKey.startsWith("test_secret"),
-    );
+    const isMock = isExplicitMock || (isTestEnvironment && isPlaceholder);
 
     return {
       appId,
@@ -141,7 +157,10 @@ export class CashfreeAdapter implements PaymentGatewayAdapter {
     }
 
     if (!response.ok) {
-      const message = body?.message || body?.error || `Cashfree API error HTTP ${response.status}`;
+      let message = body?.message || body?.error || `Cashfree API error HTTP ${response.status}`;
+      if (response.status === 401 || message.toLowerCase().includes("authentication failed")) {
+        message = "Cashfree authentication failed. Please verify CASHFREE_APP_ID and CASHFREE_SECRET_KEY in api/.env.";
+      }
       const code = body?.code || "cashfree_api_error";
       throw new AppError(message, response.status, code, body);
     }
