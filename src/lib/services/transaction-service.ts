@@ -1,6 +1,6 @@
 import { db } from "@/lib/db/client";
 import { projects, transactions, TransactionPaymentStatus } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import type { TransactionRecord } from "@/lib/db/schema";
 import { ensureProjectInvoiceNumber } from "./invoice-service";
 import { DrizzleFileRepository } from "@/lib/repositories/file-repository";
@@ -11,7 +11,12 @@ export class TransactionService {
     return await db
       .select()
       .from(transactions)
-      .where(eq(transactions.userId, userId))
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.paymentStatus, TransactionPaymentStatus.Paid)
+        )
+      )
       .orderBy(desc(transactions.paidAt));
   }
 
@@ -56,6 +61,11 @@ export class TransactionService {
 
     if (!project || !project.advancePaymentEnabled) return null;
 
+    const isPaid = project.advancePaymentStatus === ProjectPaymentStatus.Paid;
+    if (!isPaid) {
+      return null;
+    }
+
     const baseInvoiceNumber = await ensureProjectInvoiceNumber(projectId);
     const invoiceNumber = `ADV-${baseInvoiceNumber}`;
     const amountCents = Number(project.advanceAmountCents) || 0;
@@ -63,7 +73,6 @@ export class TransactionService {
     const netAmountCents = Math.max(0, amountCents - commissionCents);
     const clientEmail = project.clientEmail || project.shareClientEmail || null;
     const paidAt = project.advancePaymentCompletedAt ?? new Date();
-    const isPaid = project.advancePaymentStatus === ProjectPaymentStatus.Paid;
 
     const [record] = await executor
       .insert(transactions)
@@ -78,7 +87,7 @@ export class TransactionService {
         commissionCents,
         netAmountCents,
         currency: project.currency || "INR",
-        paymentStatus: isPaid ? "paid" : "pending",
+        paymentStatus: "paid",
         paymentType: "advance",
         paymentMethod: "Online",
         paidAt,
@@ -93,7 +102,7 @@ export class TransactionService {
           commissionCents,
           netAmountCents,
           currency: project.currency || "INR",
-          paymentStatus: isPaid ? "paid" : "pending",
+          paymentStatus: "paid",
           updatedAt: new Date(),
         },
       })
@@ -111,6 +120,11 @@ export class TransactionService {
       .limit(1);
 
     if (!project) return null;
+
+    const isPaid = project.paymentStatus === ProjectPaymentStatus.Paid;
+    if (!isPaid) {
+      return null;
+    }
 
     const invoiceNumber = await ensureProjectInvoiceNumber(projectId);
 
@@ -141,7 +155,6 @@ export class TransactionService {
 
     const clientEmail = project.clientEmail || project.shareClientEmail || null;
     const paidAt = project.clientPaymentCompletedAt ?? new Date();
-    const isPaid = project.paymentStatus === ProjectPaymentStatus.Paid;
     const currency = project.currency || "INR";
 
     const [record] = await executor
@@ -157,7 +170,7 @@ export class TransactionService {
         commissionCents,
         netAmountCents,
         currency,
-        paymentStatus: isPaid ? "paid" : "pending",
+        paymentStatus: "paid",
         paymentType,
         paymentMethod: "Online",
         paidAt,
@@ -172,7 +185,7 @@ export class TransactionService {
           commissionCents,
           netAmountCents,
           currency,
-          paymentStatus: isPaid ? "paid" : "pending",
+          paymentStatus: "paid",
           paymentType,
           updatedAt: new Date(),
         },

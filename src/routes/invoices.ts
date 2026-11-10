@@ -3,6 +3,10 @@ import { z } from "zod";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { invoiceService } from "@/lib/services/invoice-service";
 import { asyncHandler } from "@/lib/api/route";
+import { db } from "@/lib/db/client";
+import { projects } from "@/lib/db/schema";
+import { and, eq } from "drizzle-orm";
+import { ProjectPaymentStatus } from "@/lib/dto/projects";
 
 export const invoicesRouter = Router();
 
@@ -54,6 +58,34 @@ invoicesRouter.patch("/settings", asyncHandler(async (req, res) => {
 invoicesRouter.get("/project/:projectId/pdf", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor(req);
   const projectId = String(req.params.projectId);
+
+  const [project] = await db
+    .select({
+      id: projects.id,
+      userId: projects.userId,
+      paymentStatus: projects.paymentStatus,
+      advancePaymentStatus: projects.advancePaymentStatus,
+      advancePaymentEnabled: projects.advancePaymentEnabled,
+    })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.userId, actor.id)))
+    .limit(1);
+
+  if (!project) {
+    return res.status(404).json({ error: "Project not found." });
+  }
+
+  const isPaid =
+    project.paymentStatus === ProjectPaymentStatus.Paid ||
+    (Boolean(project.advancePaymentEnabled) &&
+      project.advancePaymentStatus === ProjectPaymentStatus.Paid);
+
+  if (!isPaid) {
+    return res
+      .status(402)
+      .json({ error: "Invoice is available only after payment is completed." });
+  }
+
   const { pdfBuffer, filename } = await invoiceService.generateProjectInvoicePdf(projectId);
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

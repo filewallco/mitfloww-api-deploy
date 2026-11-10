@@ -92,7 +92,7 @@ export class PaymentService {
         const remainingCents = Math.max(0, subtotalCents - advanceAmountCents);
         const finalPayableCents = hasPaidAdvance ? remainingCents : subtotalCents;
 
-        const baseInvoice = await ensureProjectInvoiceNumber(project.id);
+        const baseReceipt = `rcpt_${project.id.replace(/-/g, "").slice(0, 16)}_${Date.now().toString(36)}`;
 
         return {
           originalAmount: finalPayableCents,
@@ -103,7 +103,7 @@ export class PaymentService {
           customerName: project.clientName || "Valued Client",
           customerEmail: project.clientEmail || project.shareClientEmail || null,
           description: `Deliverables unlock for ${project.title || "Project"}`,
-          receipt: `rcpt_${baseInvoice}`.slice(0, 40),
+          receipt: baseReceipt.slice(0, 40),
         };
       }
 
@@ -135,7 +135,7 @@ export class PaymentService {
           throw new AppError("Advance amount must be greater than zero.", 400, "invalid_advance_amount");
         }
 
-        const baseInvoice = await ensureProjectInvoiceNumber(project.id);
+        const baseReceipt = `adv_${project.id.replace(/-/g, "").slice(0, 16)}_${Date.now().toString(36)}`;
 
         return {
           originalAmount: advanceAmountCents,
@@ -146,7 +146,7 @@ export class PaymentService {
           customerName: project.clientName || "Valued Client",
           customerEmail: project.clientEmail || project.shareClientEmail || null,
           description: `Advance payment for ${project.title || "Project"}`,
-          receipt: `adv_${baseInvoice}`.slice(0, 40),
+          receipt: baseReceipt.slice(0, 40),
         };
       }
 

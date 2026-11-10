@@ -410,6 +410,20 @@ export class InvoiceService {
       throw new NotFoundAppError("Project not found.");
     }
 
+    const isFullyPaid = project.paymentStatus === ProjectPaymentStatus.Paid;
+    const isAdvancePaid =
+      Boolean(project.advancePaymentEnabled) &&
+      project.advancePaymentStatus === ProjectPaymentStatus.Paid &&
+      Number(project.advanceAmountCents) > 0;
+
+    if (!isFullyPaid && !isAdvancePaid) {
+      throw new AppError(
+        "Invoice is available only after payment has been completed.",
+        402,
+        "payment_not_completed"
+      );
+    }
+
     const userId = project.userId;
 
     const profile = await userService.getProfile(userId);
@@ -534,8 +548,12 @@ export class InvoiceService {
       }
     }
 
-    const completedDate = project.clientPaymentCompletedAt
-      ? new Date(project.clientPaymentCompletedAt).toLocaleDateString("en-US", {
+    const effectiveCompletedAt = isFullyPaid
+      ? project.clientPaymentCompletedAt
+      : project.advancePaymentCompletedAt;
+
+    const completedDate = effectiveCompletedAt
+      ? new Date(effectiveCompletedAt).toLocaleDateString("en-US", {
           year: "numeric",
           month: "short",
           day: "numeric",
@@ -546,13 +564,27 @@ export class InvoiceService {
           day: "numeric",
         });
 
-    const invoiceNumber = await ensureProjectInvoiceNumber(project.id);
-    try {
-      await transactionService.recordProjectTransaction(project.id);
-    } catch (txErr) {
-      scopedLogger.warn("Could not record transaction on invoice generation", { err: txErr });
+    let invoiceNumber: string;
+    if (isFullyPaid) {
+      invoiceNumber =
+        project.clientPaymentReference ||
+        (await ensureProjectInvoiceNumber(
+          project.id,
+          project.clientPaymentCompletedAt ?? undefined
+        ));
+    } else {
+      const baseRef =
+        project.clientPaymentReference ||
+        (await ensureProjectInvoiceNumber(
+          project.id,
+          project.advancePaymentCompletedAt ?? undefined
+        ));
+      invoiceNumber = baseRef.startsWith("ADV-") ? baseRef : `ADV-${baseRef}`;
     }
-    const finalAmount = balanceAmount > 0 ? balanceAmount : subtotal;
+
+    const finalAmount = isFullyPaid
+      ? (balanceAmount > 0 ? balanceAmount : subtotal)
+      : advancePaymentPaid;
     const clientName = project.clientName || "Valued Client";
     const clientEmail = project.clientEmail || project.shareClientEmail || "";
 

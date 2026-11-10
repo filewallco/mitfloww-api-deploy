@@ -139,7 +139,12 @@ shareLinksRouter.get("/:token/invoice/pdf", asyncHandler(async (req, res) => {
   const params = parseWithSchema(projectShareTokenParamsSchema, req.params);
   const project = await requireAuthorizedShareProject(req, params.token);
 
-  if (project.paymentStatus !== ProjectPaymentStatus.Paid) {
+  const isPaid =
+    project.paymentStatus === ProjectPaymentStatus.Paid ||
+    (Boolean(project.advancePaymentEnabled) &&
+      project.advancePaymentStatus === ProjectPaymentStatus.Paid);
+
+  if (!isPaid) {
     return res.status(402).json({ error: "Invoice is available only after payment is completed." });
   }
 
