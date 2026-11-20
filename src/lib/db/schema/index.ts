@@ -13,6 +13,7 @@ import { createAssetTables } from "./assets";
 import { createAuthTables } from "./auth";
 import { createDashboardTables } from "./dashboard";
 import { createPaymentTables } from "./payments";
+import { createBankDetailsTables } from "./bank-details";
 
 export const fw = pgSchema("mitfloww");
 
@@ -77,6 +78,12 @@ export const {
   paymentAuditLogs,
   paymentGatewayConfigs,
 } = createPaymentTables(fw, { users });
+export const { userBankDetails } = createBankDetailsTables(fw, { users });
+
+export type {
+  UserBankDetailsRecord,
+  NewUserBankDetailsRecord,
+} from "./bank-details";
 
 export type {
   CreditAccountRecord,

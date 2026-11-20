@@ -30,6 +30,7 @@ import {
   buildUserProfileAvatarStorageKey,
 } from "@/lib/uploads/final-storage-keys";
 import { validateImageUpload } from "@/lib/uploads/validate-image";
+import { bankDetailsService, type SafeBankDetailsResponse } from "./bank-details-service";
 
 export function hashPassword(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -63,6 +64,7 @@ export type FullUserProfile = {
   user: UserRecord;
   company: CompanyRecord | null;
   workProfile: CreatorWorkProfileRecord | null;
+  bankDetails: SafeBankDetailsResponse | null;
   stats: ProfileStats;
 };
 
@@ -146,10 +148,13 @@ export class UserService {
       .where(eq(creatorWorkProfiles.userId, userId))
       .limit(1);
 
+    const bankDetails = await bankDetailsService.getBankDetails(userId);
+
     return {
       user,
       company: company ?? null,
       workProfile: workProfile ?? null,
+      bankDetails: bankDetails ?? null,
       stats,
     };
   }

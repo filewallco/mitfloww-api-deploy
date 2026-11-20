@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { resolveActiveActor } from "@/lib/auth/active-actor";
 import { userService } from "@/lib/services/user-service";
+import { bankDetailsService } from "@/lib/services/bank-details-service";
 import { sessionService } from "@/lib/auth/session";
 import { emailService } from "@/lib/email/email-service";
 import { asyncHandler } from "@/lib/api/route";
@@ -174,6 +175,70 @@ const workProfileUpdateSchema = z.object({
   companyAddress: z.string().trim().max(1000).nullable().optional(),
 });
 
+const bankDetailsUpdateSchema = z.object({
+  paymentType: z.enum(["bank", "upi"]).optional().default("bank"),
+  accountHolderName: z.string().trim().max(150).optional().nullable(),
+  bankName: z.string().trim().max(150).optional().nullable(),
+  accountNumber: z.string().trim().max(40).optional().nullable(),
+  routingCode: z.string().trim().max(30).optional().nullable(),
+  accountType: z.enum(["savings", "current", "checking", "business"]).optional().default("savings"),
+  country: z.string().trim().max(100).optional().nullable(),
+  currency: z.string().trim().max(10).optional().nullable(),
+  upiId: z.string().trim().max(100).optional().nullable(),
+  bankBranchAddress: z.string().trim().max(500).optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.paymentType === "upi") {
+    if (!data.upiId || !data.upiId.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["upiId"],
+        message: "UPI ID is required",
+      });
+    } else if (!/^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/.test(data.upiId.trim())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["upiId"],
+        message: "Invalid UPI ID format (e.g. name@bank)",
+      });
+    }
+  } else {
+    if (!data.accountHolderName || !data.accountHolderName.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["accountHolderName"],
+        message: "Account holder name is required",
+      });
+    }
+    if (!data.bankName || !data.bankName.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["bankName"],
+        message: "Bank name is required",
+      });
+    }
+    if (data.accountNumber && data.accountNumber.trim()) {
+      const clean = data.accountNumber.replace(/\s+/g, "");
+      if (!/^[a-zA-Z0-9]{6,34}$/.test(clean)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["accountNumber"],
+          message: "Account number must be between 6 and 34 alphanumeric characters",
+        });
+      }
+    }
+    if (data.routingCode && data.routingCode.trim()) {
+      const clean = data.routingCode.replace(/\s+/g, "");
+      if (!/^[a-zA-Z0-9]{3,20}$/.test(clean)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["routingCode"],
+          message: "Routing / IFSC code must be between 3 and 20 alphanumeric characters",
+        });
+      }
+    }
+  }
+});
+
 // Helper to extract file buffer from multipart/binary or JSON base64
 function extractUploadBuffer(req: any): { buffer: Buffer; filename: string; mimeType: string } {
   if (req.body && typeof req.body === "object" && typeof req.body.fileBase64 === "string") {
@@ -260,6 +325,40 @@ profileRouter.post("/logo", asyncHandler(async (req, res) => {
 profileRouter.delete("/logo", asyncHandler(async (req, res) => {
   const actor = await resolveActiveActor(req);
   await userService.removeCompanyLogo(actor.id);
+  return res.json({ success: true });
+}));
+
+profileRouter.get("/bank-details", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const details = await bankDetailsService.getBankDetails(actor.id);
+  return res.json({ bankDetails: details });
+}));
+
+profileRouter.put("/bank-details", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const parsed = bankDetailsUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid bank details input", details: parsed.error.issues });
+  }
+
+  const updated = await bankDetailsService.saveBankDetails(actor.id, parsed.data);
+  return res.json({ bankDetails: updated });
+}));
+
+profileRouter.patch("/bank-details", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  const parsed = bankDetailsUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid bank details input", details: parsed.error.issues });
+  }
+
+  const updated = await bankDetailsService.saveBankDetails(actor.id, parsed.data);
+  return res.json({ bankDetails: updated });
+}));
+
+profileRouter.delete("/bank-details", asyncHandler(async (req, res) => {
+  const actor = await resolveActiveActor(req);
+  await bankDetailsService.deleteBankDetails(actor.id);
   return res.json({ success: true });
 }));
 
